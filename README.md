@@ -58,4 +58,4 @@ host    all             all             172.16.0.0/12           scram-sha-256
 
 ## License
 
-[MIT](LICENSE)
+[Apache 2.0](LICENSE)
