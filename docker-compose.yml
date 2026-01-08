@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  backend:
+    build: 
+      context: ./backend
+    ports:
+      - "9000:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  frontend:
+    build: 
+      context: ./frontend
+
+    ports:
+      - "4000:3000"
+    depends_on:
+      - backend
+    # On Linux, this might be needed for Vite polling if strict file watching issues occur
+    environment:
+      - WATCHPACK_POLLING=true
+
