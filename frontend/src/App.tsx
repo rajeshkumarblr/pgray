@@ -1,5 +1,5 @@
-import { useState, useMemo, useCallback } from 'react'
-import ReactFlow, { Background, Controls, Node, Edge } from 'reactflow';
+import { useState, useMemo, useCallback, useEffect } from 'react'
+import ReactFlow, { Background, Controls, Node, Edge, applyNodeChanges, NodeChange } from 'reactflow';
 import 'reactflow/dist/style.css';
 import ConnectionModal from './components/ConnectionModal';
 import PlanNode from './components/PlanNode';
@@ -7,6 +7,7 @@ import { connectDb, explainQuery } from './api';
 import { parsePlanToFlow } from './utils/planLayout';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
+import NodeDetailsPanel from './components/NodeDetailsPanel';
 
 function App() {
   const [isModalOpen, setIsModalOpen] = useState(true);
@@ -76,10 +77,30 @@ function App() {
 
   const totalTime = explainResult && explainResult[0] && explainResult[0]['Execution Time'];
 
+  const onNodesChange = useCallback(
+    (changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds)),
+    [],
+  );
+
+  // Re-center graph when side panel toggles (opens/closes) to keep nodes visible
+  useEffect(() => {
+    if (reactFlowInstance) {
+        // Delay ensures the flex layout has resized the container before we fit view
+        const timer = setTimeout(() => {
+            reactFlowInstance.fitView({ padding: 0.2, duration: 400 });
+        }, 100);
+        return () => clearTimeout(timer);
+    }
+  }, [!!selectedNode, reactFlowInstance]);
+
   return (
     <div style={{ height: '100vh', width: '100vw', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <Header 
-         onNewPlan={() => { setSelectedNode(null); }} 
+         onNewPlan={() => { 
+             setSelectedNode(null); 
+             // Also clear visual selection
+             setNodes(nds => nds.map(node => ({ ...node, selected: false })));
+         }} 
          onHistory={() => alert("History not implemented yet")}
          onConnect={() => setIsModalOpen(true)}
       />
@@ -91,8 +112,6 @@ function App() {
              setSqlQuery={setSqlQuery}
              onRunExplain={handleRunExplain}
              loading={loading}
-             selectedNode={selectedNode}
-             onClearSelection={() => setSelectedNode(null)}
              explainResult={explainResult}
           />
           
@@ -118,6 +137,8 @@ function App() {
                     edges={edges}
                     nodeTypes={nodeTypes}
                     onNodeClick={onNodeClick}
+                    onNodesChange={onNodesChange}
+                    onPaneClick={() => setSelectedNode(null)}
                     fitView
                     onInit={setReactFlowInstance}
                     style={{ background: '#334155' }}
@@ -127,6 +148,14 @@ function App() {
                 </ReactFlow>
              </div>
           </div>
+
+          <NodeDetailsPanel 
+              selectedNode={selectedNode} 
+              onClose={() => {
+                 setSelectedNode(null);
+                 setNodes(nds => nds.map(node => ({ ...node, selected: false })));
+              }} 
+          />
       </div>
 
       <ConnectionModal 

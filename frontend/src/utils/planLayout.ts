@@ -33,7 +33,8 @@ export const parsePlanToFlow = (explainJson: any): { nodes: Node[]; edges: Edge[
     let idCounter = 0;
 
     const traverse = (plan: PostgresPlan, parentId: string | null = null) => {
-        const id = `node_${idCounter++}`;
+        const currentIdNum = idCounter++;
+        const id = `node_${currentIdNum}`;
         
         // Construct Node Data
         const nodeLabel = plan["Node Type"];
@@ -43,6 +44,7 @@ export const parsePlanToFlow = (explainJson: any): { nodes: Node[]; edges: Edge[
             type: 'planNode', // Use our custom type
             position: { x: 0, y: 0 }, // Dagre will set this
             data: { 
+                id: currentIdNum, // Pass the numeric ID
                 label: nodeLabel,
                 cost: plan["Total Cost"],
                 rows: plan["Plan Rows"],
