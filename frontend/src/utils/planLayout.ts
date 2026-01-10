@@ -83,10 +83,10 @@ export const parsePlanToFlow = (explainJson: any): { nodes: Node[]; edges: Edge[
     let idCounter = 0;
 
     // Strict dense grid layout (no Dagre):
-    // - X = depth * 60
+    // - X = depth * 40
     // - Y = rowIndex * 50
     // - rowIndex increments in pre-order traversal
-    const INDENT_X = 60;
+    const INDENT_X = 40;
     const ROW_Y = 50;
     let rowIndex = 0;
 
@@ -111,7 +111,7 @@ export const parsePlanToFlow = (explainJson: any): { nodes: Node[]; edges: Edge[
             id,
             type: 'planNode', // Use our custom type
             position: { x, y },
-            sourcePosition: Position.Right,
+            sourcePosition: Position.Bottom,
             targetPosition: Position.Left,
             data: {
                 id: currentIdNum, // Pass the numeric ID
@@ -135,6 +135,7 @@ export const parsePlanToFlow = (explainJson: any): { nodes: Node[]; edges: Edge[
                 source: parentId,
                 target: id,
                 type: 'smoothstep',
+                style: { stroke: '#475569', strokeWidth: 2 },
             });
         }
 
