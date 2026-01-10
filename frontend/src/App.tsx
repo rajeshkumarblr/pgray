@@ -3,6 +3,7 @@ import ReactFlow, { Background, Controls, Node, Edge, applyNodeChanges, NodeChan
 import 'reactflow/dist/style.css';
 import ConnectionModal from './components/ConnectionModal';
 import PlanNode from './components/PlanNode';
+import JunctionNode from './components/JunctionNode';
 import { connectDb, explainQuery, getHistory } from './api';
 import { parsePlanToFlow } from './utils/planLayout';
 import Header from './components/Header';
@@ -46,7 +47,7 @@ function App() {
   const [edges, setEdges] = useState<Edge[]>([]);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
 
-  const nodeTypes = useMemo(() => ({ planNode: PlanNode }), []);
+  const nodeTypes = useMemo(() => ({ planNode: PlanNode, junction: JunctionNode }), []);
 
   const handleConnectionDecode = async (info: any) => {
       try {

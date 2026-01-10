@@ -66,7 +66,7 @@ const getSeverityColor = (score?: number) => {
 };
 
 const PlanNode = ({ data, selected }: NodeProps<PlanNodeData>) => {
-  const isAnalysis = data.actual_time !== undefined;
+  const hasActual = data.actual_time !== undefined || data.actual_rows !== undefined;
 
   const severity = clamp01(
     typeof data.severity_score === 'number' && Number.isFinite(data.severity_score)
@@ -77,16 +77,16 @@ const PlanNode = ({ data, selected }: NodeProps<PlanNodeData>) => {
 
   // Base style: keep existing white styling + blue selection behavior
   const baseStyle: React.CSSProperties = {
-    padding: '10px',
-    borderRadius: '5px',
+    padding: '8px 10px',
+    borderRadius: '6px',
     border: selected ? '3px solid #2563eb' : '1px solid #777',
     backgroundColor: '#fff',
-    minWidth: '150px',
+    minWidth: '190px',
     fontFamily: 'sans-serif',
     boxShadow: selected
       ? '0 0 0 4px rgba(37, 99, 235, 0.3), 0 10px 25px -5px rgba(0, 0, 0, 0.2)'
       : '2px 2px 5px rgba(0,0,0,0.1)',
-    transform: selected ? 'scale(1.05)' : 'scale(1)',
+    transform: selected ? 'scale(1.03)' : 'scale(1)',
     transition: 'all 0.2s ease',
     zIndex: selected ? 10 : 1,
   };
@@ -105,39 +105,61 @@ const PlanNode = ({ data, selected }: NodeProps<PlanNodeData>) => {
         : baseStyle.boxShadow,
   };
 
+  const actualRows = typeof data.actual_rows === 'number' ? data.actual_rows : undefined;
+  const planRows = typeof data.rows === 'number' ? data.rows : undefined;
+  const exclMs = typeof data.exclusive_time === 'number' ? data.exclusive_time : undefined;
+  const totalMs = typeof data.actual_time === 'number' ? data.actual_time : undefined;
+  const cost = typeof data.cost === 'number' ? data.cost : undefined;
+
   return (
     <div style={nodeStyle}>
-      <Handle type="target" position={Position.Top} />
+      <Handle type="target" position={Position.Left} />
       
-      <div style={{ fontWeight: 'bold', marginBottom: '5px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <div style={{ 
-             background: '#0f172a', color: 'white', fontWeight: 'bold', 
-             borderRadius: '4px', padding: '2px 6px', fontSize: '10px'
-        }}>
-             #{data.id}
+      <div style={{ fontWeight: 700, marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div
+          style={{
+            background: '#0f172a',
+            color: 'white',
+            fontWeight: 700,
+            borderRadius: '4px',
+            padding: '2px 6px',
+            fontSize: '10px',
+            lineHeight: 1.1,
+            flexShrink: 0,
+          }}
+        >
+          #{data.id}
         </div>
-        {data.label}
+        <div style={{ fontSize: '13px', color: '#0f172a', lineHeight: 1.15 }}>{data.label}</div>
       </div>
-      
-      <div style={{ fontSize: '12px' }}>
-        <div>Est. Cost: {data.cost}</div>
-        <div>Est. Rows: {data.rows}</div>
 
-        <div style={{ marginTop: '5px', borderTop: `1px solid ${heatBorder}`, paddingTop: '5px' }}>
+      <div style={{ fontSize: '11px', color: '#334155', lineHeight: 1.25 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
           <div style={{ fontWeight: 600, color: '#0f172a' }}>
-            Excl: {typeof data.exclusive_time === 'number' ? `${data.exclusive_time.toFixed(3)}ms` : '—'}
+            Node: {exclMs !== undefined ? `${exclMs.toFixed(3)}ms` : '—'}
+          </div>
+          <div style={{ color: '#475569' }}>
+            Rows: {actualRows !== undefined ? actualRows : planRows ?? '—'}
           </div>
         </div>
-        
-        {isAnalysis && (
-            <div style={{ marginTop: '5px', borderTop: '1px solid #eee', paddingTop: '5px' }}>
-                <div style={{ color: '#006400' }}>Actual Rows: {data.actual_rows}</div>
-                <div style={{ color: '#b22222' }}>Time: {data.actual_time?.toFixed(3)}ms</div>
-            </div>
+
+        <div style={{ marginTop: '3px', display: 'flex', justifyContent: 'space-between', gap: '10px', color: '#64748b' }}>
+          <div>
+            Est: {cost !== undefined ? `cost ${cost.toFixed(2)}` : '—'}
+          </div>
+          <div>
+            Est rows: {planRows !== undefined ? planRows : '—'}
+          </div>
+        </div>
+
+        {hasActual && (
+          <div style={{ marginTop: '4px', borderTop: `1px solid ${heatBorder}`, paddingTop: '4px', color: '#b22222' }}>
+            Total: {totalMs !== undefined ? `${totalMs.toFixed(3)}ms` : '—'}
+          </div>
         )}
       </div>
 
-      <Handle type="source" position={Position.Bottom} />
+      <Handle type="source" position={Position.Right} />
     </div>
   );
 };

@@ -1,4 +1,3 @@
-import dagre from 'dagre';
 import { Node, Edge } from 'reactflow';
 
 // Define the Postgres Plan Type broadly
@@ -83,8 +82,23 @@ export const parsePlanToFlow = (explainJson: any): { nodes: Node[]; edges: Edge[
     const edges: Edge[] = [];
     let idCounter = 0;
 
-    // 2) Existing traversal pass (now inject computed metrics into node.data)
-    const traverse = (plan: PostgresPlan, parentId: string | null = null) => {
+    // Indented tree layout (pgMustard-like):
+    // - root at top-left
+    // - children below with increasing indent per depth
+    // Tuned for compact, pgMustard-like outline readability
+    const X_GAP = 220;
+    const Y_GAP = 96;
+    const SPINE_OFFSET_X = 36; // spine sits slightly left of node cards
+    const NODE_CENTER_Y = 26;  // approx midline of compact node card
+
+    const connectorStroke = { stroke: '#94a3b8', strokeWidth: 1 };
+    let row = 0;
+
+    // 2) Existing traversal pass (inject computed metrics into node.data)
+    // We build an explorer-like connector network:
+    // - each plan node gets a junction point to its left (same Y)
+    // - for nodes with children, parent connects to first child, and siblings form a vertical spine
+    const traverse = (plan: PostgresPlan, depth = 0): string => {
         const currentIdNum = idCounter++;
         const id = `node_${currentIdNum}`;
 
@@ -96,10 +110,35 @@ export const parsePlanToFlow = (explainJson: any): { nodes: Node[]; edges: Edge[
         const severity_score =
             maxExclusiveTime > 0 ? Math.min(1, Math.max(0, exclusive_time / maxExclusiveTime)) : 0;
 
+        const y = row * Y_GAP;
+        const x = depth * X_GAP;
+        const junctionId = `j_${id}`;
+
+        // Junction node used purely for connector routing.
+        nodes.push({
+            id: junctionId,
+            type: 'junction',
+            position: { x: x - SPINE_OFFSET_X, y: y + NODE_CENTER_Y },
+            data: {},
+            selectable: false,
+            draggable: false,
+            deletable: false,
+        });
+
+        // Horizontal tap from spine junction into the actual plan node.
+        edges.push({
+            id: `tap_${junctionId}_${id}`,
+            source: junctionId,
+            target: id,
+            sourceHandle: 'right',
+            type: 'straight',
+            style: connectorStroke,
+        });
+
         nodes.push({
             id,
             type: 'planNode', // Use our custom type
-            position: { x: 0, y: 0 }, // Dagre will set this
+            position: { x, y },
             data: {
                 id: currentIdNum, // Pass the numeric ID
                 label: nodeLabel,
@@ -116,49 +155,39 @@ export const parsePlanToFlow = (explainJson: any): { nodes: Node[]; edges: Edge[
             },
         });
 
-        if (parentId) {
+        row += 1;
+
+        if (plan.Plans && Array.isArray(plan.Plans) && plan.Plans.length > 0) {
+            const childJunctions = plan.Plans.map((child) => traverse(child, depth + 1));
+
+            // Connect parent to first child (the spine continues from there).
             edges.push({
-                id: `e_${parentId}-${id}`,
-                source: parentId,
-                target: id,
-                type: 'smoothstep', // nice curved edges
+                id: `branch_${junctionId}_${childJunctions[0]}`,
+                source: junctionId,
+                target: childJunctions[0],
+                sourceHandle: 'right',
+                targetHandle: 'left',
+                type: 'step',
+                style: connectorStroke,
             });
+
+            // Vertical spine through sibling child junctions.
+            for (let i = 0; i < childJunctions.length - 1; i += 1) {
+                edges.push({
+                    id: `spine_${childJunctions[i]}_${childJunctions[i + 1]}`,
+                    source: childJunctions[i],
+                    target: childJunctions[i + 1],
+                    sourceHandle: 'bottom',
+                    targetHandle: 'top',
+                    type: 'straight',
+                    style: connectorStroke,
+                });
+            }
         }
 
-        if (plan.Plans && Array.isArray(plan.Plans)) {
-            plan.Plans.forEach(child => traverse(child, id));
-        }
+        return junctionId;
     };
 
     traverse(rootPlan);
-    return getLayoutedElements(nodes, edges);
-};
-
-const getLayoutedElements = (nodes: Node[], edges: Edge[]) => {
-    const dagreGraph = new dagre.graphlib.Graph();
-    dagreGraph.setDefaultEdgeLabel(() => ({}));
-
-    // Set graph direction
-    dagreGraph.setGraph({ rankdir: 'TB' }); // Top to Bottom
-
-    nodes.forEach((node) => {
-        // Estimated node size. Ideally, check generic PlanNode size
-        dagreGraph.setNode(node.id, { width: 180, height: 100 });
-    });
-
-    edges.forEach((edge) => {
-        dagreGraph.setEdge(edge.source, edge.target);
-    });
-
-    dagre.layout(dagreGraph);
-
-    nodes.forEach((node) => {
-        const nodeWithPosition = dagreGraph.node(node.id);
-        node.position = {
-            x: nodeWithPosition.x - nodeWithPosition.width / 2,
-            y: nodeWithPosition.y - nodeWithPosition.height / 2,
-        };
-    });
-
     return { nodes, edges };
 };

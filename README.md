@@ -10,7 +10,8 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
     *   **Center**: Interactive node-link diagram using React Flow.
     *   **Right**: Sliding details panel for deep-diving into specific node metrics.
 *   **Run Explain Plans**: Type raw SQL and execute `EXPLAIN (FORMAT JSON, ANALYZE)` instantly.
-*   **Visual Tree**: Interactive visualization of the execution plan using Dagre layout.
+*   **Visual Tree**: Indented outline tree layout (pgMustard-like).
+*   **Explorer-Style Connectors**: Vertical spines only where a node has multiple children, with short horizontal taps into each node.
 *   **Detailed Analytics**: Click any node to see detailed stats (Actual Rows, Loops, Filter Rows Removed).
 *   **Total Time**: Instant visibility into the total execution time of your query.
 *   **Query History**: Every executed query is stored locally (SQLite) and accessible via **History**.
@@ -27,7 +28,7 @@ Screenshot of pgRay showing the three-pane layout and heatmap bottleneck highlig
 
 ## Architecture
 
-*   **Frontend**: React, Vite, React Flow, Axios, Dagre
+*   **Frontend**: React, Vite, React Flow, Axios
 *   **Backend**: Python FastAPI, Pydantic, Psycopg2
 *   **Database**: Connects to user-provided Postgres instance
 *   **Infrastructure**: Docker Compose (services linked via `host.docker.internal`)
