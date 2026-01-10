@@ -11,10 +11,9 @@ interface PlanNodeData {
   actual_time?: number;
   details?: any;
 
-  // Pain Mode (optional)
+  // Heatmap metrics (optional)
   severity_score?: number; // 0.0 to 1.0
   exclusive_time?: number; // ms
-  pain_mode?: boolean; // passed from parent flow
 }
 
 const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
@@ -69,13 +68,12 @@ const getSeverityColor = (score?: number) => {
 const PlanNode = ({ data, selected }: NodeProps<PlanNodeData>) => {
   const isAnalysis = data.actual_time !== undefined;
 
-  const painMode = !!data.pain_mode;
   const severity = clamp01(
     typeof data.severity_score === 'number' && Number.isFinite(data.severity_score)
       ? data.severity_score
       : 0,
   );
-  const isBottleneck = painMode && severity === 1;
+  const isBottleneck = severity === 1;
 
   // Base style: keep existing white styling + blue selection behavior
   const baseStyle: React.CSSProperties = {
@@ -93,21 +91,19 @@ const PlanNode = ({ data, selected }: NodeProps<PlanNodeData>) => {
     zIndex: selected ? 10 : 1,
   };
 
-  // Pain Mode style overrides
-  const painBg = getSeverityColor(severity);
-  const painBorder = darkenHex(painBg, 0.22);
-  const nodeStyle: React.CSSProperties = painMode
-    ? {
-        ...baseStyle,
-        backgroundColor: painBg,
-        border: selected ? baseStyle.border : isBottleneck ? '4px solid #dc2626' : `1px solid ${painBorder}`,
-        boxShadow: selected
-          ? baseStyle.boxShadow
-          : isBottleneck
-            ? '0 0 0 4px rgba(220, 38, 38, 0.25), 0 10px 25px -5px rgba(0, 0, 0, 0.25)'
-            : baseStyle.boxShadow,
-      }
-    : baseStyle;
+  // Heatmap styling (always enabled)
+  const heatBg = getSeverityColor(severity);
+  const heatBorder = darkenHex(heatBg, 0.22);
+  const nodeStyle: React.CSSProperties = {
+    ...baseStyle,
+    backgroundColor: heatBg,
+    border: selected ? baseStyle.border : isBottleneck ? '4px solid #dc2626' : `1px solid ${heatBorder}`,
+    boxShadow: selected
+      ? baseStyle.boxShadow
+      : isBottleneck
+        ? '0 0 0 4px rgba(220, 38, 38, 0.25), 0 10px 25px -5px rgba(0, 0, 0, 0.25)'
+        : baseStyle.boxShadow,
+  };
 
   return (
     <div style={nodeStyle}>
@@ -127,13 +123,11 @@ const PlanNode = ({ data, selected }: NodeProps<PlanNodeData>) => {
         <div>Est. Cost: {data.cost}</div>
         <div>Est. Rows: {data.rows}</div>
 
-        {painMode && (
-          <div style={{ marginTop: '5px', borderTop: `1px solid ${painBorder}`, paddingTop: '5px' }}>
-            <div style={{ fontWeight: 600, color: '#0f172a' }}>
-              Excl: {typeof data.exclusive_time === 'number' ? `${data.exclusive_time.toFixed(3)}ms` : '—'}
-            </div>
+        <div style={{ marginTop: '5px', borderTop: `1px solid ${heatBorder}`, paddingTop: '5px' }}>
+          <div style={{ fontWeight: 600, color: '#0f172a' }}>
+            Excl: {typeof data.exclusive_time === 'number' ? `${data.exclusive_time.toFixed(3)}ms` : '—'}
           </div>
-        )}
+        </div>
         
         {isAnalysis && (
             <div style={{ marginTop: '5px', borderTop: '1px solid #eee', paddingTop: '5px' }}>

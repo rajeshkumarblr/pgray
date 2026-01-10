@@ -20,9 +20,6 @@ function App() {
   const [error, setError] = useState('');
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null); // To handle fitting view
 
-  // Pain Mode toggle (Step 3)
-  const [isPainMode, setIsPainMode] = useState(true);
-
   // Prefill editor with the last saved query (if editor is empty)
   useEffect(() => {
     let cancelled = false;
@@ -50,16 +47,6 @@ function App() {
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
 
   const nodeTypes = useMemo(() => ({ planNode: PlanNode }), []);
-
-  // Critical: propagate pain_mode into node.data so ReactFlow rerenders custom nodes
-  useEffect(() => {
-    setNodes((nds) =>
-      nds.map((node) => ({
-        ...node,
-        data: { ...(node.data as any), pain_mode: isPainMode },
-      })),
-    );
-  }, [isPainMode]);
 
   const handleConnectionDecode = async (info: any) => {
       try {
@@ -89,13 +76,7 @@ function App() {
       // data.plan is the Plan
       const { nodes: layoutNodes, edges: layoutEdges } = parsePlanToFlow(data.plan);
 
-      // Initial load: ensure nodes start with current Pain Mode value
-      const nodesWithPainMode = layoutNodes.map((node) => ({
-        ...node,
-        data: { ...(node.data as any), pain_mode: isPainMode },
-      }));
-
-      setNodes(nodesWithPainMode);
+      setNodes(layoutNodes);
       setEdges(layoutEdges);
       setExplainResult(data.plan);
 
@@ -114,7 +95,7 @@ function App() {
     }
   };
 
-  const onNodeClick = useCallback((event: any, node: Node) => {
+  const onNodeClick = useCallback((_event: any, node: Node) => {
       setSelectedNode(node);
   }, []);
 
@@ -175,74 +156,6 @@ function App() {
              )}
 
              <div style={{ flex: 1, position: 'relative' }}>
-                {/* Pain Mode Toggle Overlay */}
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: '20px',
-                    right: '20px',
-                    zIndex: 10,
-                    background: '#ffffff',
-                    borderRadius: '10px',
-                    boxShadow: '0 10px 25px -5px rgba(0,0,0,0.25)',
-                    padding: '10px 12px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '10px',
-                    border: '1px solid #e2e8f0',
-                    userSelect: 'none',
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                  onMouseDown={(e) => e.stopPropagation()}
-                >
-                  <div style={{ fontSize: '13px', color: '#0f172a', fontWeight: 600 }}>
-                    🔥 Pain Mode
-                  </div>
-
-                  <label
-                    style={{
-                      position: 'relative',
-                      display: 'inline-block',
-                      width: '44px',
-                      height: '24px',
-                      cursor: 'pointer',
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isPainMode}
-                      onChange={(e) => setIsPainMode(e.target.checked)}
-                      style={{ opacity: 0, width: 0, height: 0 }}
-                    />
-                    <span
-                      style={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        backgroundColor: isPainMode ? '#ef4444' : '#cbd5e1',
-                        borderRadius: '999px',
-                        transition: 'background-color 0.2s ease',
-                      }}
-                    />
-                    <span
-                      style={{
-                        position: 'absolute',
-                        height: '18px',
-                        width: '18px',
-                        left: isPainMode ? '22px' : '3px',
-                        top: '3px',
-                        backgroundColor: '#ffffff',
-                        borderRadius: '999px',
-                        boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
-                        transition: 'left 0.2s ease',
-                      }}
-                    />
-                  </label>
-                </div>
-
                 <ReactFlow
                     nodes={nodes}
                     edges={edges}

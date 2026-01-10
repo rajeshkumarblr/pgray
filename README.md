@@ -14,10 +14,10 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
 *   **Detailed Analytics**: Click any node to see detailed stats (Actual Rows, Loops, Filter Rows Removed).
 *   **Total Time**: Instant visibility into the total execution time of your query.
 *   **Query History**: Every executed query is stored locally (SQLite) and accessible via **History**.
-*   **Pain Mode (Heatmap)**:
+*   **Heatmap Bottleneck Highlighting**:
     *   Highlights bottlenecks using **Exclusive Time** (node time minus immediate children).
     *   Heatmap shading from green → yellow → red, with the hottest node emphasized.
-    *   Toggle on the graph canvas (enabled by default).
+    *   Always enabled.
 
 ## Screenshot
 

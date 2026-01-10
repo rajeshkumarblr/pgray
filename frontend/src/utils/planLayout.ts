@@ -76,7 +76,7 @@ export const parsePlanToFlow = (explainJson: any): { nodes: Node[]; edges: Edge[
 
     if (!rootPlan) return { nodes: [], edges: [] };
 
-    // 1) Pain Mode analysis pass (exclusive time + max exclusive time)
+    // 1) Analysis pass (exclusive time + max exclusive time)
     const { metricsByPlan, maxExclusiveTime } = analyzePlanTree(rootPlan);
 
     const nodes: Node[] = [];
@@ -109,7 +109,7 @@ export const parsePlanToFlow = (explainJson: any): { nodes: Node[]; edges: Edge[
                 actual_time: plan["Actual Total Time"],
                 details: plan,
 
-                // Pain Mode metrics
+                // Heatmap metrics
                 exclusive_time,
                 max_time: maxExclusiveTime,
                 severity_score,
