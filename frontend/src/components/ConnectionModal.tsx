@@ -6,6 +6,7 @@ interface ConnectionInfo {
   username: string;
   password: string;
   database: string;
+  schema: string;
 }
 
 interface ConnectionModalProps {
@@ -20,6 +21,7 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClose, onSu
   const [username, setUsername] = useState('postgres');
   const [password, setPassword] = useState('');
   const [database, setDatabase] = useState('postgres');
+  const [schema, setSchema] = useState('public');
 
   if (!isOpen) return null;
 
@@ -31,6 +33,7 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClose, onSu
       username,
       password,
       database,
+      schema,
     });
   };
 
@@ -102,6 +105,18 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClose, onSu
               type="text"
               value={database}
               onChange={(e) => setDatabase(e.target.value)}
+              style={inputStyle}
+              required
+            />
+          </div>
+
+          <div style={fieldStyle}>
+            <label>Schema</label>
+            <input
+              type="text"
+              value={schema}
+              onChange={(e) => setSchema(e.target.value)}
+              placeholder="public"
               style={inputStyle}
               required
             />

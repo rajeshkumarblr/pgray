@@ -6,6 +6,7 @@ class ConnectionInfo(BaseModel):
     username: str = Field(..., description="Database username")
     password: str = Field(..., description="Database password")
     database: str = Field(..., description="Database name")
+    schema: str = Field('public', description="Schema name (used to set search_path)")
 
 class ConnectionRequest(BaseModel):
     connection: ConnectionInfo

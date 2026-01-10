@@ -1,10 +1,26 @@
 import psycopg2
+from psycopg2 import sql
 from app.models import ConnectionInfo
+
+
+def _set_search_path(conn, schema_name: str):
+    schema_name = (schema_name or 'public').strip() or 'public'
+    with conn.cursor() as cur:
+        cur.execute(
+            sql.SQL('SET search_path TO {}, {}').format(
+                sql.Identifier(schema_name),
+                sql.Identifier('public'),
+            )
+        )
 
 def execute_explain(info: ConnectionInfo, query: str):
     try:
         dsn = f"host={info.host} port={info.port} dbname={info.database} user={info.username} password={info.password}"
         conn = psycopg2.connect(dsn)
+
+        # Ensure unqualified table names resolve in the selected schema
+        _set_search_path(conn, getattr(info, 'schema', 'public'))
+
         cur = conn.cursor()
         
         # Determine if we can run JSON format, usually yes for Postgres
