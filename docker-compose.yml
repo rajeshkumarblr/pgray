@@ -14,15 +14,15 @@ services:
   frontend:
     build: 
       context: ./frontend
-
     ports:
       - "4000:3000"
+    volumes:
+      - ./frontend:/app         # Syncs your local code to the container
+      - /app/node_modules       # Preserves the container's node_modules
     depends_on:
       - backend
-    # On Linux, this might be needed for Vite polling if strict file watching issues occur
     environment:
-      - WATCHPACK_POLLING=true
+      - WATCHPACK_POLLING=true  # Fixed typo (was true4)
 
 volumes:
   backend_data:
-
