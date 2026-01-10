@@ -1,4 +1,4 @@
-import { Node, Edge } from 'reactflow';
+import { Node, Edge, Position } from 'reactflow';
 
 // Define the Postgres Plan Type broadly
 interface PostgresPlan {
@@ -82,23 +82,16 @@ export const parsePlanToFlow = (explainJson: any): { nodes: Node[]; edges: Edge[
     const edges: Edge[] = [];
     let idCounter = 0;
 
-    // Indented tree layout (pgMustard-like):
-    // - root at top-left
-    // - children below with increasing indent per depth
-    // Tuned for compact, pgMustard-like outline readability
-    const X_GAP = 220;
-    const Y_GAP = 96;
-    const SPINE_OFFSET_X = 36; // spine sits slightly left of node cards
-    const NODE_CENTER_Y = 26;  // approx midline of compact node card
+    // Strict dense grid layout (no Dagre):
+    // - X = depth * 60
+    // - Y = rowIndex * 50
+    // - rowIndex increments in pre-order traversal
+    const INDENT_X = 60;
+    const ROW_Y = 50;
+    let rowIndex = 0;
 
-    const connectorStroke = { stroke: '#94a3b8', strokeWidth: 1 };
-    let row = 0;
-
-    // 2) Existing traversal pass (inject computed metrics into node.data)
-    // We build an explorer-like connector network:
-    // - each plan node gets a junction point to its left (same Y)
-    // - for nodes with children, parent connects to first child, and siblings form a vertical spine
-    const traverse = (plan: PostgresPlan, depth = 0): string => {
+    // 2) Pre-order traversal pass (inject computed metrics into node.data)
+    const traverse = (plan: PostgresPlan, parentId: string | null, depth = 0) => {
         const currentIdNum = idCounter++;
         const id = `node_${currentIdNum}`;
 
@@ -110,35 +103,16 @@ export const parsePlanToFlow = (explainJson: any): { nodes: Node[]; edges: Edge[
         const severity_score =
             maxExclusiveTime > 0 ? Math.min(1, Math.max(0, exclusive_time / maxExclusiveTime)) : 0;
 
-        const y = row * Y_GAP;
-        const x = depth * X_GAP;
-        const junctionId = `j_${id}`;
-
-        // Junction node used purely for connector routing.
-        nodes.push({
-            id: junctionId,
-            type: 'junction',
-            position: { x: x - SPINE_OFFSET_X, y: y + NODE_CENTER_Y },
-            data: {},
-            selectable: false,
-            draggable: false,
-            deletable: false,
-        });
-
-        // Horizontal tap from spine junction into the actual plan node.
-        edges.push({
-            id: `tap_${junctionId}_${id}`,
-            source: junctionId,
-            target: id,
-            sourceHandle: 'right',
-            type: 'straight',
-            style: connectorStroke,
-        });
+        const x = depth * INDENT_X;
+        const y = rowIndex * ROW_Y;
+        rowIndex += 1;
 
         nodes.push({
             id,
             type: 'planNode', // Use our custom type
             position: { x, y },
+            sourcePosition: Position.Right,
+            targetPosition: Position.Left,
             data: {
                 id: currentIdNum, // Pass the numeric ID
                 label: nodeLabel,
@@ -155,39 +129,22 @@ export const parsePlanToFlow = (explainJson: any): { nodes: Node[]; edges: Edge[
             },
         });
 
-        row += 1;
-
-        if (plan.Plans && Array.isArray(plan.Plans) && plan.Plans.length > 0) {
-            const childJunctions = plan.Plans.map((child) => traverse(child, depth + 1));
-
-            // Connect parent to first child (the spine continues from there).
+        if (parentId) {
             edges.push({
-                id: `branch_${junctionId}_${childJunctions[0]}`,
-                source: junctionId,
-                target: childJunctions[0],
-                sourceHandle: 'right',
-                targetHandle: 'left',
-                type: 'step',
-                style: connectorStroke,
+                id: `e_${parentId}_${id}`,
+                source: parentId,
+                target: id,
+                type: 'smoothstep',
             });
-
-            // Vertical spine through sibling child junctions.
-            for (let i = 0; i < childJunctions.length - 1; i += 1) {
-                edges.push({
-                    id: `spine_${childJunctions[i]}_${childJunctions[i + 1]}`,
-                    source: childJunctions[i],
-                    target: childJunctions[i + 1],
-                    sourceHandle: 'bottom',
-                    targetHandle: 'top',
-                    type: 'straight',
-                    style: connectorStroke,
-                });
-            }
         }
 
-        return junctionId;
+        if (plan.Plans && Array.isArray(plan.Plans)) {
+            for (const child of plan.Plans) {
+                traverse(child, id, depth + 1);
+            }
+        }
     };
 
-    traverse(rootPlan);
+    traverse(rootPlan, null, 0);
     return { nodes, edges };
 };
