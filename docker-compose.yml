@@ -8,6 +8,8 @@ services:
       - "9000:8000"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    volumes:
+      - backend_data:/data
 
   frontend:
     build: 
@@ -20,4 +22,7 @@ services:
     # On Linux, this might be needed for Vite polling if strict file watching issues occur
     environment:
       - WATCHPACK_POLLING=true
+
+volumes:
+  backend_data:
 

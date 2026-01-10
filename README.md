@@ -13,6 +13,11 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
 *   **Visual Tree**: Interactive visualization of the execution plan using Dagre layout.
 *   **Detailed Analytics**: Click any node to see detailed stats (Actual Rows, Loops, Filter Rows Removed).
 *   **Total Time**: Instant visibility into the total execution time of your query.
+*   **Query History**: Every executed query is stored locally (SQLite) and accessible via **History**.
+*   **Pain Mode (Heatmap)**:
+    *   Highlights bottlenecks using **Exclusive Time** (node time minus immediate children).
+    *   Heatmap shading from green → yellow → red, with the hottest node emphasized.
+    *   Toggle on the graph canvas (enabled by default).
 
 ## Screenshot
 
@@ -24,6 +29,13 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
 *   **Backend**: Python FastAPI, Pydantic, Psycopg2
 *   **Database**: Connects to user-provided Postgres instance
 *   **Infrastructure**: Docker Compose (services linked via `host.docker.internal`)
+
+## Query History (Local)
+
+pgRay stores executed queries in a local SQLite database inside the backend container.
+
+*   Persistence: query history is stored in a Docker volume mounted at `/data` (so it survives restarts).
+*   Editor Prefill: on load, the SQL editor is pre-filled with the most recent saved query.
 
 ## Getting Started
 

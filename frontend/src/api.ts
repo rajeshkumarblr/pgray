@@ -29,3 +29,8 @@ export const explainQuery = async (connectionInfo: any, query: string) => {
     const response = await api.post('/explain', { connection: connectionInfo, query });
     return response.data;
 };
+
+export const getHistory = async () => {
+    const response = await api.get('/history');
+    return response.data;
+};

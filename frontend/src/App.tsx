@@ -3,28 +3,64 @@ import ReactFlow, { Background, Controls, Node, Edge, applyNodeChanges, NodeChan
 import 'reactflow/dist/style.css';
 import ConnectionModal from './components/ConnectionModal';
 import PlanNode from './components/PlanNode';
-import { connectDb, explainQuery } from './api';
+import { connectDb, explainQuery, getHistory } from './api';
 import { parsePlanToFlow } from './utils/planLayout';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import NodeDetailsPanel from './components/NodeDetailsPanel';
+import HistoryModal from './components/HistoryModal';
 
 function App() {
   const [isModalOpen, setIsModalOpen] = useState(true);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [connectionInfo, setConnectionInfo] = useState<any>(null);
   const [sqlQuery, setSqlQuery] = useState('');
   const [explainResult, setExplainResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null); // To handle fitting view
-  
+
+  // Pain Mode toggle (Step 3)
+  const [isPainMode, setIsPainMode] = useState(true);
+
+  // Prefill editor with the last saved query (if editor is empty)
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const data = await getHistory();
+        const lastQuery = data?.history?.[0]?.query;
+        if (!cancelled && typeof lastQuery === 'string' && lastQuery.trim()) {
+          setSqlQuery((prev) => (prev.trim() ? prev : lastQuery));
+        }
+      } catch {
+        // Ignore (backend may not be up yet)
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // ReactFlow state
   const [nodes, setNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
 
   const nodeTypes = useMemo(() => ({ planNode: PlanNode }), []);
-  
+
+  // Critical: propagate pain_mode into node.data so ReactFlow rerenders custom nodes
+  useEffect(() => {
+    setNodes((nds) =>
+      nds.map((node) => ({
+        ...node,
+        data: { ...(node.data as any), pain_mode: isPainMode },
+      })),
+    );
+  }, [isPainMode]);
+
   const handleConnectionDecode = async (info: any) => {
       try {
         setLoading(true);
@@ -49,10 +85,17 @@ function App() {
       setNodes([]); setEdges([]); setSelectedNode(null); setExplainResult(null);
 
       const data = await explainQuery(connectionInfo, sqlQuery);
-      
+
       // data.plan is the Plan
       const { nodes: layoutNodes, edges: layoutEdges } = parsePlanToFlow(data.plan);
-      setNodes(layoutNodes);
+
+      // Initial load: ensure nodes start with current Pain Mode value
+      const nodesWithPainMode = layoutNodes.map((node) => ({
+        ...node,
+        data: { ...(node.data as any), pain_mode: isPainMode },
+      }));
+
+      setNodes(nodesWithPainMode);
       setEdges(layoutEdges);
       setExplainResult(data.plan);
 
@@ -62,7 +105,7 @@ function App() {
               reactFlowInstance.fitView({ padding: 0.2 });
           }
       }, 50);
-      
+
     } catch (err: any) {
       console.error(err);
       setError(err.response?.data?.detail || 'Explain failed');
@@ -95,36 +138,36 @@ function App() {
 
   return (
     <div style={{ height: '100vh', width: '100vw', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <Header 
-         onNewPlan={() => { 
-             setSelectedNode(null); 
+      <Header
+         onNewPlan={() => {
+             setSelectedNode(null);
              // Also clear visual selection
              setNodes(nds => nds.map(node => ({ ...node, selected: false })));
-         }} 
-         onHistory={() => alert("History not implemented yet")}
+         }}
+         onHistory={() => setIsHistoryOpen(true)}
          onConnect={() => setIsModalOpen(true)}
       />
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-          <Sidebar 
+          <Sidebar
              connectionInfo={connectionInfo}
-             sqlQuery={sqlQuery} 
+             sqlQuery={sqlQuery}
              setSqlQuery={setSqlQuery}
              onRunExplain={handleRunExplain}
              loading={loading}
              explainResult={explainResult}
           />
-          
+
           <div style={{ flex: 1, position: 'relative', background: '#334155', display: 'flex', flexDirection: 'column' }}>
              {/* Main Content Area */}
-             
+
              {/* Total Time Display */}
              {totalTime && (
                  <div style={{ padding: '20px', zIndex: 5, color: 'white', borderBottom: '1px solid #475569' }}>
                      <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600 }}>Total time: {totalTime}ms</h3>
                  </div>
              )}
-             
+
              {error && (
                  <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: '#fee2e2', color: '#b91c1c', padding: '20px', borderRadius: '8px', zIndex: 10 }}>
                      Error: {error}
@@ -132,7 +175,75 @@ function App() {
              )}
 
              <div style={{ flex: 1, position: 'relative' }}>
-                <ReactFlow 
+                {/* Pain Mode Toggle Overlay */}
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '20px',
+                    right: '20px',
+                    zIndex: 10,
+                    background: '#ffffff',
+                    borderRadius: '10px',
+                    boxShadow: '0 10px 25px -5px rgba(0,0,0,0.25)',
+                    padding: '10px 12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    border: '1px solid #e2e8f0',
+                    userSelect: 'none',
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
+                >
+                  <div style={{ fontSize: '13px', color: '#0f172a', fontWeight: 600 }}>
+                    🔥 Pain Mode
+                  </div>
+
+                  <label
+                    style={{
+                      position: 'relative',
+                      display: 'inline-block',
+                      width: '44px',
+                      height: '24px',
+                      cursor: 'pointer',
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isPainMode}
+                      onChange={(e) => setIsPainMode(e.target.checked)}
+                      style={{ opacity: 0, width: 0, height: 0 }}
+                    />
+                    <span
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        backgroundColor: isPainMode ? '#ef4444' : '#cbd5e1',
+                        borderRadius: '999px',
+                        transition: 'background-color 0.2s ease',
+                      }}
+                    />
+                    <span
+                      style={{
+                        position: 'absolute',
+                        height: '18px',
+                        width: '18px',
+                        left: isPainMode ? '22px' : '3px',
+                        top: '3px',
+                        backgroundColor: '#ffffff',
+                        borderRadius: '999px',
+                        boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
+                        transition: 'left 0.2s ease',
+                      }}
+                    />
+                  </label>
+                </div>
+
+                <ReactFlow
                     nodes={nodes}
                     edges={edges}
                     nodeTypes={nodeTypes}
@@ -149,19 +260,28 @@ function App() {
              </div>
           </div>
 
-          <NodeDetailsPanel 
-              selectedNode={selectedNode} 
+          <NodeDetailsPanel
+              selectedNode={selectedNode}
               onClose={() => {
                  setSelectedNode(null);
                  setNodes(nds => nds.map(node => ({ ...node, selected: false })));
-              }} 
+              }}
           />
       </div>
 
-      <ConnectionModal 
-        isOpen={isModalOpen} 
+      <ConnectionModal
+        isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSubmit={handleConnectionDecode}
+      />
+
+      <HistoryModal
+        isOpen={isHistoryOpen}
+        onClose={() => setIsHistoryOpen(false)}
+        onSelectQuery={(query) => {
+            setSqlQuery(query);
+            // Optionally clear current plan? Maybe keep it until they hit Explain.
+        }}
       />
     </div>
   )

@@ -3,8 +3,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.models import ConnectionRequest, ExplainRequest
 from app.connection import test_connection
 from app.explain import execute_explain
+from app.history import init_db, add_history_item, get_history_items
 
 app = FastAPI(title="PGray Backend")
+
+@app.on_event("startup")
+async def startup_event():
+    init_db()
 
 # Allow CORS for frontend
 app.add_middleware(
@@ -30,7 +35,18 @@ async def connect_db(request: ConnectionRequest):
 @app.post("/api/explain")
 async def explain_query(request: ExplainRequest):
     try:
+        # Save query to history
+        add_history_item(request.query)
+        
         plan = execute_explain(request.connection, request.query)
         return {"status": "success", "plan": plan}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/api/history")
+async def get_history():
+    try:
+        history = get_history_items()
+        return {"status": "success", "history": history}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
