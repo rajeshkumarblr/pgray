@@ -20,7 +20,8 @@ def test_connection(info: ConnectionInfo) -> bool:
         conn = psycopg2.connect(dsn)
 
         # Ensure unqualified table names resolve in the selected schema
-        _set_search_path(conn, getattr(info, 'schema', 'public'))
+        schema_name = getattr(info, 'schema_name', None) or getattr(info, 'schema', None) or 'public'
+        _set_search_path(conn, schema_name)
 
         conn.close()
         return True

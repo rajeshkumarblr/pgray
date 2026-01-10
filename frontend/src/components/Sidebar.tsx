@@ -38,7 +38,9 @@ const Sidebar: React.FC<SidebarProps> = ({
              <div style={{ padding: '20px', borderBottom: '1px solid #e2e8f0' }}>
                <h2 style={{ margin: '0 0 10px 0', fontSize: '16px', color: '#0f172a' }}>New Plan</h2>
                <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '15px' }}>
-                   {connectionInfo ? `Connected to ${connectionInfo.host}:${connectionInfo.port}` : 'Not connected'}
+                                     {connectionInfo
+                                         ? `Connected to ${connectionInfo.host}:${connectionInfo.port} / ${connectionInfo.database}.${connectionInfo.schema ?? connectionInfo.schema_name ?? 'public'}`
+                                         : 'Not connected'}
                </div>
                
                <textarea

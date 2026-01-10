@@ -19,7 +19,8 @@ def execute_explain(info: ConnectionInfo, query: str):
         conn = psycopg2.connect(dsn)
 
         # Ensure unqualified table names resolve in the selected schema
-        _set_search_path(conn, getattr(info, 'schema', 'public'))
+        schema_name = getattr(info, 'schema_name', None) or getattr(info, 'schema', None) or 'public'
+        _set_search_path(conn, schema_name)
 
         cur = conn.cursor()
         
