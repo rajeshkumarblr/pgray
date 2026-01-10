@@ -21,7 +21,9 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
 
 ## Screenshot
 
-![pgRay App Screenshot](screenshots/screenshot.png)
+Screenshot of pgRay showing the three-pane layout and heatmap bottleneck highlighting.
+
+![pgRay UI Screenshot](screenshots/screenshot.png)
 
 ## Architecture
 
