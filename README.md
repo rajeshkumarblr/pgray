@@ -1,6 +1,6 @@
 # pgRay - Postgres Query Visualizer
 
-pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` plans in a tree-like structure, similar to tools like pgMustard. It allows developers to quickly investigate query performance issues by exploring the execution plan visually.
+pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` plans in a tree-like structure. It allows developers to quickly investigate query performance issues by exploring the execution plan visually.
 
 ## Features
 
@@ -10,7 +10,7 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
     *   **Center**: Interactive node-link diagram using React Flow.
     *   **Right**: Sliding details panel for deep-diving into specific node metrics.
 *   **Run Explain Plans**: Type raw SQL and execute `EXPLAIN (FORMAT JSON, ANALYZE)` instantly.
-*   **Visual Tree**: Indented outline tree layout (pgMustard-like).
+*   **Visual Tree**: Indented outline tree layout.
 *   **Explorer-Style Connectors**: Vertical spines only where a node has multiple children, with short horizontal taps into each node.
 *   **Detailed Analytics**: Click any node to see detailed stats (Actual Rows, Loops, Filter Rows Removed).
 *   **Total Time**: Instant visibility into the total execution time of your query.
