@@ -5,6 +5,8 @@ interface PlanNodeData {
   id: number;
   label: string;
   cost: number;
+  rows: number; // Plan Rows
+  actual_rows?: number; // Actual Rows
   exclusive_time?: number; // ms
   severity_score?: number; // 0.0 to 1.0
 }
@@ -21,6 +23,13 @@ const formatCost = (cost: number) => {
   return `cost ${cost.toFixed(2)}`;
 };
 
+const formatRows = (rows: number | undefined) => {
+  if (rows === undefined || !Number.isFinite(rows)) return '-';
+  if (rows >= 1000000) return `${(rows / 1000000).toFixed(1)}M`;
+  if (rows >= 1000) return `${(rows / 1000).toFixed(1)}k`;
+  return rows.toString();
+};
+
 const PlanNode = ({ data, selected }: NodeProps<PlanNodeData>) => {
   const severity =
     typeof data.severity_score === 'number' && Number.isFinite(data.severity_score)
@@ -34,20 +43,25 @@ const PlanNode = ({ data, selected }: NodeProps<PlanNodeData>) => {
       ? formatMs(data.exclusive_time)
       : formatCost(data.cost);
 
+  const rowMetric =
+    data.actual_rows !== undefined
+      ? `rows: ${formatRows(data.rows)} est / ${formatRows(data.actual_rows)} act`
+      : `rows: ${formatRows(data.rows)} est`;
+
   // --- STYLES ---
 
   // Main Container: Slim Dark Pill
   const containerStyle: React.CSSProperties = {
     position: 'relative', // Critical for absolute handle positioning
-    minWidth: '200px',
-    height: '36px',
+    minWidth: '220px',
+    height: '52px', // Increased height for 2 lines
     padding: '0 12px',
     display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: 'column', // Changed to column for stacking
+    justifyContent: 'center',
     backgroundColor: isCritical ? '#450a0a' : '#1e293b', // Dark Red or Dark Slate
     border: isCritical ? '2px solid #ef4444' : selected ? '2px solid #38bdf8' : '1px solid #475569',
-    borderRadius: '6px', // Slightly rounded for a technical look
+    borderRadius: '8px',
     color: '#f8fafc',
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
     fontSize: '13px',
@@ -55,18 +69,34 @@ const PlanNode = ({ data, selected }: NodeProps<PlanNodeData>) => {
     transition: 'all 0.15s ease',
   };
 
+  const topRowStyle: React.CSSProperties = {
+    display: 'flex',
+    justifyContent: 'space-between',
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: '2px',
+  };
+
   const labelStyle: React.CSSProperties = {
     fontWeight: 600,
-    marginRight: '12px',
+    marginRight: '8px',
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
+    maxWidth: '140px',
   };
 
   const metricStyle: React.CSSProperties = {
     fontWeight: 700,
     color: '#38bdf8', // Sky blue for metrics
     whiteSpace: 'nowrap',
+  };
+
+  const subMetricStyle: React.CSSProperties = {
+    fontSize: '11px',
+    color: '#94a3b8', // Slate-400
+    width: '100%',
+    textAlign: 'right',
   };
 
   // --- HANDLES (Invisible but functional) ---
@@ -95,25 +125,30 @@ const PlanNode = ({ data, selected }: NodeProps<PlanNodeData>) => {
   return (
     <div style={containerStyle}>
       {/* Input: From Left */}
-      <Handle 
-        type="target" 
-        position={Position.Left} 
-        style={targetHandleStyle} 
+      <Handle
+        type="target"
+        position={Position.Left}
+        style={targetHandleStyle}
       />
 
-      <div style={labelStyle} title={data.label}>
-        {data.label}
+      <div style={topRowStyle}>
+        <div style={labelStyle} title={data.label}>
+          {data.label}
+        </div>
+        <div style={metricStyle}>
+          {primaryMetric}
+        </div>
       </div>
 
-      <div style={metricStyle}>
-        {primaryMetric}
+      <div style={subMetricStyle}>
+        {rowMetric}
       </div>
 
       {/* Output: To Bottom */}
-      <Handle 
-        type="source" 
-        position={Position.Bottom} 
-        style={sourceHandleStyle} 
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        style={sourceHandleStyle}
       />
     </div>
   );

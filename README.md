@@ -12,7 +12,8 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
 *   **Run Explain Plans**: Type raw SQL and execute `EXPLAIN (FORMAT JSON, ANALYZE)` instantly.
 *   **Visual Tree**: Indented outline tree layout.
 *   **Explorer-Style Connectors**: Vertical spines only where a node has multiple children, with short horizontal taps into each node.
-*   **Detailed Analytics**: Click any node to see detailed stats (Actual Rows, Loops, Filter Rows Removed).
+*   **Node Stats**: Immediate visibility of Estimated and Actual Rows directly on each node.
+*   **Detailed Analytics**: Click any node to see more stats (Loops, Filter Rows Removed, Buffer Usage).
 *   **Total Time**: Instant visibility into the total execution time of your query.
 *   **Query History**: Every executed query is stored locally (SQLite) and accessible via **History**.
 *   **Heatmap Bottleneck Highlighting**:

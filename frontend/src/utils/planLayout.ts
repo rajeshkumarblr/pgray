@@ -37,7 +37,7 @@ const analyzePlanTree = (rootPlan: PostgresPlan) => {
         if (plan.Plans && Array.isArray(plan.Plans)) {
             for (const child of plan.Plans) {
                 const childMetrics = postOrder(child);
-                childrenBaseSum += childMetrics.base_time; 
+                childrenBaseSum += childMetrics.base_time;
             }
         }
 
@@ -76,9 +76,9 @@ export const parsePlanToFlow = (explainJson: any): { nodes: Node[]; edges: Edge[
 
     // --- GRID LAYOUT CONSTANTS ---
     // INDENT_X: Horizontal indentation per depth level
-    const INDENT_X = 40; 
-    // ROW_Y: Vertical space per node row (36px node + 14px gap = 50px)
-    const ROW_Y = 50; 
+    const INDENT_X = 40;
+    // ROW_Y: Vertical space per node row (52px node + 18px gap = 70px)
+    const ROW_Y = 70;
     let rowIndex = 0;
 
     const traverse = (plan: PostgresPlan, parentId: string | null, depth = 0) => {
@@ -88,8 +88,8 @@ export const parsePlanToFlow = (explainJson: any): { nodes: Node[]; edges: Edge[
 
         const metrics = metricsByPlan.get(plan as unknown as object);
         const exclusive_time = metrics?.exclusive_time ?? 0;
-        const severity_score = maxExclusiveTime > 0 
-            ? Math.min(1, Math.max(0, exclusive_time / maxExclusiveTime)) 
+        const severity_score = maxExclusiveTime > 0
+            ? Math.min(1, Math.max(0, exclusive_time / maxExclusiveTime))
             : 0;
 
         // Calculate Position on Grid
@@ -124,10 +124,10 @@ export const parsePlanToFlow = (explainJson: any): { nodes: Node[]; edges: Edge[
                 source: parentId,
                 target: id,
                 // 'smoothstep' creates nice rounded orthogonal lines
-                type: 'smoothstep', 
-                style: { 
+                type: 'smoothstep',
+                style: {
                     stroke: '#64748b', // Slate-500
-                    strokeWidth: 2 
+                    strokeWidth: 2
                 },
             });
         }
