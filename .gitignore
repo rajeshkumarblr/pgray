@@ -26,3 +26,7 @@ coverage/
 
 # Docker
 docker-compose.override.yml
+
+# Packaging output
+pkg/
+*.zip
