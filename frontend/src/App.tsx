@@ -58,6 +58,7 @@ function App() {
       setError('');
       await connectDb(info);
       setConnectionInfo(info);
+      localStorage.setItem('pgray_connection', JSON.stringify(info));
       setIsModalOpen(false);
     } catch (err: any) {
       console.error(err);
@@ -91,23 +92,18 @@ function App() {
       // 2. Fetch Results if requested
       if (getResults) {
         try {
-          const execResponse = await executeQuery(connectionInfo, sqlQuery, 100); // 1. Limit 100 per requirement.
-          // Wait, requirement 4b says "limit 100". Backend default is 1000.
-          // I should probably update backend to accept limit or just update backend default.
-          // For now, let's assume backend is OK or I update backend shortly.
+          const execResponse = await executeQuery(connectionInfo, sqlQuery, 100);
           setExecutionResult(execResponse.data);
         } catch (execErr: any) {
           console.error("Execution failed", execErr);
-          // We don't fail the explain if execution fails, but show warning?
           setError(`Explain successful, but execution failed: ${execErr.response?.data?.detail || execErr.message}`);
-          // Don't auto-collapse if error?
         }
       }
 
-      // Auto-collapse sidebar on success (if no crucial error prevented explain)
+      // Auto-collapse sidebar on success
       setIsSidebarCollapsed(true);
 
-      // Fit view after a tick to allow rendering
+      // Fit view after a tick
       setTimeout(() => {
         if (reactFlowInstance) {
           reactFlowInstance.fitView({ padding: 0.2 });
@@ -117,6 +113,39 @@ function App() {
     } catch (err: any) {
       console.error(err);
       setError(err.response?.data?.detail || 'Explain failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVisualizeJson = (jsonStr: string) => {
+    try {
+      setLoading(true);
+      setError('');
+      setNodes([]); setEdges([]); setSelectedNode(null); setExplainResult(null); setExecutionResult(null);
+
+      const json = JSON.parse(jsonStr);
+      // Support both array wrapped or single object
+      const planData = Array.isArray(json) ? json : [json];
+
+      const { nodes: layoutNodes, edges: layoutEdges } = parsePlanToFlow(planData);
+
+      setNodes(layoutNodes);
+      setEdges(layoutEdges);
+      setExplainResult(planData);
+      setActiveTab('plan');
+
+      setIsSidebarCollapsed(true);
+
+      setTimeout(() => {
+        if (reactFlowInstance) {
+          reactFlowInstance.fitView({ padding: 0.2 });
+        }
+      }, 50);
+
+    } catch (err: any) {
+      console.error(err);
+      setError("Invalid JSON Plan: " + err.message);
     } finally {
       setLoading(false);
     }
@@ -133,16 +162,28 @@ function App() {
     [],
   );
 
-  // Re-center graph when side panel toggles (opens/closes) to keep nodes visible
+  // Re-center graph when side panel toggles
   useEffect(() => {
     if (reactFlowInstance) {
-      // Delay ensures the flex layout has resized the container before we fit view
       const timer = setTimeout(() => {
         reactFlowInstance.fitView({ padding: 0.2, duration: 400 });
       }, 100);
       return () => clearTimeout(timer);
     }
-  }, [!!selectedNode, reactFlowInstance, isSidebarCollapsed]); // Added isSidebarCollapsed dependency
+  }, [!!selectedNode, reactFlowInstance, isSidebarCollapsed]);
+
+  // Auto-connect from local storage
+  useEffect(() => {
+    const saved = localStorage.getItem('pgray_connection');
+    if (saved) {
+      try {
+        const info = JSON.parse(saved);
+        handleConnectionDecode(info);
+      } catch (e) {
+        console.error("Failed to parse saved connection", e);
+      }
+    }
+  }, []); // Run once on mount
 
   return (
     <div style={{ height: '100vh', width: '100vw', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -150,7 +191,7 @@ function App() {
         onNewPlan={() => {
           setSelectedNode(null);
           setNodes(nds => nds.map(node => ({ ...node, selected: false })));
-          setIsSidebarCollapsed(false); // Open sidebar when "New Plan" is requested
+          setIsSidebarCollapsed(false);
         }}
         onHistory={() => setIsHistoryOpen(true)}
         onConnect={() => setIsModalOpen(true)}
@@ -162,6 +203,7 @@ function App() {
           sqlQuery={sqlQuery}
           setSqlQuery={setSqlQuery}
           onRunExplain={handleRunExplain}
+          onVisualizeJson={handleVisualizeJson}
           loading={loading}
           explainResult={explainResult}
           isCollapsed={isSidebarCollapsed}
@@ -261,6 +303,7 @@ function App() {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSubmit={handleConnectionDecode}
+        initialInfo={connectionInfo}
       />
 
       <HistoryModal

@@ -13,15 +13,27 @@ interface ConnectionModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (info: ConnectionInfo) => void;
+  initialInfo?: ConnectionInfo;
 }
 
-const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClose, onSubmit }) => {
+const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClose, onSubmit, initialInfo }) => {
   const [host, setHost] = useState('host.docker.internal');
   const [port, setPort] = useState(5432);
   const [username, setUsername] = useState('postgres');
   const [password, setPassword] = useState('');
   const [database, setDatabase] = useState('postgres');
   const [schema, setSchema] = useState('public');
+
+  React.useEffect(() => {
+    if (isOpen && initialInfo) {
+      setHost(initialInfo.host);
+      setPort(initialInfo.port);
+      setUsername(initialInfo.username);
+      setPassword(initialInfo.password);
+      setDatabase(initialInfo.database);
+      setSchema(initialInfo.schema);
+    }
+  }, [isOpen, initialInfo]);
 
   if (!isOpen) return null;
 
@@ -43,7 +55,7 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClose, onSu
     left: 0,
     width: '100%',
     height: '100%',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
     display: 'flex',
     justifyContent: 'center',
     alignItems: 'center',
@@ -51,11 +63,13 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClose, onSu
   };
 
   const contentStyle: React.CSSProperties = {
-    backgroundColor: 'white',
-    padding: '20px',
+    backgroundColor: '#1e293b',
+    padding: '25px',
     borderRadius: '8px',
     width: '400px',
-    boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+    boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+    color: '#e2e8f0',
+    border: '1px solid #334155'
   };
 
   const fieldStyle: React.CSSProperties = {
@@ -65,19 +79,23 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClose, onSu
   };
 
   const inputStyle: React.CSSProperties = {
-    padding: '8px',
+    padding: '10px',
     fontSize: '14px',
     borderRadius: '4px',
-    border: '1px solid #ccc',
+    border: '1px solid #475569',
+    backgroundColor: '#0f172a',
+    color: '#fff',
+    outline: 'none',
+    marginTop: '5px'
   };
 
   return (
     <div style={modalStyle}>
       <div style={contentStyle}>
-        <h2 style={{ marginTop: 0 }}>Connect to Database</h2>
+        <h2 style={{ marginTop: 0, marginBottom: '20px', color: '#f1f5f9' }}>Connect to Database</h2>
         <form onSubmit={handleSubmit}>
           <div style={fieldStyle}>
-            <label>Host</label>
+            <label style={{ fontSize: '13px', color: '#94a3b8' }}>Host</label>
             <input
               type="text"
               value={host}
@@ -89,7 +107,7 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClose, onSu
           </div>
 
           <div style={fieldStyle}>
-            <label>Port</label>
+            <label style={{ fontSize: '13px', color: '#94a3b8' }}>Port</label>
             <input
               type="number"
               value={port}
@@ -100,7 +118,7 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClose, onSu
           </div>
 
           <div style={fieldStyle}>
-            <label>Database</label>
+            <label style={{ fontSize: '13px', color: '#94a3b8' }}>Database</label>
             <input
               type="text"
               value={database}
@@ -111,7 +129,7 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClose, onSu
           </div>
 
           <div style={fieldStyle}>
-            <label>Schema</label>
+            <label style={{ fontSize: '13px', color: '#94a3b8' }}>Schema</label>
             <input
               type="text"
               value={schema}
@@ -123,7 +141,7 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClose, onSu
           </div>
 
           <div style={fieldStyle}>
-            <label>Username</label>
+            <label style={{ fontSize: '13px', color: '#94a3b8' }}>Username</label>
             <input
               type="text"
               value={username}
@@ -134,7 +152,7 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClose, onSu
           </div>
 
           <div style={fieldStyle}>
-            <label>Password</label>
+            <label style={{ fontSize: '13px', color: '#94a3b8' }}>Password</label>
             <input
               type="password"
               value={password}
@@ -144,9 +162,35 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClose, onSu
             />
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-            <button type="button" onClick={onClose} style={{ padding: '8px 16px', background: '#ccc', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Cancel</button>
-            <button type="submit" style={{ padding: '8px 16px', background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Connect</button>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '25px' }}>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                padding: '8px 16px',
+                background: 'transparent',
+                border: '1px solid #475569',
+                color: '#cbd5e1',
+                borderRadius: '4px',
+                cursor: 'pointer'
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              style={{
+                padding: '8px 16px',
+                background: '#2563eb',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontWeight: 600
+              }}
+            >
+              Connect
+            </button>
           </div>
         </form>
       </div>

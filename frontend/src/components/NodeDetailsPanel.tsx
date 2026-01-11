@@ -16,7 +16,7 @@ const JsonTree = ({ data, selectedNodeDetails }: { data: any, selectedNodeDetail
     }, [isMatch]);
 
     if (typeof data !== 'object' || data === null) {
-        return <span style={{ color: '#059669' }}>{JSON.stringify(data)}</span>;
+        return <span style={{ color: '#86efac' }}>{JSON.stringify(data)}</span>;
     }
 
     return (
@@ -35,7 +35,7 @@ const JsonTree = ({ data, selectedNodeDetails }: { data: any, selectedNodeDetail
             <div style={{ paddingLeft: '15px' }}>
                 {Object.entries(data).map(([key, value], index, arr) => (
                     <div key={key}>
-                        <span style={{ color: '#2563eb' }}>"{key}"</span>: <JsonTree data={value} selectedNodeDetails={selectedNodeDetails} />
+                        <span style={{ color: '#60a5fa' }}>"{key}"</span>: <JsonTree data={value} selectedNodeDetails={selectedNodeDetails} />
                         {index < arr.length - 1 ? ',' : ''}
                     </div>
                 ))}
@@ -68,16 +68,16 @@ const NodeDetailsPanel: React.FC<NodeDetailsPanelProps & { fullPlan: any }> = ({
             if (typeof value === 'object') {
                 return (
                     <div key={key} style={{ marginLeft: depth * 10, marginTop: 5 }}>
-                        <div style={{ fontWeight: 600, color: '#475569', fontSize: '11px', textTransform: 'uppercase' }}>{key}</div>
+                        <div style={{ fontWeight: 600, color: '#94a3b8', fontSize: '11px', textTransform: 'uppercase' }}>{key}</div>
                         {renderObjectTree(value, depth + 1)}
                     </div>
                 );
             }
 
             return (
-                <div key={key} style={{ marginLeft: depth * 10, marginBottom: '4px', fontSize: '13px', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '2px' }}>
-                    <span style={{ color: '#64748b' }}>{key}</span>
-                    <span style={{ color: '#0f172a', fontWeight: 500, maxWidth: '60%', textAlign: 'right', wordBreak: 'break-all' }}>{String(value)}</span>
+                <div key={key} style={{ marginLeft: depth * 10, marginBottom: '4px', fontSize: '13px', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #334155', paddingBottom: '2px' }}>
+                    <span style={{ color: '#94a3b8' }}>{key}</span>
+                    <span style={{ color: '#e2e8f0', fontWeight: 500, maxWidth: '60%', textAlign: 'right', wordBreak: 'break-all' }}>{String(value)}</span>
                 </div>
             );
         });
@@ -99,17 +99,18 @@ const NodeDetailsPanel: React.FC<NodeDetailsPanelProps & { fullPlan: any }> = ({
     return (
         <div style={{
             width: '450px', // Slightly wider for JSON
-            backgroundColor: '#fff',
-            borderLeft: '1px solid #e2e8f0', // Left border for right sidebar
+            backgroundColor: '#1e293b',
+            borderLeft: '1px solid #334155', // Left border for right sidebar
             display: 'flex',
             flexDirection: 'column',
             height: '100%',
             flexShrink: 0,
-            boxShadow: '-2px 0 5px rgba(0,0,0,0.02)', // Shadow on left
-            zIndex: 5
+            boxShadow: '-2px 0 5px rgba(0,0,0,0.1)', // Shadow on left
+            zIndex: 5,
+            color: '#e2e8f0'
         }}>
             {/* Fixed Header with Tabs */}
-            <div style={{ borderBottom: '1px solid #e2e8f0', background: '#fff' }}>
+            <div style={{ borderBottom: '1px solid #334155', background: '#1e293b' }}>
                 <div style={{ padding: '20px 20px 10px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <div style={{ flex: 1 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -119,9 +120,9 @@ const NodeDetailsPanel: React.FC<NodeDetailsPanelProps & { fullPlan: any }> = ({
                             }}>
                                 #{selectedNode.id.replace('node_', '')}
                             </div>
-                            <h2 style={{ margin: 0, fontSize: '18px', color: '#0f172a' }}>{label}</h2>
+                            <h2 style={{ margin: 0, fontSize: '18px', color: '#f1f5f9' }}>{label}</h2>
                         </div>
-                        <div style={{ marginTop: '5px', color: '#64748b', fontSize: '13px' }}>
+                        <div style={{ marginTop: '5px', color: '#94a3b8', fontSize: '13px' }}>
                             {actual_time !== undefined ? `${actual_time.toFixed(3)}ms` : `Cost: ${cost}`} • {actual_rows ?? rows} rows
                         </div>
                     </div>
@@ -142,8 +143,8 @@ const NodeDetailsPanel: React.FC<NodeDetailsPanelProps & { fullPlan: any }> = ({
                             cursor: 'pointer',
                             fontSize: '14px',
                             fontWeight: activeTab === 'visual' ? 600 : 500,
-                            color: activeTab === 'visual' ? '#0f172a' : '#64748b',
-                            borderBottom: activeTab === 'visual' ? '2px solid #0f172a' : 'transparent',
+                            color: activeTab === 'visual' ? '#f1f5f9' : '#64748b',
+                            borderBottom: activeTab === 'visual' ? '2px solid #3b82f6' : 'transparent',
                             marginBottom: '-1px'
                         }}
                     >
@@ -156,8 +157,8 @@ const NodeDetailsPanel: React.FC<NodeDetailsPanelProps & { fullPlan: any }> = ({
                             cursor: 'pointer',
                             fontSize: '14px',
                             fontWeight: activeTab === 'json' ? 600 : 500,
-                            color: activeTab === 'json' ? '#0f172a' : '#64748b',
-                            borderBottom: activeTab === 'json' ? '2px solid #0f172a' : 'transparent',
+                            color: activeTab === 'json' ? '#f1f5f9' : '#64748b',
+                            borderBottom: activeTab === 'json' ? '2px solid #3b82f6' : 'transparent',
                             marginBottom: '-1px'
                         }}
                     >
@@ -172,20 +173,20 @@ const NodeDetailsPanel: React.FC<NodeDetailsPanelProps & { fullPlan: any }> = ({
                 {activeTab === 'visual' ? (
                     <>
                         {rowsRemoved > 0 && (
-                            <div style={{ marginBottom: '20px', paddingBottom: '20px', borderBottom: '1px solid #e2e8f0' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#b91c1c', fontWeight: 'bold', fontSize: '14px', marginBottom: '8px' }}>
-                                    <span style={{ background: '#fecaca', padding: '2px 6px', borderRadius: '4px', border: '1px solid #f87171' }}>!</span>
+                            <div style={{ marginBottom: '20px', paddingBottom: '20px', borderBottom: '1px solid #334155' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#f87171', fontWeight: 'bold', fontSize: '14px', marginBottom: '8px' }}>
+                                    <span style={{ background: '#450a0a', padding: '2px 6px', borderRadius: '4px', border: '1px solid #7f1d1d' }}>!</span>
                                     Rows Discarded: {rowsRemoved.toLocaleString()}
                                 </div>
-                                <div style={{ fontSize: '13px', color: '#4b5563', lineHeight: 1.5 }}>
+                                <div style={{ fontSize: '13px', color: '#9ca3af', lineHeight: 1.5 }}>
                                     This node discards {rowsRemoved.toLocaleString()} rows produced by its subtree.
                                     <br /><br />
-                                    <strong>Filter:</strong> <code>{details?.['Filter']}</code>
+                                    <strong>Filter:</strong> <code style={{ color: '#e2e8f0' }}>{details?.['Filter']}</code>
                                 </div>
                             </div>
                         )}
 
-                        <h3 style={{ fontSize: '12px', textTransform: 'uppercase', color: '#94a3b8', letterSpacing: '0.05em', marginBottom: '10px' }}>Operation Detail</h3>
+                        <h3 style={{ fontSize: '12px', textTransform: 'uppercase', color: '#64748b', letterSpacing: '0.05em', marginBottom: '10px' }}>Operation Detail</h3>
                         {renderObjectTree(details)}
                     </>
                 ) : (

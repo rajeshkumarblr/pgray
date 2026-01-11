@@ -9,6 +9,11 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
     *   **Left**: Collapsible Query Editor with options for Analysis and Result Fetching.
     *   **Center**: Interactive node-link diagram using React Flow.
     *   **Right**: Sliding details panel for deep-diving into specific node metrics.
+*   **Dual Input Modes**: Sidebar now supports:
+    *   **SQL Query**: Standard mode for executing queries.
+    *   **Paste JSON**: Direct input for visualizing raw JSON execution plans without backend execution.
+*   **Persistent Connection**: Connection settings are saved and auto-connected on reload.
+*   **Professional Dark Mode**: Full dark theme for Sidebar, Details Panel, and Connection settings for a seamless experience.
 *   **Analysis Options**: 
     *   **Analyze**: Toggle `EXPLAIN ANALYZE` (enabled by default) for actual execution times.
     *   **Get Results**: Optionally fetch actual query results (limited to 100 rows) alongside the plan.
@@ -19,7 +24,7 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
 *   **Detailed Analytics**: Click any node to see more stats (Loops, Filter Rows Removed, Buffer Usage).
 *   **Total Time**: Instant visibility into the total execution time of your query.
 *   **Tabbed Results Interface**: Switch seamlessly between the visual Explain Plan and the actual Query Results grid.
-*   **Raw JSON Plan Panel**: Integrated "Raw JSON" tab in the details panel to explore the full recursive plan structure with auto-highlighting.
+*   **Raw JSON Plan Panel**: Integrated "Raw JSON" tab in the details panel to review the source data.
 *   **Query History**: Every executed query is stored locally (SQLite) and accessible via **History**.
 *   **Heatmap Bottleneck Highlighting**:
     *   Highlights bottlenecks using **Exclusive Time** (node time minus immediate children).

@@ -24,13 +24,13 @@ const Header: React.FC<HeaderProps> = ({ onNewPlan, onHistory, onConnect }) => {
                     pgRay
                 </h1>
                 <nav style={{ display: 'flex', gap: '20px', fontSize: '14px', fontWeight: 500 }}>
-                    <button 
+                    <button
                         onClick={onNewPlan}
                         style={{ background: 'none', border: 'none', color: '#e2e8f0', cursor: 'pointer', padding: 0, font: 'inherit' }}
                     >
                         New plan
                     </button>
-                    <button 
+                    <button
                         onClick={onHistory}
                         style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: 0, font: 'inherit' }}
                     >
@@ -38,22 +38,26 @@ const Header: React.FC<HeaderProps> = ({ onNewPlan, onHistory, onConnect }) => {
                     </button>
                 </nav>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '15px', fontSize: '14px', color: '#e2e8f0', marginRight: '16px' }}> {/* added margin right */}
-               <button 
-                   onClick={onConnect}
-                   style={{ 
-                       background: '#3b82f6', 
-                       color: 'white', 
-                       border: 'none', 
-                       padding: '8px 16px', 
-                       borderRadius: '4px', 
-                       cursor: 'pointer',
-                       fontWeight: 500,
-                       fontSize: '14px'
-                   }}
-               >
-                   Connect to PG
-               </button>
+            <div
+                onClick={onConnect}
+                title="Connection Settings"
+                style={{
+                    cursor: 'pointer',
+                    padding: '8px',
+                    borderRadius: '4px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#94a3b8',
+                    transition: 'color 0.2s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.color = '#e2e8f0'}
+                onMouseLeave={(e) => e.currentTarget.style.color = '#94a3b8'}
+            >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                </svg>
             </div>
         </div>
     );
