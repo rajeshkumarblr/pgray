@@ -38,8 +38,8 @@ async def explain_query(request: ExplainRequest):
         # Save query to history
         add_history_item(request.query)
         
-        plan = execute_explain(request.connection, request.query)
-        return {"status": "success", "plan": plan}
+        result = execute_explain(request.connection, request.query)
+        return {"status": "success", "data": result}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

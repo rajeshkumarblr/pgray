@@ -24,21 +24,25 @@ def execute_explain(info: ConnectionInfo, query: str):
 
         cur = conn.cursor()
         
-        # Determine if we can run JSON format, usually yes for Postgres
-        explain_query = f"EXPLAIN (FORMAT JSON, ANALYZE) {query}"
+        # Run JSON Explain
+        explain_query_json = f"EXPLAIN (FORMAT JSON, ANALYZE) {query}"
+        cur.execute(explain_query_json)
+        json_result = cur.fetchone()
         
-        cur.execute(explain_query)
-        result = cur.fetchone()
-        
-        conn.commit() # Good practice even for reads to release locks in some transactional modes, though explain usually doesn't need it. 
-        # But wait, EXPLAIN ANALYZE actually runs the query. If it's a DELETE/UPDATE, we might want to rollback.
+        # Run Text Explain
+        explain_query_text = f"EXPLAIN (FORMAT TEXT, ANALYZE) {query}"
+        cur.execute(explain_query_text)
+        text_result_lines = cur.fetchall() # Text explain returns multiple rows, each is a line
+        text_plan = "\n".join([row[0] for row in text_result_lines])
+
         # Safer to ROLLBACK for EXPLAIN ANALYZE just in case user runs a modification query.
         conn.rollback() 
         conn.close()
         
-        if result:
-            return result[0] # Returns the JSON object
-        return None
+        return {
+            "json": json_result[0] if json_result else None,
+            "text": text_plan
+        }
     except Exception as e:
         print(f"Explain failed: {e}")
         raise e
