@@ -1,8 +1,8 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from app.models import ConnectionRequest, ExplainRequest
+from app.models import ConnectionRequest, ExplainRequest, QueryRequest
 from app.connection import test_connection
-from app.explain import execute_explain
+from app.explain import execute_explain, execute_query_results
 from app.history import init_db, add_history_item, get_history_items
 
 app = FastAPI(title="PGray Backend")
@@ -39,6 +39,16 @@ async def explain_query(request: ExplainRequest):
         add_history_item(request.query)
         
         result = execute_explain(request.connection, request.query)
+        return {"status": "success", "data": result}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/api/execute")
+async def execute_query(request: QueryRequest):
+    try:
+        # We also save to history
+        add_history_item(request.query)
+        result = execute_query_results(request.connection, request.query)
         return {"status": "success", "data": result}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

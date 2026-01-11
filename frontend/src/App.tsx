@@ -3,7 +3,8 @@ import ReactFlow, { Background, Controls, Node, Edge, applyNodeChanges, NodeChan
 import 'reactflow/dist/style.css';
 import ConnectionModal from './components/ConnectionModal';
 import PlanNode from './components/PlanNode';
-import { connectDb, explainQuery, getHistory } from './api';
+import { connectDb, explainQuery, executeQuery, getHistory } from './api';
+import ResultsTable from './components/ResultsTable';
 import { parsePlanToFlow } from './utils/planLayout';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
@@ -16,11 +17,12 @@ function App() {
   const [connectionInfo, setConnectionInfo] = useState<any>(null);
   const [sqlQuery, setSqlQuery] = useState('');
   const [explainResult, setExplainResult] = useState<any>(null);
+  const [executionResult, setExecutionResult] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState<'plan' | 'results'>('plan');
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null); // To handle fitting view
-  const [textPlan, setTextPlan] = useState('');
-  const [isTextPanelOpen, setIsTextPanelOpen] = useState(false);
 
   // Prefill editor with the last saved query (if editor is empty)
   useEffect(() => {
@@ -71,21 +73,19 @@ function App() {
       setLoading(true);
       setError('');
       // Clear previous
-      setNodes([]); setEdges([]); setSelectedNode(null); setExplainResult(null); setTextPlan('');
+      setNodes([]); setEdges([]); setSelectedNode(null); setExplainResult(null);
 
       const response = await explainQuery(connectionInfo, sqlQuery);
 
       // Response structure: { status: 'success', data: { json: [...], text: "..." } }
-      const { json, text } = response.data;
+      const { json } = response.data;
+      // We ignore 'text' here as we now show JSON in the side panel
 
       const { nodes: layoutNodes, edges: layoutEdges } = parsePlanToFlow(json);
 
       setNodes(layoutNodes);
       setEdges(layoutEdges);
       setExplainResult(json);
-      setExplainResult(json);
-      setTextPlan(text);
-      // setIsTextPanelOpen(true); // Don't auto-open
 
       // Fit view after a tick to allow rendering
       setTimeout(() => {
@@ -97,6 +97,26 @@ function App() {
     } catch (err: any) {
       console.error(err);
       setError(err.response?.data?.detail || 'Explain failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
+  const handleRunExecute = async () => {
+    if (!connectionInfo || !sqlQuery) return;
+    try {
+      setLoading(true);
+      setError('');
+      setExecutionResult(null);
+      setActiveTab('results'); // Switch tab immediately
+
+      const response = await executeQuery(connectionInfo, sqlQuery);
+      setExecutionResult(response.data);
+
+    } catch (err: any) {
+      console.error(err);
+      setError(err.response?.data?.detail || 'Execution failed');
     } finally {
       setLoading(false);
     }
@@ -122,7 +142,7 @@ function App() {
       }, 100);
       return () => clearTimeout(timer);
     }
-  }, [!!selectedNode, isTextPanelOpen, reactFlowInstance]);
+  }, [!!selectedNode, reactFlowInstance]);
 
   return (
     <div style={{ height: '100vh', width: '100vw', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -141,7 +161,11 @@ function App() {
           connectionInfo={connectionInfo}
           sqlQuery={sqlQuery}
           setSqlQuery={setSqlQuery}
-          onRunExplain={handleRunExplain}
+          onRunExplain={() => {
+            setActiveTab('plan');
+            handleRunExplain();
+          }}
+          onRunExecute={handleRunExecute}
           loading={loading}
           explainResult={explainResult}
         />
@@ -162,65 +186,63 @@ function App() {
             </div>
           )}
 
-          <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
-            <ReactFlow
-              nodes={nodes}
-              edges={edges}
-              nodeTypes={nodeTypes}
-              onNodeClick={onNodeClick}
-              onNodesChange={onNodesChange}
-              onPaneClick={() => setSelectedNode(null)}
-              fitView
-              onInit={setReactFlowInstance}
-              style={{ background: '#334155' }}
-              proOptions={{ hideAttribution: true }}
-            >
-              <Background color="#475569" gap={20} />
-              <Controls />
-            </ReactFlow>
 
+          {/* Tabs Header */}
+          <div style={{ display: 'flex', background: '#0f172a', borderBottom: '1px solid #475569' }}>
+            <div
+              onClick={() => setActiveTab('plan')}
+              style={{
+                padding: '10px 20px',
+                cursor: 'pointer',
+                color: activeTab === 'plan' ? '#e2e8f0' : '#64748b',
+                borderBottom: activeTab === 'plan' ? '2px solid #3b82f6' : 'none',
+                fontWeight: activeTab === 'plan' ? 600 : 500
+              }}
+            >
+              Explain Plan
+            </div>
+            <div
+              onClick={() => setActiveTab('results')}
+              style={{
+                padding: '10px 20px',
+                cursor: 'pointer',
+                color: activeTab === 'results' ? '#e2e8f0' : '#64748b',
+                borderBottom: activeTab === 'results' ? '2px solid #3b82f6' : 'none',
+                fontWeight: activeTab === 'results' ? 600 : 500
+              }}
+            >
+              Query Results
+            </div>
           </div>
 
-          {/* Text Explain Plan Panel moved OUTSIDE the ReactFlow wrapper but inside the flex column */}
-          {textPlan && (
-            <div style={{
-              height: isTextPanelOpen ? '300px' : '40px',
-              background: '#1e293b',
-              borderTop: '1px solid #475569',
-              transition: 'height 0.3s ease',
-              display: 'flex',
-              flexDirection: 'column',
-              zIndex: 20,
-            }}>
-              <div
-                onClick={() => setIsTextPanelOpen(!isTextPanelOpen)}
-                style={{
-                  height: '40px',
-                  padding: '0 20px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  cursor: 'pointer',
-                  fontWeight: 600,
-                  color: '#e2e8f0',
-                  borderBottom: isTextPanelOpen ? '1px solid #334155' : 'none',
-                  justifyContent: 'space-between',
-                  backgroundColor: '#0f172a'
-                }}
-              >
-                <span>Raw Explain Plan</span>
-                <span>{isTextPanelOpen ? '▼' : '▲'}</span>
+          {/* Conditional Content */}
+          {activeTab === 'plan' ? (
+            <>
+              <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
+                <ReactFlow
+                  nodes={nodes}
+                  edges={edges}
+                  nodeTypes={nodeTypes}
+                  onNodeClick={onNodeClick}
+                  onNodesChange={onNodesChange}
+                  onPaneClick={() => setSelectedNode(null)}
+                  fitView
+                  onInit={setReactFlowInstance}
+                  style={{ background: '#334155' }}
+                  proOptions={{ hideAttribution: true }}
+                >
+                  <Background color="#475569" gap={20} />
+                  <Controls />
+                </ReactFlow>
               </div>
-              {isTextPanelOpen && (
-                <div style={{ flex: 1, overflow: 'auto', padding: '15px' }}>
-                  <pre style={{
-                    margin: 0,
-                    fontFamily: 'monospace',
-                    color: '#cecece',
-                    fontSize: '12px',
-                    whiteSpace: 'pre-wrap' // Handle long lines
-                  }}>
-                    {textPlan}
-                  </pre>
+            </>
+          ) : (
+            <div style={{ flex: 1, overflow: 'hidden', background: '#1e293b' }}>
+              {executionResult ? (
+                <ResultsTable data={executionResult} />
+              ) : (
+                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', color: '#64748b' }}>
+                  <div>Run the query to see results here.</div>
                 </div>
               )}
             </div>
@@ -233,6 +255,7 @@ function App() {
             setSelectedNode(null);
             setNodes(nds => nds.map(node => ({ ...node, selected: false })));
           }}
+          fullPlan={explainResult}
         />
       </div>
 

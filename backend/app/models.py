@@ -1,3 +1,4 @@
+
 from pydantic import BaseModel, Field
 from pydantic.config import ConfigDict
 
@@ -17,3 +18,7 @@ class ConnectionRequest(BaseModel):
 class ExplainRequest(BaseModel):
     connection: ConnectionInfo
     query: str = Field(..., description="SQL query to explain")
+
+class QueryRequest(BaseModel):
+    connection: ConnectionInfo
+    query: str = Field(..., description="SQL query to execute")
