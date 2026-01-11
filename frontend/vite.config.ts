@@ -7,5 +7,6 @@ export default defineConfig({
   server: {
     host: true, // Needed for Docker
     port: 3000,
+    allowedHosts: ['pgray.io'],
   }
 })
