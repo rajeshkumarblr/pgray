@@ -18,7 +18,9 @@ class ConnectionRequest(BaseModel):
 class ExplainRequest(BaseModel):
     connection: ConnectionInfo
     query: str = Field(..., description="SQL query to explain")
+    analyze: bool = Field(True, description="Whether to run EXPLAIN ANALYZE")
 
 class QueryRequest(BaseModel):
     connection: ConnectionInfo
     query: str = Field(..., description="SQL query to execute")
+    limit: int = Field(100, description="Max rows to fetch")

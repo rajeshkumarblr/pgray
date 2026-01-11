@@ -25,13 +25,13 @@ export const connectDb = async (connectionInfo: any) => {
     return response.data;
 };
 
-export const explainQuery = async (connectionInfo: any, query: string) => {
-    const response = await api.post('/explain', { connection: connectionInfo, query });
+export const explainQuery = async (connectionInfo: any, query: string, analyze: boolean = true) => {
+    const response = await api.post('/explain', { connection: connectionInfo, query, analyze });
     return response.data;
 };
 
-export const executeQuery = async (connectionInfo: any, query: string) => {
-    const response = await api.post('/execute', { connection: connectionInfo, query });
+export const executeQuery = async (connectionInfo: any, query: string, limit: number = 1000) => {
+    const response = await api.post('/execute', { connection: connectionInfo, query, limit });
     return response.data;
 };
 

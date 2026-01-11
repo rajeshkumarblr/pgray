@@ -38,7 +38,7 @@ async def explain_query(request: ExplainRequest):
         # Save query to history
         add_history_item(request.query)
         
-        result = execute_explain(request.connection, request.query)
+        result = execute_explain(request.connection, request.query, request.analyze)
         return {"status": "success", "data": result}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -48,7 +48,7 @@ async def execute_query(request: QueryRequest):
     try:
         # We also save to history
         add_history_item(request.query)
-        result = execute_query_results(request.connection, request.query)
+        result = execute_query_results(request.connection, request.query, request.limit)
         return {"status": "success", "data": result}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

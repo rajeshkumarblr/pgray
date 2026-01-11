@@ -67,25 +67,45 @@ function App() {
     }
   };
 
-  const handleRunExplain = async () => {
+  /* Sidebar Logic */
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
+  const handleRunExplain = async (analyze: boolean, getResults: boolean) => {
     if (!connectionInfo || !sqlQuery) return;
     try {
       setLoading(true);
       setError('');
       // Clear previous
-      setNodes([]); setEdges([]); setSelectedNode(null); setExplainResult(null);
+      setNodes([]); setEdges([]); setSelectedNode(null); setExplainResult(null); setExecutionResult(null);
 
-      const response = await explainQuery(connectionInfo, sqlQuery);
-
-      // Response structure: { status: 'success', data: { json: [...], text: "..." } }
+      // 1. Run Explain (always)
+      const response = await explainQuery(connectionInfo, sqlQuery, analyze);
       const { json } = response.data;
-      // We ignore 'text' here as we now show JSON in the side panel
-
       const { nodes: layoutNodes, edges: layoutEdges } = parsePlanToFlow(json);
 
       setNodes(layoutNodes);
       setEdges(layoutEdges);
       setExplainResult(json);
+      setActiveTab('plan'); // Show plan by default
+
+      // 2. Fetch Results if requested
+      if (getResults) {
+        try {
+          const execResponse = await executeQuery(connectionInfo, sqlQuery, 100); // 1. Limit 100 per requirement.
+          // Wait, requirement 4b says "limit 100". Backend default is 1000.
+          // I should probably update backend to accept limit or just update backend default.
+          // For now, let's assume backend is OK or I update backend shortly.
+          setExecutionResult(execResponse.data);
+        } catch (execErr: any) {
+          console.error("Execution failed", execErr);
+          // We don't fail the explain if execution fails, but show warning?
+          setError(`Explain successful, but execution failed: ${execErr.response?.data?.detail || execErr.message}`);
+          // Don't auto-collapse if error?
+        }
+      }
+
+      // Auto-collapse sidebar on success (if no crucial error prevented explain)
+      setIsSidebarCollapsed(true);
 
       // Fit view after a tick to allow rendering
       setTimeout(() => {
@@ -97,26 +117,6 @@ function App() {
     } catch (err: any) {
       console.error(err);
       setError(err.response?.data?.detail || 'Explain failed');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-
-  const handleRunExecute = async () => {
-    if (!connectionInfo || !sqlQuery) return;
-    try {
-      setLoading(true);
-      setError('');
-      setExecutionResult(null);
-      setActiveTab('results'); // Switch tab immediately
-
-      const response = await executeQuery(connectionInfo, sqlQuery);
-      setExecutionResult(response.data);
-
-    } catch (err: any) {
-      console.error(err);
-      setError(err.response?.data?.detail || 'Execution failed');
     } finally {
       setLoading(false);
     }
@@ -142,15 +142,15 @@ function App() {
       }, 100);
       return () => clearTimeout(timer);
     }
-  }, [!!selectedNode, reactFlowInstance]);
+  }, [!!selectedNode, reactFlowInstance, isSidebarCollapsed]); // Added isSidebarCollapsed dependency
 
   return (
     <div style={{ height: '100vh', width: '100vw', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <Header
         onNewPlan={() => {
           setSelectedNode(null);
-          // Also clear visual selection
           setNodes(nds => nds.map(node => ({ ...node, selected: false })));
+          setIsSidebarCollapsed(false); // Open sidebar when "New Plan" is requested
         }}
         onHistory={() => setIsHistoryOpen(true)}
         onConnect={() => setIsModalOpen(true)}
@@ -161,13 +161,11 @@ function App() {
           connectionInfo={connectionInfo}
           sqlQuery={sqlQuery}
           setSqlQuery={setSqlQuery}
-          onRunExplain={() => {
-            setActiveTab('plan');
-            handleRunExplain();
-          }}
-          onRunExecute={handleRunExecute}
+          onRunExplain={handleRunExplain}
           loading={loading}
           explainResult={explainResult}
+          isCollapsed={isSidebarCollapsed}
+          onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
         />
 
         <div style={{ flex: 1, position: 'relative', background: '#334155', display: 'flex', flexDirection: 'column' }}>

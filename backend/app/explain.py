@@ -15,7 +15,7 @@ def _set_search_path(conn, schema_name: str):
             )
         )
 
-def execute_explain(info: ConnectionInfo, query: str):
+def execute_explain(info: ConnectionInfo, query: str, analyze: bool = True):
     try:
         dsn = f"host={info.host} port={info.port} dbname={info.database} user={info.username} password={info.password}"
         conn = psycopg2.connect(dsn)
@@ -26,18 +26,21 @@ def execute_explain(info: ConnectionInfo, query: str):
 
         cur = conn.cursor()
         
+        # Build commands
+        options = "ANALYZE" if analyze else ""
+        # Note: FORMAT JSON is always required for the visualizer
+        explain_json_cmd = f"EXPLAIN (FORMAT JSON, {options}) {query}" if analyze else f"EXPLAIN (FORMAT JSON) {query}"
+        explain_text_cmd = f"EXPLAIN (FORMAT TEXT, {options}) {query}" if analyze else f"EXPLAIN (FORMAT TEXT) {query}"
+
         # Run JSON Explain
-        explain_query_json = f"EXPLAIN (FORMAT JSON, ANALYZE) {query}"
-        cur.execute(explain_query_json)
+        cur.execute(explain_json_cmd)
         json_result = cur.fetchone()
         
         # Run Text Explain
-        explain_query_text = f"EXPLAIN (FORMAT TEXT, ANALYZE) {query}"
-        cur.execute(explain_query_text)
-        text_result_lines = cur.fetchall() # Text explain returns multiple rows, each is a line
+        cur.execute(explain_text_cmd)
+        text_result_lines = cur.fetchall()
         text_plan = "\n".join([row[0] for row in text_result_lines])
 
-        # Safer to ROLLBACK for EXPLAIN ANALYZE just in case user runs a modification query.
         conn.rollback() 
         conn.close()
         
