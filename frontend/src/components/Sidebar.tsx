@@ -99,17 +99,19 @@ const Sidebar: React.FC<SidebarProps> = ({
 
                 {inputMode === 'sql' ? (
                     <>
-                        <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '10px' }}>
-                            {connectionInfo
-                                ? `Connected: ${connectionInfo.host}:${connectionInfo.port}/${connectionInfo.database}`
-                                : 'Not connected'}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                            <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+                                {connectionInfo
+                                    ? `Connected: ${connectionInfo.host}:${connectionInfo.port}/${connectionInfo.database}`
+                                    : 'Not connected'}
+                            </div>
                         </div>
                         <textarea
                             value={sqlQuery}
                             onChange={(e) => setSqlQuery(e.target.value)}
                             placeholder="SELECT * FROM ..."
                             style={{
-                                width: '100%', height: '140px', padding: '12px',
+                                width: '100%', height: '180px', padding: '12px',
                                 borderRadius: '6px', border: '1px solid #475569',
                                 fontFamily: 'monospace', fontSize: '13px', resize: 'vertical',
                                 outline: 'none', background: '#0f172a', color: '#e2e8f0',
@@ -203,7 +205,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                                 </div>
                             </div>
                         ) : (
-                            <div style={{ p: '10px', fontStyle: 'italic', color: '#94a3b8' }}>Visualizing external JSON</div>
+                            <div style={{ padding: '10px', fontStyle: 'italic', color: '#94a3b8' }}>Visualizing external JSON</div>
                         )}
                         <div style={{ color: '#94a3b8', lineHeight: 1.5 }}>
                             The plan is visualized on the right. Click on any node to see details.

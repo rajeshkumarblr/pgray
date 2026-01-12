@@ -10,6 +10,7 @@ import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import NodeDetailsPanel from './components/NodeDetailsPanel';
 import HistoryModal from './components/HistoryModal';
+import SqlOverlay from './components/SqlOverlay';
 
 function App() {
   const [isModalOpen, setIsModalOpen] = useState(true);
@@ -185,6 +186,76 @@ function App() {
     }
   }, []); // Run once on mount
 
+  /* SQL Highlight Heuristics */
+  const getSqlHighlightParams = useCallback((node: Node | null) => {
+    if (!node || !node.data || !node.data.details) return undefined;
+
+    const type = node.data.label.toLowerCase();
+    const details = node.data.details;
+
+    // Scan: Highlight Table Name OR Filter Condition
+    if (type.includes('scan')) {
+      // Prioritize identifying the specific filter condition
+      const condition = details['Index Cond'] || details['Filter'];
+
+      if (condition) {
+        // Heuristic: Extract the first meaningful identifier from the condition
+        // 1. Remove casts like ::text, ::date
+        // 2. Remove common operators and keywords
+        // 3. Find the first word that looks like a column
+
+        const cleanCond = condition
+          .replace(/::[a-zA-Z0-9_]+/g, '') // Remove casts
+          .replace(/['"].*?['"]/g, '')     // Remove quoted strings (values) to focus on columns
+          .replace(/[()=><!,]/g, ' ');     // Replace punctuation with spaces
+
+        const terms = cleanCond.split(/\s+/).filter((t: string) => {
+          const lower = t.toLowerCase();
+          return lower.length > 2 &&
+            !['and', 'or', 'not', 'null', 'is', 'in', 'any', 'all', 'between'].includes(lower);
+        });
+
+        if (terms.length > 0) {
+          const alias = details['Alias'] || details['Relation Name'];
+          // Return "Alias Column" to target the specific line in WHERE clause
+          // e.g. "m kind" matches "m.kind = 'movie'"
+          if (alias) return `${alias} ${terms[0]}`;
+          return terms[0];
+        }
+      }
+
+      if (details['Relation Name']) return details['Relation Name'];
+      if (details['Alias']) return details['Alias'];
+    }
+
+    // Sort: Highlight ORDER BY
+    if (type.includes('sort')) {
+      return 'order by';
+    }
+
+    // Limit: Highlight LIMIT
+    if (type.includes('limit')) {
+      return 'LIMIT';
+    }
+
+    // Aggregate: Highlight GROUP BY or Agg function
+    if (type.includes('aggregate')) {
+      // This is tricky without parsing, but "GROUP BY" is a safe bet if present, 
+      // otherwise maybe just 'count' or 'sum' if we could guess. 
+      // Let's stick to 'group by' for now as it's the main structural element.
+      return 'group by';
+    }
+
+    // Join: Highlight JOIN
+    if (type.includes('join') || type.includes('loop')) {
+      return 'join';
+    }
+
+    return undefined;
+  }, []);
+
+  const highlightText = useMemo(() => getSqlHighlightParams(selectedNode), [selectedNode, getSqlHighlightParams]);
+
   return (
     <div style={{ height: '100vh', width: '100vw', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <Header
@@ -211,6 +282,14 @@ function App() {
         />
 
         <div style={{ flex: 1, position: 'relative', background: '#334155', display: 'flex', flexDirection: 'column' }}>
+
+          {/* SQL Overlay - Floating Panel */}
+          <SqlOverlay
+            sqlQuery={sqlQuery}
+            highlightText={highlightText}
+            visible={!!sqlQuery && !!explainResult}
+          />
+
           {/* Main Content Area */}
 
           {/* Total Time Display */}

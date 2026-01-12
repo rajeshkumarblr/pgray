@@ -9,11 +9,13 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
     *   **Left**: Collapsible Query Editor with options for Analysis and Result Fetching.
     *   **Center**: Interactive node-link diagram using React Flow.
     *   **Right**: Sliding details panel for deep-diving into specific node metrics.
+*   **Floating SQL Panel**: View specific query segments alongside the plan. Interactive highlighting shows exactly which part of the query matches the selected plan node.
+*   **Smart Highlighting**: Intelligent logic to highlight `WHERE` clauses for Scans (extracting filter columns), `ORDER BY` for Sorts, and `LIMIT` clauses.
 *   **Dual Input Modes**: Sidebar now supports:
     *   **SQL Query**: Standard mode for executing queries.
     *   **Paste JSON**: Direct input for visualizing raw JSON execution plans without backend execution.
 *   **Persistent Connection**: Connection settings are saved and auto-connected on reload.
-*   **Professional Dark Mode**: Full dark theme for Sidebar, Details Panel, and Connection settings for a seamless experience.
+*   **Professional Dark Mode**: Full dark theme for Sidebar, Modals, and Panels.
 *   **Analysis Options**: 
     *   **Analyze**: Toggle `EXPLAIN ANALYZE` (enabled by default) for actual execution times.
     *   **Get Results**: Optionally fetch actual query results (limited to 100 rows) alongside the plan.
