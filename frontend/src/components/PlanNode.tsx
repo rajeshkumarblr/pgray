@@ -9,6 +9,7 @@ interface PlanNodeData {
   actual_rows?: number; // Actual Rows
   exclusive_time?: number; // ms
   severity_score?: number; // 0.0 to 1.0
+  details?: any; // Full plan JSON
 }
 
 const formatMs = (ms: number) => {
@@ -43,23 +44,39 @@ const PlanNode = ({ data, selected }: NodeProps<PlanNodeData>) => {
       ? formatMs(data.exclusive_time)
       : formatCost(data.cost);
 
+  const rowsRemoved = data.details?.['Rows Removed by Filter'];
+
   const rowMetric =
     data.actual_rows !== undefined
-      ? `rows: ${formatRows(data.rows)} est / ${formatRows(data.actual_rows)} act`
-      : `rows: ${formatRows(data.rows)} est`;
+      ? `${formatRows(data.rows)} est / ${formatRows(data.actual_rows)} act`
+      : `${formatRows(data.rows)} est`;
+
+  // Parse Relation / Alias
+  const relation = data.details?.['Relation Name'];
+  const alias = data.details?.['Alias'];
+  // If alias exists and is different from relation, show both. Otherwise just relation.
+  // If no relation, maybe show nothing.
+  let tableLabel = '';
+  if (relation) {
+    if (alias && alias !== relation) {
+      tableLabel = `${relation} (${alias})`;
+    } else {
+      tableLabel = relation;
+    }
+  }
 
   // --- STYLES ---
 
   // Main Container: Slim Dark Pill
   const containerStyle: React.CSSProperties = {
-    position: 'relative', // Critical for absolute handle positioning
-    minWidth: '220px',
-    height: '52px', // Increased height for 2 lines
-    padding: '0 12px',
+    position: 'relative',
+    minWidth: '240px', // Slightly wider to accommodate extra info
+    minHeight: '60px', // Taller for relation name
+    padding: '8px 12px',
     display: 'flex',
-    flexDirection: 'column', // Changed to column for stacking
+    flexDirection: 'column',
     justifyContent: 'center',
-    backgroundColor: isCritical ? '#450a0a' : '#1e293b', // Dark Red or Dark Slate
+    backgroundColor: isCritical ? '#450a0a' : '#1e293b',
     border: isCritical ? '2px solid #ef4444' : selected ? '2px solid #38bdf8' : '1px solid #475569',
     borderRadius: '8px',
     color: '#f8fafc',
@@ -69,38 +86,66 @@ const PlanNode = ({ data, selected }: NodeProps<PlanNodeData>) => {
     transition: 'all 0.15s ease',
   };
 
-  const topRowStyle: React.CSSProperties = {
+  const headerStyle: React.CSSProperties = {
     display: 'flex',
     justifyContent: 'space-between',
     width: '100%',
     alignItems: 'center',
-    marginBottom: '2px',
+    marginBottom: tableLabel ? '2px' : '4px',
+  };
+
+  const idBadgeStyle: React.CSSProperties = {
+    background: '#0f172a',
+    color: '#94a3b8',
+    fontSize: '10px',
+    padding: '1px 4px',
+    borderRadius: '4px',
+    marginRight: '6px',
+    fontWeight: 'bold',
+    flexShrink: 0
   };
 
   const labelStyle: React.CSSProperties = {
     fontWeight: 600,
-    marginRight: '8px',
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
-    maxWidth: '140px',
+    maxWidth: '120px',
+    flex: 1
   };
 
   const metricStyle: React.CSSProperties = {
     fontWeight: 700,
-    color: '#38bdf8', // Sky blue for metrics
+    color: '#38bdf8',
     whiteSpace: 'nowrap',
+    marginLeft: '8px'
+  };
+
+  const relationStyle: React.CSSProperties = {
+    fontSize: '11px',
+    color: '#cbd5e1', // Lighter than sub-metric
+    marginBottom: '4px',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    fontStyle: 'italic'
   };
 
   const subMetricStyle: React.CSSProperties = {
-    fontSize: '11px',
-    color: '#94a3b8', // Slate-400
+    fontSize: '10px',
+    color: '#94a3b8',
     width: '100%',
     textAlign: 'right',
+    display: 'flex',
+    justifyContent: 'flex-end',
+    gap: '6px'
   };
 
-  // --- HANDLES (Invisible but functional) ---
+  const discardedStyle: React.CSSProperties = {
+    color: '#f87171', // Redish for discarded
+  };
 
+  // --- HANDLES ---
   const targetHandleStyle: React.CSSProperties = {
     left: 0,
     top: '50%',
@@ -111,7 +156,6 @@ const PlanNode = ({ data, selected }: NodeProps<PlanNodeData>) => {
     background: 'transparent',
   };
 
-  // SOURCE is now at the BOTTOM
   const sourceHandleStyle: React.CSSProperties = {
     left: '5%',
     bottom: 0,
@@ -124,32 +168,32 @@ const PlanNode = ({ data, selected }: NodeProps<PlanNodeData>) => {
 
   return (
     <div style={containerStyle}>
-      {/* Input: From Left */}
-      <Handle
-        type="target"
-        position={Position.Left}
-        style={targetHandleStyle}
-      />
+      <Handle type="target" position={Position.Left} style={targetHandleStyle} />
 
-      <div style={topRowStyle}>
-        <div style={labelStyle} title={data.label}>
-          {data.label}
+      <div style={headerStyle}>
+        <div style={{ display: 'flex', alignItems: 'center', overflow: 'hidden' }}>
+          <div style={idBadgeStyle}>#{data.id}</div>
+          <div style={labelStyle} title={data.label}>{data.label}</div>
         </div>
-        <div style={metricStyle}>
-          {primaryMetric}
-        </div>
+        <div style={metricStyle}>{primaryMetric}</div>
       </div>
+
+      {tableLabel && (
+        <div style={relationStyle} title={tableLabel}>
+          {tableLabel}
+        </div>
+      )}
 
       <div style={subMetricStyle}>
-        {rowMetric}
+        <div>{rowMetric}</div>
+        {rowsRemoved && rowsRemoved > 0 && (
+          <div style={discardedStyle}>
+            • {formatRows(rowsRemoved)} disc
+          </div>
+        )}
       </div>
 
-      {/* Output: To Bottom */}
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        style={sourceHandleStyle}
-      />
+      <Handle type="source" position={Position.Bottom} style={sourceHandleStyle} />
     </div>
   );
 };
