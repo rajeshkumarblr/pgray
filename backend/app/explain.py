@@ -29,7 +29,10 @@ def execute_explain(info: ConnectionInfo, query: str, analyze: bool = True):
         # Build commands
         options = "ANALYZE" if analyze else ""
         # Note: FORMAT JSON is always required for the visualizer
-        explain_json_cmd = f"EXPLAIN (FORMAT JSON, {options}) {query}" if analyze else f"EXPLAIN (FORMAT JSON) {query}"
+        if analyze:
+            explain_json_cmd = f"EXPLAIN (FORMAT JSON, ANALYZE, BUFFERS) {query}"
+        else:
+            explain_json_cmd = f"EXPLAIN (FORMAT JSON) {query}"
         explain_text_cmd = f"EXPLAIN (FORMAT TEXT, {options}) {query}" if analyze else f"EXPLAIN (FORMAT TEXT) {query}"
 
         # Run JSON Explain

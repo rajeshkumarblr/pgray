@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import ReactFlow, { Background, Controls, Node, Edge, applyNodeChanges, NodeChange } from 'reactflow';
 import 'reactflow/dist/style.css';
 import ConnectionModal from './components/ConnectionModal';
@@ -24,6 +24,10 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null); // To handle fitting view
+
+  const mainContainerRef = useRef<HTMLDivElement>(null);
+  const flowWrapperRef = useRef<HTMLDivElement>(null);
+  const [overlayPosition, setOverlayPosition] = useState<{ x: number, y: number } | null>(null);
 
   // Prefill editor with the last saved query (if editor is empty)
   useEffect(() => {
@@ -72,6 +76,53 @@ function App() {
   /* Sidebar Logic */
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
+  const onNodesChange = useCallback(
+    (changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds)),
+    [],
+  );
+
+  const updateOverlayPos = (currentLayoutNodes: Node[]) => {
+    const topNode = currentLayoutNodes.find(n => n.data.id === 0) || currentLayoutNodes[0];
+    if (topNode && flowWrapperRef.current && reactFlowInstance) {
+      const viewport = reactFlowInstance.getViewport();
+      const screenNodeX = topNode.position.x * viewport.zoom + viewport.x;
+      const screenNodeY = topNode.position.y * viewport.zoom + viewport.y;
+      const flowRect = flowWrapperRef.current.getBoundingClientRect();
+
+      const overlayY = flowRect.top + screenNodeY;
+      const absoluteNodeX = flowRect.left + screenNodeX;
+
+      // We want to center it between the sidebar (flowRect.left) and the node (absoluteNodeX).
+      // Available gap center:
+      const gapCenter = (flowRect.left + absoluteNodeX) / 2;
+
+      // Proposed X (centered overlay):
+      let targetX = gapCenter - 175; // 350/2
+
+      // CONSTRAINT: Right edge must not overlap node.
+      // Max X = Node Left - Overlay Width - Padding
+      const maxX = absoluteNodeX - 350 - 40; // 40px buffer
+
+      // Apply constraint
+      targetX = Math.min(targetX, maxX);
+
+      // Optional: Ensure it doesn't go too far left into sidebar (min clamp)
+      // targetX = Math.max(targetX, flowRect.left + 10); 
+      // User prioritized "not covering nodes", so typically we respect the right bound first.
+
+      console.log('--- Overlay Positioning Debug ---');
+      console.log('Sidebar/Window Left (flowRect.left):', flowRect.left);
+      console.log('Node Screen X (before container offset):', screenNodeX);
+      console.log('Absolute Node X (Screen Coordinate):', absoluteNodeX);
+      console.log('Gap Center:', gapCenter);
+      console.log('Proposed Target X:', gapCenter - 175);
+      console.log('Max X (Constraint):', maxX);
+      console.log('Final Target X:', targetX);
+
+      setOverlayPosition({ x: targetX, y: overlayY });
+    }
+  };
+
   const handleRunExplain = async (analyze: boolean, getResults: boolean) => {
     if (!connectionInfo || !sqlQuery) return;
     try {
@@ -104,12 +155,13 @@ function App() {
       // Auto-collapse sidebar on success
       setIsSidebarCollapsed(true);
 
-      // Fit view after a tick
+      // Fit view AND Position Overlay after sidebar transition (300ms)
       setTimeout(() => {
         if (reactFlowInstance) {
           reactFlowInstance.fitView({ padding: 0.2 });
+          updateOverlayPos(layoutNodes);
         }
-      }, 50);
+      }, 400);
 
     } catch (err: any) {
       console.error(err);
@@ -141,8 +193,9 @@ function App() {
       setTimeout(() => {
         if (reactFlowInstance) {
           reactFlowInstance.fitView({ padding: 0.2 });
+          updateOverlayPos(layoutNodes);
         }
-      }, 50);
+      }, 400);
 
     } catch (err: any) {
       console.error(err);
@@ -157,11 +210,6 @@ function App() {
   }, []);
 
   const totalTime = explainResult && explainResult[0] && explainResult[0]['Execution Time'];
-
-  const onNodesChange = useCallback(
-    (changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds)),
-    [],
-  );
 
   // Re-center graph when side panel toggles
   useEffect(() => {
@@ -281,13 +329,14 @@ function App() {
           onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
         />
 
-        <div style={{ flex: 1, position: 'relative', background: '#334155', display: 'flex', flexDirection: 'column' }}>
+        <div ref={mainContainerRef} style={{ flex: 1, position: 'relative', background: '#334155', display: 'flex', flexDirection: 'column' }}>
 
           {/* SQL Overlay - Floating Panel */}
           <SqlOverlay
             sqlQuery={sqlQuery}
             highlightText={highlightText}
-            visible={!!sqlQuery && !!explainResult}
+            visible={!!sqlQuery && !!explainResult && activeTab === 'plan'}
+            initialPosition={overlayPosition}
           />
 
           {/* Main Content Area */}
@@ -337,7 +386,7 @@ function App() {
           {/* Conditional Content */}
           {activeTab === 'plan' ? (
             <>
-              <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
+              <div ref={flowWrapperRef} style={{ flex: 1, position: 'relative', minHeight: 0 }}>
                 <ReactFlow
                   nodes={nodes}
                   edges={edges}

@@ -185,6 +185,26 @@ const PlanNode = ({ data, selected }: NodeProps<PlanNodeData>) => {
       )}
 
       <div style={subMetricStyle}>
+        {/* Buffering Detector */}
+        {(() => {
+          const sharedHit = data.details?.['Shared Hit Blocks'] || 0;
+          const sharedRead = data.details?.['Shared Read Blocks'] || 0;
+          const totalBlocks = sharedHit + sharedRead;
+
+          if (totalBlocks > 0) {
+            const ratio = sharedHit / totalBlocks;
+            if (ratio < 0.99) {
+              return (
+                <div style={{ color: '#facc15', marginRight: '8px', display: 'flex', alignItems: 'center', gap: '4px' }} title={`Cache Hit Ratio: ${(ratio * 100).toFixed(1)}%. Reading from disk!`}>
+                  <span>⚠</span>
+                  <span>{(ratio * 100).toFixed(0)}% cache</span>
+                </div>
+              );
+            }
+          }
+          return null;
+        })()}
+
         <div>{rowMetric}</div>
         {rowsRemoved && rowsRemoved > 0 && (
           <div style={discardedStyle}>
