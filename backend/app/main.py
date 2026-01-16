@@ -1,6 +1,8 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
-from app.models import ConnectionRequest, ExplainRequest, QueryRequest
+from pydantic import BaseModel
+from app.models import ConnectionRequest, ExplainRequest, QueryRequest, GenerateSqlRequest, ExplainSqlRequest
 from app.connection import test_connection
 from app.explain import execute_explain, execute_query_results
 from app.history import init_db, add_history_item, get_history_items
@@ -58,5 +60,110 @@ async def get_history():
     try:
         history = get_history_items()
         return {"status": "success", "history": history}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Schema endpoint
+@app.post("/api/schema")
+async def get_schema(request: ConnectionRequest):
+    try:
+        # Import here to avoid circular dependencies if any, or just use the one imporetd
+        from app.explain import get_schema_tree
+        schema = get_schema_tree(request.connection)
+        return {"status": "success", "data": schema}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/api/settings")
+async def get_settings(request: ConnectionRequest):
+    try:
+        from app.explain import get_pg_settings
+        settings = get_pg_settings(request.connection)
+        return {"status": "success", "data": settings}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/api/generate_sql")
+async def generate_sql_endpoint(request: GenerateSqlRequest):
+    try:
+        from app.ai import generate_sql
+        # Pass model from request to generate_sql
+        result = generate_sql(
+            request.prompt, 
+            request.schema_context, 
+            request.schema_data, 
+            request.history,
+            request.model,
+            request.connection
+        )
+        # result is { "sql": str, "prompt": str }
+        return {
+            "status": "success", 
+            "sql": result.get("sql"), 
+            "prompt": result.get("prompt")
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/explain_sql")
+async def explain_sql_endpoint(request: ExplainSqlRequest):
+    try:
+        from app.ai import explain_sql_query
+        explanation = explain_sql_query(
+            request.query, 
+            None, 
+            request.schema_data, 
+            request.model
+        )
+        return {"status": "success", "explanation": explanation}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/generate_sql_stream")
+async def generate_sql_stream_endpoint(request: GenerateSqlRequest):
+    try:
+        from app.ai import generate_sql_stream
+        return StreamingResponse(
+            generate_sql_stream(
+                request.prompt, 
+                request.schema_context, 
+                request.schema_data, 
+                request.history, 
+                request.model
+            ),
+            media_type="text/plain"
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class SaveQueryRequest(BaseModel):
+    name: str
+    sql: str
+
+@app.get("/api/saved_queries")
+async def get_saved_queries_endpoint():
+    try:
+        from app.saved_queries import list_saved_queries
+        return {"status": "success", "queries": list_saved_queries()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/saved_queries")
+async def save_query_endpoint(request: SaveQueryRequest):
+    try:
+        from app.saved_queries import save_query
+        name = save_query(request.name, request.sql)
+        return {"status": "success", "name": name}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/saved_queries/{name}")
+async def get_saved_query_content_endpoint(name: str):
+    try:
+        from app.saved_queries import get_saved_query
+        content = get_saved_query(name)
+        if content is None:
+             raise HTTPException(status_code=404, detail="Query not found")
+        return {"status": "success", "sql": content}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

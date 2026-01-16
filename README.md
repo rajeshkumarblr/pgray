@@ -33,6 +33,13 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
 *   **Tabbed Results Interface**: Switch seamlessly between the visual Explain Plan and the actual Query Results grid.
 *   **Raw JSON Plan Panel**: Integrated "Raw JSON" tab in the details panel to review the source data.
 *   **Query History**: Every executed query is stored locally (SQLite) and accessible via **History**.
+*   **AI SQL Assistant**:
+    *   **Text-to-SQL**: Generate SQL queries from natural language questions using a local LLM (Ollama).
+    *   **Streaming Responses**: Real-time code generation for a responsive experience.
+    *   **Smart Explanation**: dedicated "Explain" button provides a natural language breakdown of complex queries in a side-by-side view.
+*   **Resizable Interface**:
+    *   **Query Results**: Draggable results pane with maximize/restore capability.
+    *   **Explanation Pane**: Collapsible and resizable (via flex) split-pane for AI explanations.
 *   **Heatmap Bottleneck Highlighting**:
     *   Highlights bottlenecks using **Exclusive Time** (node time minus immediate children).
     *   Heatmap shading from green → yellow → red, with the hottest node emphasized.

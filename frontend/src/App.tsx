@@ -1,16 +1,16 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
-import ReactFlow, { Background, Controls, Node, Edge, applyNodeChanges, NodeChange } from 'reactflow';
-import 'reactflow/dist/style.css';
+import { Node, Edge, applyNodeChanges, NodeChange } from 'reactflow';
 import ConnectionModal from './components/ConnectionModal';
 import PlanNode from './components/PlanNode';
 import { connectDb, explainQuery, executeQuery, getHistory } from './api';
-import ResultsTable from './components/ResultsTable';
 import { parsePlanToFlow } from './utils/planLayout';
 import Header from './components/Header';
-import Sidebar from './components/Sidebar';
-import NodeDetailsPanel from './components/NodeDetailsPanel';
 import HistoryModal from './components/HistoryModal';
-import SqlOverlay from './components/SqlOverlay';
+
+// Tabs
+import QueryEditorTab from './components/tabs/QueryEditorTab';
+import QueryTuneTab from './components/tabs/QueryTuneTab';
+import ServerTuneTab from './components/tabs/ServerTuneTab';
 
 function App() {
   const [isModalOpen, setIsModalOpen] = useState(true);
@@ -19,15 +19,16 @@ function App() {
   const [sqlQuery, setSqlQuery] = useState('');
   const [explainResult, setExplainResult] = useState<any>(null);
   const [executionResult, setExecutionResult] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'plan' | 'results'>('plan');
+  const [tuneActiveSubTab, setTuneActiveSubTab] = useState<'plan' | 'results'>('plan');
+
+  // App State
+  const [activeAppTab, setActiveAppTab] = useState<'editor' | 'tune' | 'server'>('editor');
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null); // To handle fitting view
 
-  const mainContainerRef = useRef<HTMLDivElement>(null);
   const flowWrapperRef = useRef<HTMLDivElement>(null);
-  const [overlayPosition, setOverlayPosition] = useState<{ x: number, y: number } | null>(null);
 
   // Prefill editor with the last saved query (if editor is empty)
   useEffect(() => {
@@ -73,58 +74,19 @@ function App() {
     }
   };
 
-  /* Sidebar Logic */
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  /* Sidebar Logic - Removed */
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds)),
     [],
   );
-
-  const updateOverlayPos = (currentLayoutNodes: Node[]) => {
-    const topNode = currentLayoutNodes.find(n => n.data.id === 0) || currentLayoutNodes[0];
-    if (topNode && flowWrapperRef.current && reactFlowInstance) {
-      const viewport = reactFlowInstance.getViewport();
-      const screenNodeX = topNode.position.x * viewport.zoom + viewport.x;
-      const screenNodeY = topNode.position.y * viewport.zoom + viewport.y;
-      const flowRect = flowWrapperRef.current.getBoundingClientRect();
-
-      const overlayY = flowRect.top + screenNodeY;
-      const absoluteNodeX = flowRect.left + screenNodeX;
-
-      // We want to center it between the sidebar (flowRect.left) and the node (absoluteNodeX).
-      // Available gap center:
-      const gapCenter = (flowRect.left + absoluteNodeX) / 2;
-
-      // Proposed X (centered overlay):
-      let targetX = gapCenter - 175; // 350/2
-
-      // CONSTRAINT: Right edge must not overlap node.
-      // Max X = Node Left - Overlay Width - Padding
-      const maxX = absoluteNodeX - 350 - 40; // 40px buffer
-
-      // Apply constraint
-      targetX = Math.min(targetX, maxX);
-
-      // Optional: Ensure it doesn't go too far left into sidebar (min clamp)
-      // targetX = Math.max(targetX, flowRect.left + 10); 
-      // User prioritized "not covering nodes", so typically we respect the right bound first.
-
-      console.log('--- Overlay Positioning Debug ---');
-      console.log('Sidebar/Window Left (flowRect.left):', flowRect.left);
-      console.log('Node Screen X (before container offset):', screenNodeX);
-      console.log('Absolute Node X (Screen Coordinate):', absoluteNodeX);
-      console.log('Gap Center:', gapCenter);
-      console.log('Proposed Target X:', gapCenter - 175);
-      console.log('Max X (Constraint):', maxX);
-      console.log('Final Target X:', targetX);
-
-      setOverlayPosition({ x: targetX, y: overlayY });
-    }
-  };
-
   const handleRunExplain = async (analyze: boolean, getResults: boolean) => {
     if (!connectionInfo || !sqlQuery) return;
+
+    // Switch to tune tab immediately
+    setActiveAppTab('tune');
+    setTuneActiveSubTab('plan');
+
     try {
       setLoading(true);
       setError('');
@@ -139,7 +101,6 @@ function App() {
       setNodes(layoutNodes);
       setEdges(layoutEdges);
       setExplainResult(json);
-      setActiveTab('plan'); // Show plan by default
 
       // 2. Fetch Results if requested
       if (getResults) {
@@ -153,13 +114,13 @@ function App() {
       }
 
       // Auto-collapse sidebar on success
-      setIsSidebarCollapsed(true);
+      // setIsSidebarCollapsed removed
 
       // Fit view AND Position Overlay after sidebar transition (300ms)
       setTimeout(() => {
         if (reactFlowInstance) {
           reactFlowInstance.fitView({ padding: 0.2 });
-          updateOverlayPos(layoutNodes);
+
         }
       }, 400);
 
@@ -186,14 +147,15 @@ function App() {
       setNodes(layoutNodes);
       setEdges(layoutEdges);
       setExplainResult(planData);
-      setActiveTab('plan');
+      setTuneActiveSubTab('plan');
+      setActiveAppTab('tune');
 
-      setIsSidebarCollapsed(true);
+      // setIsSidebarCollapsed removed
 
       setTimeout(() => {
         if (reactFlowInstance) {
           reactFlowInstance.fitView({ padding: 0.2 });
-          updateOverlayPos(layoutNodes);
+
         }
       }, 400);
 
@@ -205,228 +167,116 @@ function App() {
     }
   };
 
+  // Lazy Load Results
+  useEffect(() => {
+    if (activeAppTab === 'tune' && tuneActiveSubTab === 'results' && !executionResult && !loading && connectionInfo && sqlQuery) {
+      setLoading(true);
+      executeQuery(connectionInfo, sqlQuery, 10) // Limit 10
+        .then(res => setExecutionResult(res.data))
+        .catch(err => {
+          console.error("Lazy execution failed", err);
+        })
+        .finally(() => setLoading(false));
+    }
+  }, [activeAppTab, tuneActiveSubTab, executionResult, loading, connectionInfo, sqlQuery]);
+
   const onNodeClick = useCallback((_event: any, node: Node) => {
     setSelectedNode(node);
   }, []);
 
-  const totalTime = explainResult && explainResult[0] && explainResult[0]['Execution Time'];
-
-  // Re-center graph when side panel toggles
-  useEffect(() => {
-    if (reactFlowInstance) {
-      const timer = setTimeout(() => {
-        reactFlowInstance.fitView({ padding: 0.2, duration: 400 });
-      }, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [!!selectedNode, reactFlowInstance, isSidebarCollapsed]);
-
-  // Auto-connect from local storage
-  useEffect(() => {
-    const saved = localStorage.getItem('pgray_connection');
-    if (saved) {
-      try {
-        const info = JSON.parse(saved);
-        handleConnectionDecode(info);
-      } catch (e) {
-        console.error("Failed to parse saved connection", e);
-      }
-    }
-  }, []); // Run once on mount
-
-  /* SQL Highlight Heuristics */
-  const getSqlHighlightParams = useCallback((node: Node | null) => {
-    if (!node || !node.data || !node.data.details) return undefined;
-
-    const type = node.data.label.toLowerCase();
-    const details = node.data.details;
-
-    // Scan: Highlight Table Name OR Filter Condition
-    if (type.includes('scan')) {
-      // Prioritize identifying the specific filter condition
-      const condition = details['Index Cond'] || details['Filter'];
-
-      if (condition) {
-        // Heuristic: Extract the first meaningful identifier from the condition
-        // 1. Remove casts like ::text, ::date
-        // 2. Remove common operators and keywords
-        // 3. Find the first word that looks like a column
-
-        const cleanCond = condition
-          .replace(/::[a-zA-Z0-9_]+/g, '') // Remove casts
-          .replace(/['"].*?['"]/g, '')     // Remove quoted strings (values) to focus on columns
-          .replace(/[()=><!,]/g, ' ');     // Replace punctuation with spaces
-
-        const terms = cleanCond.split(/\s+/).filter((t: string) => {
-          const lower = t.toLowerCase();
-          return lower.length > 2 &&
-            !['and', 'or', 'not', 'null', 'is', 'in', 'any', 'all', 'between'].includes(lower);
-        });
-
-        if (terms.length > 0) {
-          const alias = details['Alias'] || details['Relation Name'];
-          // Return "Alias Column" to target the specific line in WHERE clause
-          // e.g. "m kind" matches "m.kind = 'movie'"
-          if (alias) return `${alias} ${terms[0]}`;
-          return terms[0];
-        }
-      }
-
-      if (details['Relation Name']) return details['Relation Name'];
-      if (details['Alias']) return details['Alias'];
-    }
-
-    // Sort: Highlight ORDER BY
-    if (type.includes('sort')) {
-      return 'order by';
-    }
-
-    // Limit: Highlight LIMIT
-    if (type.includes('limit')) {
-      return 'LIMIT';
-    }
-
-    // Aggregate: Highlight GROUP BY or Agg function
-    if (type.includes('aggregate')) {
-      // This is tricky without parsing, but "GROUP BY" is a safe bet if present, 
-      // otherwise maybe just 'count' or 'sum' if we could guess. 
-      // Let's stick to 'group by' for now as it's the main structural element.
-      return 'group by';
-    }
-
-    // Join: Highlight JOIN
-    if (type.includes('join') || type.includes('loop')) {
-      return 'join';
-    }
-
-    return undefined;
-  }, []);
-
-  const highlightText = useMemo(() => getSqlHighlightParams(selectedNode), [selectedNode, getSqlHighlightParams]);
+  // SQL Highlight Logic moved to QueryTuneTab
 
   return (
-    <div style={{ height: '100vh', width: '100vw', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div style={{ height: '100vh', width: '100vw', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#0f172a' }}>
+
+      {/* 1. Header (Shared) */}
       <Header
         onNewPlan={() => {
-          setSelectedNode(null);
-          setNodes(nds => nds.map(node => ({ ...node, selected: false })));
-          setIsSidebarCollapsed(false);
+          setSqlQuery('');
+          setNodes([]);
+          setActiveAppTab('editor');
         }}
         onHistory={() => setIsHistoryOpen(true)}
         onConnect={() => setIsModalOpen(true)}
       />
 
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        <Sidebar
-          connectionInfo={connectionInfo}
-          sqlQuery={sqlQuery}
-          setSqlQuery={setSqlQuery}
-          onRunExplain={handleRunExplain}
-          onVisualizeJson={handleVisualizeJson}
-          loading={loading}
-          explainResult={explainResult}
-          isCollapsed={isSidebarCollapsed}
-          onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-        />
-
-        <div ref={mainContainerRef} style={{ flex: 1, position: 'relative', background: '#334155', display: 'flex', flexDirection: 'column' }}>
-
-          {/* SQL Overlay - Floating Panel */}
-          <SqlOverlay
-            sqlQuery={sqlQuery}
-            highlightText={highlightText}
-            visible={!!sqlQuery && !!explainResult && activeTab === 'plan'}
-            initialPosition={overlayPosition}
-          />
-
-          {/* Main Content Area */}
-
-          {/* Total Time Display */}
-          {totalTime && (
-            <div style={{ padding: '20px', zIndex: 5, color: 'white', borderBottom: '1px solid #475569' }}>
-              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600 }}>Total time: {totalTime}ms</h3>
-            </div>
-          )}
-
-          {error && (
-            <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: '#fee2e2', color: '#b91c1c', padding: '20px', borderRadius: '8px', zIndex: 10 }}>
-              Error: {error}
-            </div>
-          )}
-
-
-          {/* Tabs Header */}
-          <div style={{ display: 'flex', background: '#0f172a', borderBottom: '1px solid #475569' }}>
-            <div
-              onClick={() => setActiveTab('plan')}
-              style={{
-                padding: '10px 20px',
-                cursor: 'pointer',
-                color: activeTab === 'plan' ? '#e2e8f0' : '#64748b',
-                borderBottom: activeTab === 'plan' ? '2px solid #3b82f6' : 'none',
-                fontWeight: activeTab === 'plan' ? 600 : 500
-              }}
-            >
-              Explain Plan
-            </div>
-            <div
-              onClick={() => setActiveTab('results')}
-              style={{
-                padding: '10px 20px',
-                cursor: 'pointer',
-                color: activeTab === 'results' ? '#e2e8f0' : '#64748b',
-                borderBottom: activeTab === 'results' ? '2px solid #3b82f6' : 'none',
-                fontWeight: activeTab === 'results' ? 600 : 500
-              }}
-            >
-              Query Results
-            </div>
-          </div>
-
-          {/* Conditional Content */}
-          {activeTab === 'plan' ? (
-            <>
-              <div ref={flowWrapperRef} style={{ flex: 1, position: 'relative', minHeight: 0 }}>
-                <ReactFlow
-                  nodes={nodes}
-                  edges={edges}
-                  nodeTypes={nodeTypes}
-                  onNodeClick={onNodeClick}
-                  onNodesChange={onNodesChange}
-                  onPaneClick={() => setSelectedNode(null)}
-                  fitView
-                  onInit={setReactFlowInstance}
-                  style={{ background: '#334155' }}
-                  proOptions={{ hideAttribution: true }}
-                >
-                  <Background color="#475569" gap={20} />
-                  <Controls />
-                </ReactFlow>
-              </div>
-            </>
-          ) : (
-            <div style={{ flex: 1, overflow: 'hidden', background: '#1e293b' }}>
-              {executionResult ? (
-                <ResultsTable data={executionResult} />
-              ) : (
-                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', color: '#64748b' }}>
-                  <div>Run the query to see results here.</div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        <NodeDetailsPanel
-          selectedNode={selectedNode}
-          onClose={() => {
-            setSelectedNode(null);
-            setNodes(nds => nds.map(node => ({ ...node, selected: false })));
+      {/* 2. Top Tab Bar */}
+      <div style={{ display: 'flex', borderBottom: '1px solid #334155', background: '#1e293b' }}>
+        <button
+          onClick={() => setActiveAppTab('editor')}
+          style={{
+            padding: '10px 20px', background: activeAppTab === 'editor' ? '#334155' : 'transparent', color: activeAppTab === 'editor' ? '#fff' : '#94a3b8',
+            border: 'none', borderRight: '1px solid #334155', cursor: 'pointer', fontSize: '13px', fontWeight: 500
           }}
-          fullPlan={explainResult}
-        />
+        >
+          📝 Query Editor
+        </button>
+        <button
+          onClick={() => setActiveAppTab('tune')}
+          style={{
+            padding: '10px 20px', background: activeAppTab === 'tune' ? '#334155' : 'transparent', color: activeAppTab === 'tune' ? '#fff' : '#94a3b8',
+            border: 'none', borderRight: '1px solid #334155', cursor: 'pointer', fontSize: '13px', fontWeight: 500
+          }}
+        >
+          ⚡ Query Tune
+        </button>
+        <button
+          onClick={() => setActiveAppTab('server')}
+          style={{
+            padding: '10px 20px', background: activeAppTab === 'server' ? '#334155' : 'transparent', color: activeAppTab === 'server' ? '#fff' : '#94a3b8',
+            border: 'none', borderRight: '1px solid #334155', cursor: 'pointer', fontSize: '13px', fontWeight: 500
+          }}
+        >
+          🛠️ Server Tune
+        </button>
       </div>
 
+      {/* 3. Main Content Area */}
+      <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+
+        {/* Tab 1: Editor */}
+        <div style={{ height: '100%', display: activeAppTab === 'editor' ? 'block' : 'none' }}>
+          <QueryEditorTab
+            connectionInfo={connectionInfo}
+            sqlQuery={sqlQuery}
+            setSqlQuery={setSqlQuery}
+            onRun={() => handleRunExplain(true, false)}
+          />
+        </div>
+
+        {/* Tab 2: Tune */}
+        <div style={{ height: '100%', display: activeAppTab === 'tune' ? 'block' : 'none' }}>
+          <QueryTuneTab
+            activeTab={tuneActiveSubTab}
+            setActiveTab={setTuneActiveSubTab}
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onNodeClick={onNodeClick}
+            onPaneClick={() => setSelectedNode(null)}
+            selectedNode={selectedNode}
+            setSelectedNode={setSelectedNode}
+            explainResult={explainResult}
+            executionResult={executionResult}
+            loading={loading}
+            error={error}
+            sqlQuery={sqlQuery}
+            flowWrapperRef={flowWrapperRef}
+            reactFlowInstance={reactFlowInstance}
+            setReactFlowInstance={setReactFlowInstance}
+            onVisualizeJson={handleVisualizeJson}
+            nodeTypes={nodeTypes}
+          />
+        </div>
+
+        {/* Tab 3: Server */}
+        <div style={{ height: '100%', display: activeAppTab === 'server' ? 'block' : 'none' }}>
+          <ServerTuneTab connectionInfo={connectionInfo} />
+        </div>
+
+      </div>
+
+      {/* Modals */}
       <ConnectionModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
@@ -439,7 +289,7 @@ function App() {
         onClose={() => setIsHistoryOpen(false)}
         onSelectQuery={(query) => {
           setSqlQuery(query);
-          // Optionally clear current plan? Maybe keep it until they hit Explain.
+          setActiveAppTab('editor');
         }}
       />
     </div>

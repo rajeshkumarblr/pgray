@@ -83,11 +83,6 @@ const NodeDetailsPanel: React.FC<NodeDetailsPanelProps & { fullPlan: any }> = ({
         });
     };
 
-    if (!selectedNode) return null;
-
-    const { label, cost, rows, actual_rows, actual_time, details } = selectedNode.data;
-    const rowsRemoved = details?.['Rows Removed by Filter'];
-
     // Extract root plan for JSON view
     let rootPlan = fullPlan;
     if (Array.isArray(fullPlan) && fullPlan.length > 0 && fullPlan[0].Plan) {
@@ -95,6 +90,13 @@ const NodeDetailsPanel: React.FC<NodeDetailsPanelProps & { fullPlan: any }> = ({
     } else if (fullPlan && fullPlan.Plan) {
         rootPlan = fullPlan.Plan;
     }
+
+    // Prepare content based on selection
+    const headerTitle = selectedNode ? selectedNode.data.label : "Plan Insights";
+    const headerSubtitle = selectedNode
+        ? (selectedNode.data.actual_time !== undefined ? `${selectedNode.data.actual_time.toFixed(3)}ms` : `Cost: ${selectedNode.data.cost}`) + ` • ${selectedNode.data.actual_rows ?? selectedNode.data.rows} rows`
+        : "Select a node to view details";
+    const nodeIdDisplay = selectedNode ? selectedNode.id.replace('node_', '') : null;
 
     return (
         <div style={{
@@ -114,24 +116,28 @@ const NodeDetailsPanel: React.FC<NodeDetailsPanelProps & { fullPlan: any }> = ({
                 <div style={{ padding: '20px 20px 10px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <div style={{ flex: 1 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <div style={{
-                                background: '#0f172a', color: 'white', fontWeight: 'bold',
-                                borderRadius: '4px', padding: '4px 8px', fontSize: '12px'
-                            }}>
-                                #{selectedNode.id.replace('node_', '')}
-                            </div>
-                            <h2 style={{ margin: 0, fontSize: '18px', color: '#f1f5f9' }}>{label}</h2>
+                            {nodeIdDisplay && (
+                                <div style={{
+                                    background: '#0f172a', color: 'white', fontWeight: 'bold',
+                                    borderRadius: '4px', padding: '4px 8px', fontSize: '12px'
+                                }}>
+                                    #{nodeIdDisplay}
+                                </div>
+                            )}
+                            <h2 style={{ margin: 0, fontSize: '18px', color: '#f1f5f9' }}>{headerTitle}</h2>
                         </div>
                         <div style={{ marginTop: '5px', color: '#94a3b8', fontSize: '13px' }}>
-                            {actual_time !== undefined ? `${actual_time.toFixed(3)}ms` : `Cost: ${cost}`} • {actual_rows ?? rows} rows
+                            {headerSubtitle}
                         </div>
                     </div>
-                    <button
-                        onClick={onClose}
-                        style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '20px', color: '#94a3b8', padding: '0 5px' }}
-                    >
-                        &times;
-                    </button>
+                    {selectedNode && (
+                        <button
+                            onClick={onClose}
+                            style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '20px', color: '#94a3b8', padding: '0 5px' }}
+                        >
+                            &times;
+                        </button>
+                    )}
                 </div>
 
                 {/* Tabs */}
@@ -171,35 +177,40 @@ const NodeDetailsPanel: React.FC<NodeDetailsPanelProps & { fullPlan: any }> = ({
             <div style={{ padding: '20px', overflowY: 'auto', flex: 1 }}>
 
                 {activeTab === 'visual' ? (
-                    <>
-                        {rowsRemoved > 0 && (
-                            <div style={{ marginBottom: '20px', paddingBottom: '20px', borderBottom: '1px solid #334155' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#f87171', fontWeight: 'bold', fontSize: '14px', marginBottom: '8px' }}>
-                                    <span style={{ background: '#450a0a', padding: '2px 6px', borderRadius: '4px', border: '1px solid #7f1d1d' }}>!</span>
-                                    Rows Discarded: {rowsRemoved.toLocaleString()}
+                    selectedNode ? (
+                        <>
+                            {selectedNode.data.details?.['Rows Removed by Filter'] > 0 && (
+                                <div style={{ marginBottom: '20px', paddingBottom: '20px', borderBottom: '1px solid #334155' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#f87171', fontWeight: 'bold', fontSize: '14px', marginBottom: '8px' }}>
+                                        <span style={{ background: '#450a0a', padding: '2px 6px', borderRadius: '4px', border: '1px solid #7f1d1d' }}>!</span>
+                                        Rows Discarded: {selectedNode.data.details['Rows Removed by Filter'].toLocaleString()}
+                                    </div>
+                                    <div style={{ fontSize: '13px', color: '#9ca3af', lineHeight: 1.5 }}>
+                                        This node discards {selectedNode.data.details['Rows Removed by Filter'].toLocaleString()} rows produced by its subtree.
+                                        <br /><br />
+                                        <strong>Filter:</strong> <code style={{ color: '#e2e8f0' }}>{selectedNode.data.details['Filter']}</code>
+                                    </div>
                                 </div>
-                                <div style={{ fontSize: '13px', color: '#9ca3af', lineHeight: 1.5 }}>
-                                    This node discards {rowsRemoved.toLocaleString()} rows produced by its subtree.
-                                    <br /><br />
-                                    <strong>Filter:</strong> <code style={{ color: '#e2e8f0' }}>{details?.['Filter']}</code>
-                                </div>
-                            </div>
-                        )}
+                            )}
 
-                        <h3 style={{ fontSize: '12px', textTransform: 'uppercase', color: '#64748b', letterSpacing: '0.05em', marginBottom: '10px' }}>Operation Detail</h3>
-                        {renderObjectTree(details)}
-                    </>
+                            <h3 style={{ fontSize: '12px', textTransform: 'uppercase', color: '#64748b', letterSpacing: '0.05em', marginBottom: '10px' }}>Operation Detail</h3>
+                            {renderObjectTree(selectedNode.data.details)}
+                        </>
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '50%', color: '#64748b', textAlign: 'center' }}>
+                            <div style={{ fontSize: '40px', marginBottom: '10px', opacity: 0.5 }}>🔍</div>
+                            <div>Select a node in the graph<br />to view execution details.</div>
+                        </div>
+                    )
                 ) : (
                     <div style={{ overflowX: 'auto' }}>
                         {rootPlan ? (
-                            <JsonTree data={rootPlan} selectedNodeDetails={details} />
+                            <JsonTree data={rootPlan} selectedNodeDetails={selectedNode?.data?.details} />
                         ) : (
                             <div style={{ color: '#64748b' }}>No plan data available</div>
                         )}
                     </div>
                 )}
-
-                <div style={{ height: '50px' }}></div>
             </div>
         </div>
     );

@@ -1,4 +1,4 @@
-
+from typing import Optional
 from pydantic import BaseModel, Field
 from pydantic.config import ConfigDict
 
@@ -24,3 +24,16 @@ class QueryRequest(BaseModel):
     connection: ConnectionInfo
     query: str = Field(..., description="SQL query to execute")
     limit: int = Field(100, description="Max rows to fetch")
+
+class GenerateSqlRequest(BaseModel):
+    prompt: str
+    schema_context: Optional[str] = None
+    schema_data: Optional[dict] = None
+    history: Optional[list] = None
+    model: Optional[str] = "qwen2.5-coder"
+    connection: Optional[ConnectionInfo] = None # Added for server-side validation
+
+class ExplainSqlRequest(BaseModel):
+    query: str
+    schema_data: Optional[dict] = None
+    model: Optional[str] = "qwen2.5-coder"
