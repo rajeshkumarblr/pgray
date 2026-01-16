@@ -583,6 +583,7 @@ const QueryEditorTab: React.FC<QueryEditorTabProps> = ({ connectionInfo, sqlQuer
                     schema={schema}
                     onApplyCode={handleApplyCode}
                     connectionInfo={connectionInfo}
+                    onStreamCode={(code) => setSqlQuery(code)}
                 />
             </div>
         </div>

@@ -35,7 +35,8 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
 *   **Query History**: Every executed query is stored locally (SQLite) and accessible via **History**.
 *   **AI SQL Assistant**:
     *   **Text-to-SQL**: Generate SQL queries from natural language questions using a local LLM (Ollama).
-    *   **Streaming Responses**: Real-time code generation for a responsive experience.
+    *   **Direct Streaming**: generated SQL streams **directly** into the editor in real-time, bypassing the need for manual copy-paste.
+    *   **Self-Explanatory**: AI adds inline comments (`-- explanation`) to complex query logic.
     *   **Smart Explanation**: dedicated "Explain" button provides a natural language breakdown of complex queries in a side-by-side view.
 *   **Resizable Interface**:
     *   **Query Results**: Draggable results pane with maximize/restore capability.

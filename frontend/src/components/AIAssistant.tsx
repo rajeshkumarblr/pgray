@@ -38,9 +38,10 @@ interface AIAssistantProps {
     schema: any;
     onApplyCode: (code: string) => void;
     connectionInfo: any;
+    onStreamCode?: (code: string) => void;
 }
 
-const AIAssistant: React.FC<AIAssistantProps> = ({ schema, onApplyCode, connectionInfo }) => {
+const AIAssistant: React.FC<AIAssistantProps> = ({ schema, onApplyCode, connectionInfo, onStreamCode }) => {
     const [messages, setMessages] = useState<Message[]>(() => {
         const saved = localStorage.getItem('pgray_chat_history');
         if (saved) {
@@ -103,22 +104,20 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ schema, onApplyCode, connecti
         setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
         setInput('');
         setLoading(true);
-        setHistoryIndex(-1); // Reset history index on send
+        setHistoryIndex(-1);
 
-        // Reset height
         if (inputRef.current) {
             inputRef.current.style.height = 'auto';
         }
 
         try {
-            // STREAMING IMPLEMENTATION
             const response = await fetch('http://localhost:9000/api/generate_sql_stream', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     prompt: userMsg,
                     schema_data: schema,
-                    history: messages, // Note: History processing is skipped in backend for now but passing it for future
+                    history: messages,
                     model: model,
                     connection: connectionInfo
                 })
@@ -130,10 +129,12 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ schema, onApplyCode, connecti
             const decoder = new TextDecoder();
             let done = false;
             let currentContent = "";
-            // Stream doesn't return prompt debug info currently
 
-            // Add placeholder message for Assistant
-            setMessages(prev => [...prev, { role: 'assistant', content: "" }]);
+            const isDirectStream = !!onStreamCode;
+
+            if (!isDirectStream) {
+                setMessages(prev => [...prev, { role: 'assistant', content: "" }]);
+            }
 
             while (!done) {
                 const { value, done: doneReading } = await reader.read();
@@ -142,26 +143,34 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ schema, onApplyCode, connecti
                     const chunk = decoder.decode(value, { stream: true });
                     currentContent += chunk;
 
-                    // Update the last message (Assistant's placeholder)
-                    setMessages(prev => {
-                        const newMsgs = [...prev];
-                        const lastMsg = newMsgs[newMsgs.length - 1];
-                        if (lastMsg.role === 'assistant') {
-                            lastMsg.content = currentContent;
-                            // Re-run heuristics (optional optimization: only run occasionally)
-                            // We rely on the rendering logic to handle partial parsing
-                        }
-                        return newMsgs;
-                    });
+                    if (isDirectStream) {
+                        // Strip Markdown (```sql ... ```)
+                        let cleanText = currentContent.replace(/^```sql\s*|^```\s*/i, '');
+                        // Also strip trailing markdown if it resembles the end block
+                        cleanText = cleanText.replace(/\s*```$/, '');
+
+                        onStreamCode(cleanText);
+                    } else {
+                        setMessages(prev => {
+                            const newMsgs = [...prev];
+                            const lastMsg = newMsgs[newMsgs.length - 1];
+                            if (lastMsg.role === 'assistant') {
+                                lastMsg.content = currentContent;
+                            }
+                            return newMsgs;
+                        });
+                    }
                 }
             }
-            // Final update to ensure everything is flushed
-            setMessages(prev => {
-                const newMsgs = [...prev];
-                const lastMsg = newMsgs[newMsgs.length - 1];
-                lastMsg.content = currentContent;
-                return newMsgs;
-            });
+
+            if (!isDirectStream) {
+                setMessages(prev => {
+                    const newMsgs = [...prev];
+                    const lastMsg = newMsgs[newMsgs.length - 1];
+                    lastMsg.content = currentContent;
+                    return newMsgs;
+                });
+            }
 
         } catch (error) {
             console.error(error);
@@ -208,7 +217,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ schema, onApplyCode, connecti
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0f172a', borderLeft: '1px solid #334155', position: 'relative' }}>
             <div style={{ padding: '15px', borderBottom: '1px solid #1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <h3 style={{ fontSize: '13px', fontWeight: 'bold', color: '#a855f7', margin: 0 }}>AI ASSISTANT</h3>
+                    <h3 style={{ fontSize: '13px', fontWeight: 'bold', color: '#a855f7', margin: 0 }}>QUERY AI ASSISTANT</h3>
                     <select
                         value={model}
                         onChange={(e) => setModel(e.target.value)}
