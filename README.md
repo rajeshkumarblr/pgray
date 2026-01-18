@@ -39,6 +39,7 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
     *   **Visual Feedback**:
         *   **Progress Bar**: Visual indicator during AI generation.
         *   **Checkmark Status**: Simple green checkmark verifies updates (avoiding chat clutter).
+    *   **Auto-Restore Session**: Chat history and SQL drafts are automatically saved and restored on reload.
     *   **Diff View**: Dedicated toggleable Diff View to compare the AI's changes against your previous query side-by-side.
     *   **Self-Explanatory**: AI adds inline comments (`-- explanation`) to complex query logic.
     *   **Smart Explanation**: dedicated "Explain" button provides a natural language breakdown of complex queries in a side-by-side view.

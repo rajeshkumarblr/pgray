@@ -24,13 +24,20 @@ const QueryEditorTab: React.FC<QueryEditorTabProps> = ({ connectionInfo, sqlQuer
     const [isExplaining, setIsExplaining] = useState(false);
 
     // AI Context History
-    const [chatHistory, setChatHistory] = useState<{ role: 'user' | 'assistant', content: string, status?: 'success' | 'error' | 'pending' }[]>([]);
+    const [chatHistory, setChatHistory] = useState<{ role: 'user' | 'assistant', content: string, status?: 'success' | 'error' | 'pending' }[]>(() => {
+        const saved = localStorage.getItem('pgray_chat_history');
+        return saved ? JSON.parse(saved) : [];
+    });
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-    const [sessionTitle, setSessionTitle] = useState('Untitled Session');
+    const [sessionTitle, setSessionTitle] = useState(() => {
+        return localStorage.getItem('pgray_session_title') || 'Untitled Session';
+    });
 
     // Diff View State
     const [showDiff, setShowDiff] = useState(false);
-    const [diffBaseQuery, setDiffBaseQuery] = useState('');
+    const [diffBaseQuery, setDiffBaseQuery] = useState(() => {
+        return localStorage.getItem('pgray_diff_base') || '';
+    });
 
     // Local execution state
     const [executionResult, setExecutionResult] = useState<any>(null);
@@ -70,6 +77,18 @@ const QueryEditorTab: React.FC<QueryEditorTabProps> = ({ connectionInfo, sqlQuer
             }
         }
     };
+
+    useEffect(() => {
+        localStorage.setItem('pgray_chat_history', JSON.stringify(chatHistory));
+    }, [chatHistory]);
+
+    useEffect(() => {
+        localStorage.setItem('pgray_session_title', sessionTitle);
+    }, [sessionTitle]);
+
+    useEffect(() => {
+        localStorage.setItem('pgray_diff_base', diffBaseQuery);
+    }, [diffBaseQuery]);
 
     useEffect(() => {
         if (isResizing) {
@@ -137,11 +156,15 @@ const QueryEditorTab: React.FC<QueryEditorTabProps> = ({ connectionInfo, sqlQuer
             const data = await getSavedQueryContent(name);
             setSqlQuery(data.sql);
             setChatHistory(data.history || []);
+            setSessionTitle(name);
+            // Clear local storage for clean slate when loading saved session
+            localStorage.setItem('pgray_chat_history', JSON.stringify(data.history || []));
+            localStorage.setItem('pgray_session_title', name);
+
             if (data.history && data.history.length > 0) {
                 setIsSidebarOpen(true);
             }
             setSelectedSavedQuery(name);
-            setSessionTitle(name);
         } catch (e) {
             alert("Failed to load session");
         }
@@ -564,8 +587,16 @@ const QueryEditorTab: React.FC<QueryEditorTabProps> = ({ connectionInfo, sqlQuer
                                 if (confirm("Clear current query and history?")) {
                                     setSqlQuery('');
                                     setChatHistory([]);
+                                    setSessionTitle('Untitled Session');
+                                    setDiffBaseQuery('');
                                     setExecutionResult(null);
                                     setPlanText(null);
+
+                                    // Clear storage
+                                    localStorage.removeItem('pgray_chat_history');
+                                    localStorage.removeItem('pgray_session_title');
+                                    localStorage.removeItem('pgray_diff_base');
+
                                     setIsSidebarOpen(true); // Keep open for next query
                                 }
                             }}

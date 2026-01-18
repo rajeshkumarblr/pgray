@@ -16,8 +16,15 @@ function App() {
   const [isModalOpen, setIsModalOpen] = useState(true);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [connectionInfo, setConnectionInfo] = useState<any>(null);
-  const [sqlQuery, setSqlQuery] = useState('');
+  const [sqlQuery, setSqlQuery] = useState(() => {
+    return localStorage.getItem('pgray_sql_query') || '';
+  });
   const [explainResult, setExplainResult] = useState<any>(null);
+
+  // Persist SQL Query
+  useEffect(() => {
+    localStorage.setItem('pgray_sql_query', sqlQuery);
+  }, [sqlQuery]);
   const [executionResult, setExecutionResult] = useState<any>(null);
   const [tuneActiveSubTab, setTuneActiveSubTab] = useState<'plan' | 'results'>('plan');
 
