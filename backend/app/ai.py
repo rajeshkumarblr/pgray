@@ -212,6 +212,7 @@ def generate_sql_stream(prompt: str, schema_context: str = None, schema_data: di
     # I will inline the essential prompt logic for the stream function to be safe and self-contained.
     
     # ... (Prompt Construction similar to generate_sql) ...
+    # Always use the standard prompt for full SQL generation
     base_prompt = (
         "You are a helpful SQL Assistant. Your goal is to generate correct, efficient SQL queries.\n\n"
         "### Database Schema\n"
@@ -224,27 +225,56 @@ def generate_sql_stream(prompt: str, schema_context: str = None, schema_data: di
         "2. Add helpful inline comments (`-- explanation`) to describe the logic.\n"
         "3. Ensure column names and table names exist in the schema.\n"
         "4. Use `NULLS LAST` for sorting.\n"
-        "5. Use `limit 10` if the result could be large.\n"
-        "6. Use CTEs (WITH clauses) ONLY if the query is complex (e.g. multiple aggregations). For simple top-N queries, a standard SELECT is preferred.\n"
+        "5. If you are refining an existing query, REWRITE THE WHOLE QUERY with the changes applied.\n"
     )
+
 
     payload = {
         "model": model, 
         "prompt": base_prompt,
         "stream": True,  # ENABLE STREAMING
-        "options": { "temperature": 0.2 }
+        "options": { "temperature": 0.1 } # Lower temperature for diffs
     }
 
     try:
         with requests.post(OLLAMA_URL, json=payload, stream=True, timeout=120) as r:
             r.raise_for_status()
+            full_response = ""
             for line in r.iter_lines():
                 if line:
                     body = json.loads(line)
                     token = body.get("response", "")
                     if token:
+                        full_response += token
                         yield token
+            logger.info(f"✅ Generated Stream:\n{full_response}")
     except Exception as e:
         logger.error(f"Stream failed: {e}")
         yield f"\n-- Error: {str(e)}"
 
+
+def generate_title(prompt: str, model: str = "qwen2.5-coder:14b") -> str:
+    """
+    Generates a short 3-5 word title for the session based on the prompt.
+    """
+    sys_prompt = (
+        "You are a helpful assistant. Summarize the following user request into a short, concise title (3-5 words max).\n"
+        "Do NOT include quotes. Do NOT include 'Title:'. Just the words.\n"
+        "Example: 'Top 5 Movies Revenue'"
+    )
+    
+    payload = {
+        "model": model, 
+        "prompt": f"{sys_prompt}\nUser Request: {prompt}\nTitle:",
+        "stream": False,
+        "options": { "temperature": 0.3 }
+    }
+    
+    try:
+        response = requests.post(OLLAMA_URL, json=payload, timeout=10)
+        response.raise_for_status()
+        title = response.json().get("response", "").strip().strip('"').strip("'")
+        return title if title else "Untitled Session"
+    except Exception as e:
+        logger.error(f"Title generation failed: {e}")
+        return "Untitled Session"

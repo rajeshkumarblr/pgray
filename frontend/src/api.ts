@@ -31,9 +31,9 @@ export const getSavedQueries = async () => {
     }
 };
 
-export const saveQuery = async (name: string, sql: string) => {
+export const saveQuery = async (name: string, sql: string, history: any[] = []) => {
     try {
-        const response = await axios.post(`${API_BASE_URL}/api/saved_queries`, { name, sql });
+        const response = await axios.post(`${API_BASE_URL}/api/saved_queries`, { name, sql, history });
         return response.data;
     } catch (error) {
         console.error("Error saving query:", error);

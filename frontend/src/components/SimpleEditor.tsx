@@ -9,9 +9,10 @@ interface SimpleEditorProps {
     placeholder?: string;
     style?: React.CSSProperties;
     errorLine?: number | null;
+    highlightLines?: number[]; // indices 1-based
 }
 
-const SimpleEditor: React.FC<SimpleEditorProps> = ({ value, onChange, language = 'sql', placeholder, style, errorLine }) => {
+const SimpleEditor: React.FC<SimpleEditorProps> = ({ value, onChange, language = 'sql', placeholder, style, errorLine, highlightLines = [] }) => {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const codeRef = useRef<HTMLDivElement>(null);
     const lineNumbersRef = useRef<HTMLDivElement>(null);
@@ -127,6 +128,10 @@ const SimpleEditor: React.FC<SimpleEditorProps> = ({ value, onChange, language =
                             const style: React.CSSProperties = { display: 'block' };
                             if (errorLine === lineNumber) {
                                 style.backgroundColor = 'rgba(239, 68, 68, 0.2)';
+                            } else if (highlightLines.includes(lineNumber)) {
+                                style.backgroundColor = 'rgba(34, 197, 94, 0.35)';
+                                style.borderLeft = '4px solid #4ade80'; // Bright green bar
+                                style.fontWeight = 'bold';
                             }
                             return { style };
                         }}

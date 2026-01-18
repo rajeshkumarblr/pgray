@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { getSchema, executeQuery, getSavedQueries, saveQuery, getSavedQueryContent, executeExplain, explainSql } from '../../api';
 import SimpleEditor from '../SimpleEditor';
-import AIAssistant from '../AIAssistant';
+import AIChatSidebar from '../AIChatSidebar';
 import ResultsTable from '../ResultsTable';
+import DiffView from '../DiffView';
+import * as Diff from 'diff';
 
 interface QueryEditorTabProps {
     connectionInfo: any;
@@ -21,6 +23,15 @@ const QueryEditorTab: React.FC<QueryEditorTabProps> = ({ connectionInfo, sqlQuer
     const [explanation, setExplanation] = useState<string | null>(null);
     const [isExplaining, setIsExplaining] = useState(false);
 
+    // AI Context History
+    const [chatHistory, setChatHistory] = useState<{ role: 'user' | 'assistant', content: string, status?: 'success' | 'error' | 'pending' }[]>([]);
+    const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+    const [sessionTitle, setSessionTitle] = useState('Untitled Session');
+
+    // Diff View State
+    const [showDiff, setShowDiff] = useState(false);
+    const [diffBaseQuery, setDiffBaseQuery] = useState('');
+
     // Local execution state
     const [executionResult, setExecutionResult] = useState<any>(null);
     const [isExecuting, setIsExecuting] = useState(false);
@@ -28,6 +39,7 @@ const QueryEditorTab: React.FC<QueryEditorTabProps> = ({ connectionInfo, sqlQuer
 
     const [limit, setLimit] = useState(10);
     const [isResultsExpanded, setIsResultsExpanded] = useState(false);
+    const [highlightedLines, setHighlightedLines] = useState<number[]>([]);
 
     // Resize & Layout State
     const [resultsHeight, setResultsHeight] = useState(300);
@@ -107,14 +119,14 @@ const QueryEditorTab: React.FC<QueryEditorTabProps> = ({ connectionInfo, sqlQuer
     }, []);
 
     const handleSaveQuery = async () => {
-        const name = prompt("Enter name for this query:");
+        const name = prompt("Enter name for this query/session:", sessionTitle);
         if (name) {
             try {
-                await saveQuery(name, sqlQuery);
-                alert("Query saved!");
+                await saveQuery(name, sqlQuery, chatHistory);
+                alert("Session saved!");
                 fetchSavedQueries();
             } catch (e) {
-                alert("Failed to save query");
+                alert("Failed to save session");
             }
         }
     };
@@ -124,9 +136,14 @@ const QueryEditorTab: React.FC<QueryEditorTabProps> = ({ connectionInfo, sqlQuer
         try {
             const data = await getSavedQueryContent(name);
             setSqlQuery(data.sql);
+            setChatHistory(data.history || []);
+            if (data.history && data.history.length > 0) {
+                setIsSidebarOpen(true);
+            }
             setSelectedSavedQuery(name);
+            setSessionTitle(name);
         } catch (e) {
-            alert("Failed to load query");
+            alert("Failed to load session");
         }
     };
 
@@ -199,28 +216,171 @@ const QueryEditorTab: React.FC<QueryEditorTabProps> = ({ connectionInfo, sqlQuer
         }
     }, [connectionInfo]);
 
-    const handleExecute = async () => {
-        if (!connectionInfo || !sqlQuery) return; // Silent return
+    // ... (Keep existing state)
+    const [aiLoading, setAiLoading] = useState(false);
+
+    // Centralized AI Streaming & Auto-Exec
+    const handleAIStream = async (userMsg: string) => {
+        // Trigger Smart Title Generation
+        if (chatHistory.length === 0 && sessionTitle === 'Untitled Session') {
+            fetch('http://localhost:9000/api/generate_title', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt: userMsg })
+            })
+                .then(res => res.json())
+                .then(data => { if (data.title) setSessionTitle(data.title); })
+                .catch(err => console.error("Title gen failed", err));
+        }
+
+        setChatHistory(prev => [...prev, { role: 'user', content: userMsg }]);
+        setIsSidebarOpen(true);
+        setAiLoading(true);
+        setHighlightedLines([]); // Clear previous
+        const previousQuery = sqlQuery; // Capture state for diffing
+        setDiffBaseQuery(previousQuery); // Persist for Diff View
+
+        try {
+            // Standard Prompt (Always send history for context, but backend prompts full rewrite)
+            const promptToSend = `Existing SQL:\n\`\`\`sql\n${sqlQuery}\n\`\`\`\n\nUser Request: ${userMsg}`;
+
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 60000);
+
+            const response = await fetch('http://localhost:9000/api/generate_sql_stream', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    prompt: promptToSend, // Backend will ignore "Existing SQL" prefix structure but use it as content
+                    schema_data: schema,
+                    history: chatHistory,
+                    model: "qwen2.5-coder:14b", // or 7b
+                    connection: connectionInfo
+                }),
+                signal: controller.signal
+            });
+
+            clearTimeout(timeoutId);
+            if (!response.ok || !response.body) {
+                throw new Error(response.statusText || "Network response was not ok");
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let done = false;
+            let streamBuffer = "";
+
+
+            while (!done) {
+                const { value, done: doneReading } = await reader.read();
+                done = doneReading;
+                if (value) {
+                    const chunk = decoder.decode(value, { stream: true });
+                    streamBuffer += chunk;
+
+                    // Simple live update stripping markdown
+                    let cleanText = streamBuffer.replace(/^```sql\s*|^```\s*/i, '');
+                    cleanText = cleanText.replace(/\s*```$/, '');
+                    if (cleanText.trim()) {
+                        setSqlQuery(cleanText);
+                    }
+                }
+            }
+
+            // Final Polish
+            let finalQuery = streamBuffer.replace(/^```sql\s*|^```\s*/i, '').replace(/\s*```$/, '');
+
+            // Safety: If response was empty or just whitespace, revert or warn
+            if (!finalQuery.trim()) {
+                console.warn("AI returned empty response, reverting to previous");
+                setSqlQuery(previousQuery); // Revert
+                throw new Error("AI returned no SQL");
+            }
+
+            setSqlQuery(finalQuery);
+
+            // Compute Diff (Client Side)
+            try {
+                const changes = Diff.diffLines(previousQuery || '', finalQuery);
+                const newHighlights: number[] = [];
+                let currentLine = 1;
+
+                changes.forEach(part => {
+                    const lineCount = part.count || 0;
+                    if (part.added) {
+                        for (let i = 0; i < lineCount; i++) {
+                            newHighlights.push(currentLine + i);
+                        }
+                        currentLine += lineCount;
+                    } else if (part.removed) {
+                        // Do NOT advance currentLine for removed parts (they are not in the new file)
+                    } else {
+                        // Unchanged
+                        currentLine += lineCount;
+                    }
+                });
+
+                setHighlightedLines(newHighlights);
+
+                if (newHighlights.length > 0) {
+                    // Update last user message to success
+                    setChatHistory(prev => {
+                        const newHistory = [...prev];
+                        const lastIndex = newHistory.length - 1;
+                        if (lastIndex >= 0 && newHistory[lastIndex].role === 'user') {
+                            newHistory[lastIndex] = { ...newHistory[lastIndex], status: 'success' };
+                        }
+                        return newHistory;
+                    });
+                } else {
+                    setChatHistory(prev => {
+                        const newHistory = [...prev];
+                        const lastIndex = newHistory.length - 1;
+                        if (lastIndex >= 0 && newHistory[lastIndex].role === 'user') {
+                            newHistory[lastIndex] = { ...newHistory[lastIndex], status: 'success' }; // Still success even if no changes
+                        }
+                        // Optionally add a small system note if really needed, but user said "tick mark is enough"
+                        return newHistory;
+                    });
+                }
+
+            } catch (diffErr) {
+                console.error("Diff computation failed", diffErr);
+            }
+
+            // Auto-Execute
+            handleExecute(finalQuery);
+
+        } catch (error: any) {
+            console.error(error);
+            setChatHistory(prev => [...prev, { role: 'assistant', content: `❌ Error: ${error.message || error}` }]);
+        } finally {
+            setAiLoading(false);
+        }
+    };
+
+    // Modified handleExecute to accept optional query
+    const handleExecute = async (queryOverride?: string) => {
+        const queryToRun = queryOverride || sqlQuery;
+        if (!connectionInfo || !queryToRun) return;
 
         setIsExecuting(true);
         setExecError(null);
         setExecutionResult(null);
-        setPlanText(null); // Clear plan
+        setPlanText(null);
 
         // Ensure results are visible
         if (!isResultsExpanded) setIsResultsExpanded(true);
-        // If minimized/collapsed via height, restore reasonable height
         if (resultsHeight < 50) setResultsHeight(300);
 
-        setActiveTab('results'); // Reset to results
+        setActiveTab('results');
 
         try {
-            const res = await executeQuery(connectionInfo, sqlQuery, limit);
+            const res = await executeQuery(connectionInfo, queryToRun, limit);
             setExecutionResult(res.data);
 
-            // Also fetch plan (cheap) for the tab
             try {
-                const planRes = await executeExplain(connectionInfo, sqlQuery, false); // Analyze = false for speed/safety
+                const planRes = await executeExplain(connectionInfo, queryToRun, false);
                 setPlanText(planRes.data.text);
             } catch (e) {
                 console.warn("Could not fetch plan automatically", e);
@@ -232,11 +392,6 @@ const QueryEditorTab: React.FC<QueryEditorTabProps> = ({ connectionInfo, sqlQuer
         } finally {
             setIsExecuting(false);
         }
-    };
-
-    const handleApplyCode = (code: string) => {
-        setSqlQuery(code);
-        // Optional: Auto-run? No, user explicitly asked for "Copy to Editor"
     };
 
     return (
@@ -307,7 +462,10 @@ const QueryEditorTab: React.FC<QueryEditorTabProps> = ({ connectionInfo, sqlQuer
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#1e293b' }}>
                 <div style={{ padding: '8px 10px', background: '#334155', borderBottom: '1px solid #475569', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span style={{ fontWeight: 600, fontSize: '13px' }}>Query Editor</span>
+
+                        <span style={{ fontWeight: 600, fontSize: '13px' }}>
+                            {sessionTitle !== 'Untitled Session' ? sessionTitle : 'Query Editor'}
+                        </span>
                         <select
                             value={selectedSavedQuery}
                             onChange={(e) => handleLoadQuery(e.target.value)}
@@ -324,7 +482,21 @@ const QueryEditorTab: React.FC<QueryEditorTabProps> = ({ connectionInfo, sqlQuer
 
                     <div style={{ display: 'flex', gap: '8px' }}>
                         <button
-                            onClick={handleExecute}
+                            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                            style={{
+                                background: isSidebarOpen ? '#334155' : 'transparent',
+                                border: '1px solid #475569',
+                                color: isSidebarOpen ? 'white' : '#cbd5e1',
+                                padding: '4px 12px', borderRadius: '4px',
+                                cursor: 'pointer', fontSize: '12px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px'
+                            }}
+                            title={isSidebarOpen ? "Close AI Assistant" : "Open AI Assistant"}
+                        >
+                            ✨ AI Chat
+                        </button>
+
+                        <button
+                            onClick={() => handleExecute()}
                             disabled={isExecuting}
                             style={{
                                 background: '#22c55e', color: 'white', border: 'none', padding: '4px 12px', borderRadius: '4px',
@@ -355,6 +527,20 @@ const QueryEditorTab: React.FC<QueryEditorTabProps> = ({ connectionInfo, sqlQuer
                         >
                             💾 Save
                         </button>
+
+                        <button
+                            onClick={() => setShowDiff(!showDiff)}
+                            style={{
+                                background: showDiff ? '#475569' : 'transparent',
+                                border: '1px solid #475569',
+                                color: showDiff ? 'white' : '#cbd5e1',
+                                padding: '4px 12px', borderRadius: '4px',
+                                cursor: 'pointer', fontSize: '12px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px'
+                            }}
+                            title="Toggle Diff View"
+                        >
+                            ⚖️ Diff
+                        </button>
                         <button
                             onClick={() => copyText(sqlQuery)}
                             style={{
@@ -373,6 +559,30 @@ const QueryEditorTab: React.FC<QueryEditorTabProps> = ({ connectionInfo, sqlQuer
                                 <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
                             </svg>
                         </button>
+                        <button
+                            onClick={() => {
+                                if (confirm("Clear current query and history?")) {
+                                    setSqlQuery('');
+                                    setChatHistory([]);
+                                    setExecutionResult(null);
+                                    setPlanText(null);
+                                    setIsSidebarOpen(true); // Keep open for next query
+                                }
+                            }}
+                            style={{
+                                background: 'transparent',
+                                border: '1px solid #475569',
+                                color: '#cbd5e1',
+                                padding: '4px 8px',
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                fontSize: '11px', fontWeight: 600
+                            }}
+                            title="Clear Plan (Reset Editor & History)"
+                        >
+                            🗑️
+                        </button>
                     </div>
                 </div>
 
@@ -381,24 +591,43 @@ const QueryEditorTab: React.FC<QueryEditorTabProps> = ({ connectionInfo, sqlQuer
                     flex: isMaximized ? '0' : '1', // Hide if maximized
                     display: isMaximized ? 'none' : 'flex',
                     flexDirection: 'row', // Horizontal split
-                    // borderBottom: '1px solid #475569', // Moved to resize handle
                     transition: 'flex 0.1s', // Faster transition
                     minHeight: 0,
                     overflow: 'hidden'
                 }}>
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                        <SimpleEditor
-                            value={sqlQuery}
-                            onChange={(val) => {
-                                setSqlQuery(val);
-                                if (errorLine) setErrorLine(null); // Clear error highlight on edit
-                            }}
-                            language="sql"
-                            placeholder="SELECT * FROM ..."
-                            style={{ flex: 1 }}
-                            errorLine={errorLine}
-                        />
+                        {showDiff ? (
+                            <DiffView
+                                oldCode={diffBaseQuery}
+                                newCode={sqlQuery}
+                                onClose={() => setShowDiff(false)}
+                            />
+                        ) : (
+                            <SimpleEditor
+                                value={sqlQuery}
+                                onChange={(val) => {
+                                    setSqlQuery(val);
+                                    if (errorLine) setErrorLine(null); // Clear error highlight on edit
+                                }}
+                                language="sql"
+                                placeholder="SELECT * FROM ..."
+                                style={{ flex: 1 }}
+                                errorLine={errorLine}
+                                highlightLines={highlightedLines}
+                            />
+                        )}
+                        {/* AI Input moved to Sidebar */}
                     </div>
+
+                    {/* Chat History Sidebar */}
+                    {isSidebarOpen && (
+                        <AIChatSidebar
+                            messages={chatHistory}
+                            onClose={() => setIsSidebarOpen(false)}
+                            onSend={handleAIStream}
+                            loading={aiLoading}
+                        />
+                    )}
 
                     {/* Explanation Pane */}
                     {showExplanation && (
@@ -577,15 +806,7 @@ const QueryEditorTab: React.FC<QueryEditorTabProps> = ({ connectionInfo, sqlQuer
                 </div>
             </div>
 
-            {/* Right: AI Assistant */}
-            <div style={{ width: '300px', display: 'flex', flexDirection: 'column' }}>
-                <AIAssistant
-                    schema={schema}
-                    onApplyCode={handleApplyCode}
-                    connectionInfo={connectionInfo}
-                    onStreamCode={(code) => setSqlQuery(code)}
-                />
-            </div>
+            {/* Right Side removed */}
         </div>
     );
 };

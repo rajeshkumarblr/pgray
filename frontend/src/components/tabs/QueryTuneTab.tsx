@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import ReactFlow, { Background, Controls, Node, Edge, ConnectionMode, useNodesState, useEdgesState, BackgroundVariant } from 'reactflow';
+import ReactFlow, { Background, Controls, Node, Edge } from 'reactflow';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { format } from 'sql-formatter';
@@ -36,7 +36,7 @@ const QueryTuneTab: React.FC<QueryTuneTabProps> = ({
     nodes, edges, onNodesChange, onNodeClick, onPaneClick,
     selectedNode, setSelectedNode,
     explainResult, executionResult,
-    loading, error,
+    error,
     sqlQuery,
     flowWrapperRef,
     setReactFlowInstance,
@@ -100,13 +100,13 @@ const QueryTuneTab: React.FC<QueryTuneTabProps> = ({
         if (!highlightText) return [];
         const matches: number[] = [];
         const searchText = highlightText.toLowerCase();
-        const searchTerms = searchText.split(' ').filter(t => t.length > 0);
+        const searchTerms = searchText.split(' ').filter((t: string) => t.length > 0);
 
         lines.forEach((line, index) => {
             const lowerLine = line.toLowerCase();
             let isMatch = lowerLine.includes(searchText);
             if (!isMatch && searchTerms.length > 0) {
-                isMatch = searchTerms.every(term => lowerLine.includes(term));
+                isMatch = searchTerms.every((term: string) => lowerLine.includes(term));
             }
             if (isMatch) matches.push(index + 1);
         });

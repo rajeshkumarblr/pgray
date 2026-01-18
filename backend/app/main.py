@@ -139,6 +139,7 @@ async def generate_sql_stream_endpoint(request: GenerateSqlRequest):
 class SaveQueryRequest(BaseModel):
     name: str
     sql: str
+    history: list = []
 
 @app.get("/api/saved_queries")
 async def get_saved_queries_endpoint():
@@ -152,7 +153,7 @@ async def get_saved_queries_endpoint():
 async def save_query_endpoint(request: SaveQueryRequest):
     try:
         from app.saved_queries import save_query
-        name = save_query(request.name, request.sql)
+        name = save_query(request.name, request.sql, request.history)
         return {"status": "success", "name": name}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -161,9 +162,22 @@ async def save_query_endpoint(request: SaveQueryRequest):
 async def get_saved_query_content_endpoint(name: str):
     try:
         from app.saved_queries import get_saved_query
-        content = get_saved_query(name)
-        if content is None:
+        data = get_saved_query(name) # returns dict {sql, history}
+        if data is None:
              raise HTTPException(status_code=404, detail="Query not found")
-        return {"status": "success", "sql": content}
+        return {"status": "success", "data": data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class GenerateTitleRequest(BaseModel):
+    prompt: str
+    model: str = "qwen2.5-coder:14b"
+
+@app.post("/api/generate_title")
+async def generate_title_endpoint(request: GenerateTitleRequest):
+    try:
+        from app.ai import generate_title
+        title = generate_title(request.prompt, request.model)
+        return {"status": "success", "title": title}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
