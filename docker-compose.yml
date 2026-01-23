@@ -11,6 +11,8 @@ services:
     volumes:
       - backend_data:/data
       - ./backend:/app
+    environment:
+      - OLLAMA_URL=http://host.docker.internal:11434/api/generate
 
   frontend:
     build:

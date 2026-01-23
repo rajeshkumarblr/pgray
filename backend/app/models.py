@@ -7,7 +7,7 @@ class ConnectionInfo(BaseModel):
 
     host: str = Field(..., description="Postgres host, e.g., localhost or host.docker.internal")
     port: int = Field(5432, description="Postgres port")
-    username: str = Field(..., description="Database username")
+    username: str = Field(..., alias="user", description="Database username")
     password: str = Field(..., description="Database password")
     database: str = Field(..., description="Database name")
     schema_name: str = Field('public', alias='schema', description="Schema name (used to set search_path)")
@@ -32,6 +32,8 @@ class GenerateSqlRequest(BaseModel):
     history: Optional[list] = None
     model: Optional[str] = "qwen2.5-coder"
     connection: Optional[ConnectionInfo] = None # Added for server-side validation
+    plan_text: Optional[str] = None # Added for optimization context
+    sql_query: Optional[str] = None # Added for optimization context
 
 class ExplainSqlRequest(BaseModel):
     query: str

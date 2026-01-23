@@ -84,7 +84,7 @@ async def get_settings(request: ConnectionRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/api/generate_sql")
-async def generate_sql_endpoint(request: GenerateSqlRequest):
+def generate_sql_endpoint(request: GenerateSqlRequest):
     try:
         from app.ai import generate_sql
         # Pass model from request to generate_sql
@@ -129,7 +129,9 @@ async def generate_sql_stream_endpoint(request: GenerateSqlRequest):
                 request.schema_context, 
                 request.schema_data, 
                 request.history, 
-                request.model
+                request.model,
+                request.plan_text,
+                request.sql_query
             ),
             media_type="text/plain"
         )
@@ -146,6 +148,18 @@ async def get_saved_queries_endpoint():
     try:
         from app.saved_queries import list_saved_queries
         return {"status": "success", "queries": list_saved_queries()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/saved_queries")
+async def delete_all_saved_queries_endpoint():
+    try:
+        from app.saved_queries import delete_all_saved_queries
+        success = delete_all_saved_queries()
+        if success:
+             return {"status": "success"}
+        else:
+             raise HTTPException(status_code=500, detail="Failed to delete queries")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -171,13 +185,101 @@ async def get_saved_query_content_endpoint(name: str):
 
 class GenerateTitleRequest(BaseModel):
     prompt: str
-    model: str = "qwen2.5-coder:14b"
+    model: str = "qwen2.5-coder"
 
 @app.post("/api/generate_title")
 async def generate_title_endpoint(request: GenerateTitleRequest):
     try:
         from app.ai import generate_title
-        title = generate_title(request.prompt, request.model)
+        title = await generate_title(request.prompt, request.model)
         return {"status": "success", "title": title}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+
+class HistoryTurnRequest(BaseModel):
+    title: str
+    prompt: str
+    response: str
+
+@app.post("/api/history/append")
+async def append_history_endpoint(request: HistoryTurnRequest):
+    try:
+        from app.saved_queries import append_session_history
+        success = append_session_history(request.title, request.prompt, request.response)
+        if success:
+            return {"status": "success"}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to save history")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class FullSessionRequest(BaseModel):
+    title: str
+    sql: str
+    history: list
+
+@app.post("/api/history/save_session")
+async def save_full_session_endpoint(request: FullSessionRequest):
+    try:
+        from app.saved_queries import save_full_session_to_history
+        success = save_full_session_to_history(request.title, request.sql, request.history)
+        if success:
+            return {"status": "success"}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to save session")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+@app.get("/api/config/connection")
+async def get_connection_config():
+    """
+    Reads connection.json from the backend directory to auto-fill credentials.
+    """
+    import os
+    import json
+    
+    config_path = os.path.join(os.path.dirname(__file__), "..", "connection.json")
+    if not os.path.exists(config_path):
+        return {"status": "error", "message": "connection.json not found"}
+        
+    try:
+        with open(config_path, "r") as f:
+            config = json.load(f)
+            # Basic validation
+            required = ["host", "port", "user", "password", "database"]
+            if not all(k in config for k in required):
+                return {"status": "error", "message": "Invalid config format"}
+            return {"status": "success", "data": config}
+
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+class ParameterizeRequest(BaseModel):
+    sql: str
+    model: str = "qwen2.5-coder"
+
+@app.post("/api/queries/save_parameterized")
+async def save_parameterized_endpoint(request: ParameterizeRequest):
+    try:
+        from app.ai import generate_parameterized_query
+        from app.saved_queries import save_parameterized_query as save_db
+        
+        # 1. Generate Logic
+        ai_result = await generate_parameterized_query(request.sql, request.model)
+        
+        if "error" in ai_result:
+             raise HTTPException(status_code=500, detail=ai_result["error"])
+             
+        # 2. Save
+        saved_record = save_db(
+            ai_result.get("name", "Untitled Query"),
+            ai_result.get("sql", request.sql),
+            ai_result.get("params", []),
+            request.sql
+        )
+        
+        return {"status": "success", "data": saved_record}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+

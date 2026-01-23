@@ -32,6 +32,7 @@ interface Message {
     content: string;
     isCode?: boolean;
     prompt?: string;
+    duration?: string;
 }
 
 interface AIAssistantProps {
@@ -105,6 +106,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ schema, onApplyCode, connecti
         setInput('');
         setLoading(true);
         setHistoryIndex(-1);
+        const startTime = performance.now();
 
         if (inputRef.current) {
             inputRef.current.style.height = 'auto';
@@ -177,6 +179,21 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ schema, onApplyCode, connecti
             setMessages(prev => [...prev, { role: 'assistant', content: "Error communicating with AI." }]);
         } finally {
             setLoading(false);
+            const endTime = performance.now();
+            const duration = ((endTime - startTime) / 1000).toFixed(2) + 's';
+
+            // Update the User message with duration
+            setMessages(prev => {
+                const newMsgs = [...prev];
+                // Find the last user message (it should be the second to last, or verify by role)
+                for (let i = newMsgs.length - 1; i >= 0; i--) {
+                    if (newMsgs[i].role === 'user' && !newMsgs[i].duration) {
+                        newMsgs[i] = { ...newMsgs[i], duration: duration };
+                        break;
+                    }
+                }
+                return newMsgs;
+            });
         }
     };
 
@@ -217,7 +234,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ schema, onApplyCode, connecti
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0f172a', borderLeft: '1px solid #334155', position: 'relative' }}>
             <div style={{ padding: '15px', borderBottom: '1px solid #1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <h3 style={{ fontSize: '13px', fontWeight: 'bold', color: '#a855f7', margin: 0 }}>QUERY AI ASSISTANT</h3>
+                    <h3 style={{ fontSize: '13px', fontWeight: 'bold', color: '#a855f7', margin: 0 }}>Create Query with AI:</h3>
                     <select
                         value={model}
                         onChange={(e) => setModel(e.target.value)}
@@ -263,7 +280,12 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ schema, onApplyCode, connecti
                             borderTopLeftRadius: msg.role === 'assistant' ? 0 : 8,
                         }}>
                             {msg.role === 'user' ? (
-                                <div style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{msg.content}</div>
+                                <>
+                                    <div style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{msg.content}</div>
+                                    <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '4px', textAlign: 'right' }}>
+                                        {msg.duration ? msg.duration : 'You'}
+                                    </div>
+                                </>
                             ) : (
                                 <div>
                                     {(() => {

@@ -17,12 +17,20 @@ interface ConnectionModalProps {
 }
 
 const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClose, onSubmit, initialInfo }) => {
-  const [host, setHost] = useState('host.docker.internal');
-  const [port, setPort] = useState(5432);
-  const [username, setUsername] = useState('postgres');
-  const [password, setPassword] = useState('');
-  const [database, setDatabase] = useState('postgres');
-  const [schema, setSchema] = useState('public');
+  // Load defaults from localStorage if available
+  const getDefaults = () => {
+    try {
+      return JSON.parse(localStorage.getItem('pgray_connection_defaults') || '{}');
+    } catch (e) { return {}; }
+  };
+  const defaults = getDefaults();
+
+  const [host, setHost] = useState(defaults.host || 'host.docker.internal');
+  const [port, setPort] = useState(defaults.port || 5432);
+  const [username, setUsername] = useState(defaults.username || 'postgres');
+  const [password, setPassword] = useState(''); // Password never persisted
+  const [database, setDatabase] = useState(defaults.database || 'postgres');
+  const [schema, setSchema] = useState(defaults.schema || 'public');
 
   React.useEffect(() => {
     if (isOpen && initialInfo) {
@@ -39,6 +47,11 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClose, onSu
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Save defaults (excluding password)
+    const defaultsToSave = { host, port, username, database, schema };
+    localStorage.setItem('pgray_connection_defaults', JSON.stringify(defaultsToSave));
+
     onSubmit({
       host,
       port,

@@ -44,7 +44,7 @@ export const saveQuery = async (name: string, sql: string, history: any[] = []) 
 export const getSavedQueryContent = async (name: string) => {
     try {
         const response = await axios.get(`${API_BASE_URL}/api/saved_queries/${name}`);
-        return response.data;
+        return response.data.data;
     } catch (error) {
         console.error("Error fetching query content:", error);
         throw error;
@@ -105,12 +105,27 @@ export const executeExplain = async (connectionInfo: any, query: string, analyze
     return response.data;
 };
 
-export const generateSql = async (prompt: string, schema_data: any, history: any[] = [], model: string = "qwen2.5-coder", connection: any = null) => {
-    const response = await api.post('/generate_sql', { prompt, schema_data, history, model, connection });
+export const generateSql = async (prompt: string, schema_data: any, history: any[] = [], model: string = "qwen2.5-coder", connection: any = null, plan_text: string = "", sql_query: string = "") => {
+    const response = await api.post('/generate_sql', { prompt, schema_data, history, model, connection, plan_text, sql_query });
     return response.data;
 };
 
 export const explainSql = async (query: string, schema_data: any, model: string = "qwen2.5-coder") => {
     const response = await api.post('/explain_sql', { query, schema_data, model });
+    return response.data;
+};
+
+export const getConnectionConfig = async () => {
+    try {
+        const response = await axios.get(`${API_BASE_URL}/api/config/connection`);
+        return response.data;
+    } catch (error) {
+        // Silent fail if file doesn't exist
+        return null;
+    }
+};
+
+export const saveParameterizedQuery = async (sql: string) => {
+    const response = await api.post('/queries/save_parameterized', { sql });
     return response.data;
 };

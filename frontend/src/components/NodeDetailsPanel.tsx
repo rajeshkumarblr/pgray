@@ -100,14 +100,18 @@ const NodeDetailsPanel: React.FC<NodeDetailsPanelProps & { fullPlan: any }> = ({
 
     return (
         <div style={{
-            width: '450px', // Slightly wider for JSON
+            width: '100%', // Changed from '450px' to '100%'
             backgroundColor: '#1e293b',
-            borderLeft: '1px solid #334155', // Left border for right sidebar
+            // borderLeft: '1px solid #334155', // Removed border left as it's bottom now
             display: 'flex',
+            // Bottom pane usually is wide. Let's keep it column for now but allow width 100%
+            // Actually, if it's at the bottom, we might want a horizontal layout for details?
+            // User didn't specify, but "Plan Insights... bottom pane".
+            // Let's stick to column but full width.
             flexDirection: 'column',
             height: '100%',
             flexShrink: 0,
-            boxShadow: '-2px 0 5px rgba(0,0,0,0.1)', // Shadow on left
+            boxShadow: '0 -2px 5px rgba(0,0,0,0.1)', // Shadow on top
             zIndex: 5,
             color: '#e2e8f0'
         }}>

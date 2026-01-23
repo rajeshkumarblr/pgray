@@ -1,12 +1,15 @@
 import logging
 import requests
+import httpx # Async Support
 import json
 import datetime
+
+import os
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-OLLAMA_URL = "http://host.docker.internal:11434/api/generate"
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate")
 
 def format_schema_ddl(schema: dict) -> str:
     """
@@ -117,7 +120,7 @@ def explain_sql_query(query: str, schema_context: str = None, schema_data: dict 
     }
 
     try:
-        response = requests.post(OLLAMA_URL, json=payload, timeout=120)
+        response = requests.post(OLLAMA_URL, json=payload, timeout=300)
         response.raise_for_status()
         return response.json().get("response", "Could not generate explanation.")
     except Exception as e:
@@ -147,7 +150,7 @@ def explain_sql_query(query: str, schema_context: str = None, schema_data: dict 
 
         try:
             logger.info(f"Generating SQL (Attempt {attempt+1})...")
-            response = requests.post(OLLAMA_URL, json=payload, timeout=120)
+            response = requests.post(OLLAMA_URL, json=payload, timeout=300)
             response.raise_for_status()
             data = response.json()
             ai_response = data.get("response", "-- No response generated")
@@ -195,38 +198,69 @@ def explain_sql_query(query: str, schema_context: str = None, schema_data: dict 
         "prompt": debug_prompt
     }
 
-def generate_sql_stream(prompt: str, schema_context: str = None, schema_data: dict = None, history: list = None, model: str = "qwen2.5-coder"):
+async def generate_sql_stream(prompt: str, schema_context: str = None, schema_data: dict = None, history: list = None, model: str = "qwen2.5-coder", plan_text: str = None, sql_query: str = None):
     """
-    Generator that streams the response from Ollama.
-    Skips server-side validation/retry to allow real-time feedback.
+    Async Generator that streams the response from Ollama using httpx.
     """
     if schema_data:
         schema_context = format_schema_ddl(schema_data)
     elif not schema_context:
         schema_context = "-- No schema provided"
 
-    # Use the same prompt builder
-    # We must access build_prompt somehow. It was inner function. 
-    # Let's copy the prompt logic or extract it. 
-    # Extracting is cleaner but risky refactor. 
-    # I will inline the essential prompt logic for the stream function to be safe and self-contained.
+    # optimization context
+    optimization_context = ""
+    if sql_query:
+        optimization_context += f"### Current SQL Query\n```sql\n{sql_query}\n```\n\n"
+    if plan_text:
+        optimization_context += f"### Execution Plan (Text)\n```text\n{plan_text}\n```\n\n"
     
-    # ... (Prompt Construction similar to generate_sql) ...
-    # Always use the standard prompt for full SQL generation
-    base_prompt = (
-        "You are a helpful SQL Assistant. Your goal is to generate correct, efficient SQL queries.\n\n"
-        "### Database Schema\n"
-        f"{schema_context}\n\n"
-        "### Task\n"
-        "Generate a SQL query to answer the following question.\n"
-        f"Current Request: {prompt}\n\n"
-        "### Guidelines\n"
-        "1. Output RAW SQL code only. Do NOT use markdown. Do NOT use backticks.\n"
-        "2. Add helpful inline comments (`-- explanation`) to describe the logic.\n"
-        "3. Ensure column names and table names exist in the schema.\n"
-        "4. Use `NULLS LAST` for sorting.\n"
-        "5. If you are refining an existing query, REWRITE THE WHOLE QUERY with the changes applied.\n"
-    )
+    is_first_turn = not history
+    title_instruction = ""
+    if is_first_turn:
+        title_instruction = "1. **First line MUST be a title** in this format: `Title: Short Session Name`\n"
+    else:
+        title_instruction = "1. Do NOT output a Title line. Start directly with the SQL block.\n"
+
+    # ... Prompt construction ...
+    if plan_text:
+        # TUNE/ANALYSIS MODE
+        base_prompt = (
+            "You are a helpful SQL Assistant. Your goal is to analyze execution plans and suggest optimizations.\n"
+            "You have been provided with an execution plan.\n"
+            "   - Analyze it for performance bottlenecks (like Seq Scans, high cost nodes).\n"
+            "   - SUGGEST INDEXES if missing.\n"
+            "   - Provide ONLY the `CREATE INDEX` statements in their own `sql` code blocks for the user to run.\n"
+            "   - Do NOT repeat the original SELECT query unless you are purposely rewriting it for logic.\n"
+            "   - Explain WHY these indexes will help.\n\n"
+            "### Database Schema\n"
+            f"{schema_context}\n\n"
+            f"{optimization_context}"
+            "### Task\n"
+            "Analyze the plan and suggest optimizations/indexes.\n"
+            f"User Note: {prompt}\n\n"
+            "### Guidelines\n"
+            "1. Use natural language (Markdown) for analysis/explanations.\n"
+            "2. Wrap SQL code in markdown: ```sql ... ```\n"
+        )
+    else:
+        # GENERATION MODE
+        base_prompt = (
+            "You are a helpful SQL Assistant. Your goal is to generate correct, efficient SQL queries.\n"
+            "### Database Schema\n"
+            f"{schema_context}\n\n"
+            f"{optimization_context}"
+            "### Task\n"
+            "Generate a SQL query to answer the following question.\n"
+            f"Current Request: {prompt}\n\n"
+            "### Guidelines\n"
+            f"{title_instruction}"
+            "2. Output valid SQL to answer the question.\n"
+            "3. Use markdown formatting: ```sql ... ```\n"
+            "4. Ensure column names and table names exist in the schema.\n"
+            "5. **CRITICAL**: If you use `ORDER BY` clause, you MUST specify `NULLS LAST`.\n"
+            "6. **CRITICAL**: If the user asks for 'acted by' or 'movies with actor', you MUST join the `jobs` table to filter by job type (e.g. 'actor', 'actress'). Do not assume `casts` table implies acting without checking job.\n"
+            "7. Output ONLY the SQL code block. Do NOT include any explanations, introductions, or 'Here is the SQL'.\n"
+        )
 
 
     payload = {
@@ -237,23 +271,24 @@ def generate_sql_stream(prompt: str, schema_context: str = None, schema_data: di
     }
 
     try:
-        with requests.post(OLLAMA_URL, json=payload, stream=True, timeout=120) as r:
-            r.raise_for_status()
-            full_response = ""
-            for line in r.iter_lines():
-                if line:
-                    body = json.loads(line)
-                    token = body.get("response", "")
-                    if token:
-                        full_response += token
-                        yield token
-            logger.info(f"✅ Generated Stream:\n{full_response}")
+        async with httpx.AsyncClient() as client:
+            async with client.stream("POST", OLLAMA_URL, json=payload, timeout=300) as response:
+                response.raise_for_status()
+                full_response = ""
+                async for line in response.aiter_lines():
+                    if line:
+                        body = json.loads(line)
+                        token = body.get("response", "")
+                        if token:
+                            full_response += token
+                            yield token
+                logger.info(f"✅ Generated Stream:\n{full_response}")
     except Exception as e:
         logger.error(f"Stream failed: {e}")
         yield f"\n-- Error: {str(e)}"
 
 
-def generate_title(prompt: str, model: str = "qwen2.5-coder:14b") -> str:
+async def generate_title(prompt: str, model: str = "qwen2.5-coder") -> str:
     """
     Generates a short 3-5 word title for the session based on the prompt.
     """
@@ -271,10 +306,67 @@ def generate_title(prompt: str, model: str = "qwen2.5-coder:14b") -> str:
     }
     
     try:
-        response = requests.post(OLLAMA_URL, json=payload, timeout=10)
-        response.raise_for_status()
-        title = response.json().get("response", "").strip().strip('"').strip("'")
-        return title if title else "Untitled Session"
+        async with httpx.AsyncClient() as client:
+            response = await client.post(OLLAMA_URL, json=payload, timeout=30)
+            response.raise_for_status()
+            title = response.json().get("response", "").strip().strip('"').strip("'")
+            return title if title else "Untitled Session"
+
     except Exception as e:
         logger.error(f"Title generation failed: {e}")
         return "Untitled Session"
+
+async def generate_parameterized_query(sql_query: str, model: str = "qwen2.5-coder") -> dict:
+    """
+    Analyzes an SQL query and returns a parameterized version.
+    """
+    prompt = (
+        "You are an expert SQL Assistant. Your task is to parameterize a given SQL query.\n"
+        "1. Identify hardcoded literal values (strings, numbers) in the WHERE clause.\n"
+        "2. Replace them with named parameters (e.g., :actor_name, :year, :min_revenue).\n"
+        "3. Generate a descriptive, generic name for this query (e.g. 'Movies by Actor').\n"
+        "4. Output strictly valid JSON.\n\n"
+        f"Input SQL:\n```sql\n{sql_query}\n```\n\n"
+        "Output Format:\n"
+        "{\n"
+        "  \"name\": \"...\",\n"
+        "  \"sql\": \"...\",\n"
+        "  \"params\": [\"param1\", \"param2\"]\n"
+        "}"
+    )
+    
+    payload = {
+        "model": model, 
+        "prompt": prompt,
+        "stream": False,
+        "format": "json", # Force JSON mode if supported, otherwise prompt is strong
+        "options": { "temperature": 0.1 }
+    }
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(OLLAMA_URL, json=payload, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+            content = data.get("response", "")
+            
+            # Parse JSON
+            try:
+                result = json.loads(content)
+                return result
+            except json.JSONDecodeError:
+                # Fallback: try to extract JSON block
+                import re
+                match = re.search(r"\{.*\}", content, re.DOTALL)
+                if match:
+                    return json.loads(match.group(0))
+                raise ValueError("Could not parse AI response as JSON")
+                
+    except Exception as e:
+        logger.error(f"Parameterized Query Generation failed: {e}")
+        return {
+            "name": "Error Generating Query",
+            "sql": sql_query,
+            "params": [],
+            "error": str(e)
+        }

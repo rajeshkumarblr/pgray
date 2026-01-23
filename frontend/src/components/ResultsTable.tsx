@@ -24,11 +24,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({ data }) => {
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-            {data.isLimited && (
-                <div style={{ padding: '8px 16px', background: '#f59e0b20', color: '#fbbf24', fontSize: '13px', borderBottom: '1px solid #475569' }}>
-                    ⚠️ Results limited to first {data.rowCount} rows.
-                </div>
-            )}
+
             <div style={{ flex: 1, overflow: 'auto' }}>
                 <table style={{
                     width: '100%',

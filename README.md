@@ -47,9 +47,14 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
     *   **Query Results**: Draggable results pane with maximize/restore capability.
     *   **Explanation Pane**: Collapsible and resizable (via flex) split-pane for AI explanations.
 *   **Heatmap Bottleneck Highlighting**:
-    *   Highlights bottlenecks using **Exclusive Time** (node time minus immediate children).
-    *   Heatmap shading from green → yellow → red, with the hottest node emphasized.
     *   Always enabled.
+*   **Smart Query Parameterization**:
+    *   Automatically detects hardcoded values in your SQL.
+    *   Converts them to reusable parameters (`$1`, `$2`, etc.) using AI.
+*   **Session & History Management**:
+    *   **Auto-Save**: Session history (chat & SQL) is automatically preserved.
+    *   **Titles**: AI automatically generates concise titles for your sessions.
+    *   **Resume**: Pick up exactly where you left off after a reload.
 
 ## Screenshot
 
@@ -92,8 +97,22 @@ pgRay stores executed queries in a local SQLite database inside the backend cont
     ```
 
 3.  Access the App:
-    *   **Frontend**: [http://localhost:4000](http://localhost:4000)
+    *   **Frontend**: [https://localhost:3000](https://localhost:3000) (Note: HTTPS is now enabled by default using self-signed certs)
     *   **Backend API**: [http://localhost:9000/docs](http://localhost:9000/docs)
+
+### Credential Auto-fill
+
+To avoid typing database credentials every time, create a `connection.json` file in the `backend/` directory:
+
+```json
+{
+  "host": "host.docker.internal",
+  "port": "5432",
+  "user": "postgres",
+  "password": "yourpassword",
+  "database": "postgres"
+}
+```
 
 ### Connecting to Localhost Postgres
 

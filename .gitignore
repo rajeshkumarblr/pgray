@@ -30,3 +30,16 @@ docker-compose.override.yml
 # Packaging output
 pkg/
 *.zip
+*.pem
+mkcert
+rootCA.pem
+.cache/
+
+# Backend local data/logs
+backend/connection.json
+backend/*.log
+backend/debug_*.py
+backend/check_db.py
+backend/test_save.py
+backend/saved_queries/*.json
+!backend/saved_queries/queries.json

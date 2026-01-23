@@ -38,6 +38,7 @@ const PlanNode = ({ data, selected }: NodeProps<PlanNodeData>) => {
       : 0;
 
   const isCritical = severity > 0.8;
+  const isSeqScan = data.label.toLowerCase().includes('seq scan');
 
   const primaryMetric =
     typeof data.exclusive_time === 'number' && Number.isFinite(data.exclusive_time)
@@ -76,8 +77,12 @@ const PlanNode = ({ data, selected }: NodeProps<PlanNodeData>) => {
     display: 'flex',
     flexDirection: 'column',
     justifyContent: 'center',
-    backgroundColor: isCritical ? '#450a0a' : '#1e293b',
-    border: isCritical ? '2px solid #ef4444' : selected ? '2px solid #38bdf8' : '1px solid #475569',
+    backgroundColor: isCritical
+      ? (isSeqScan ? '#451a1a' : '#450a0a') // Milder Red for Seq Scan, Deep Red for others
+      : '#1e293b',
+    border: isCritical
+      ? (isSeqScan ? '2px solid #ef5350' : '2px solid #ef4444') // Milder/Lighter Red border for Seq Scan
+      : selected ? '2px solid #38bdf8' : '1px solid #475569',
     borderRadius: '8px',
     color: '#f8fafc',
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
