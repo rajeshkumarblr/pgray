@@ -492,7 +492,147 @@ const QueryEditorTab = forwardRef<QueryEditorRef, QueryEditorTabProps>(({
             {/* Center: SQL Editor & Results */}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#1e293b' }}>
                 <div style={{ padding: '8px 10px', background: '#334155', borderBottom: '1px solid #475569', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                        <button
+                            onClick={() => {
+                                if (onNewSession) {
+                                    onNewSession();
+                                }
+                                // Clear local results
+                                setExecutionResult(null);
+                                setPlanText(null);
+                                setExecError(null);
+                                setActiveTab('results');
+                            }}
+                            style={{
+                                background: '#3b82f6', color: 'white', border: 'none', padding: '4px 12px', borderRadius: '4px',
+                                cursor: 'pointer', fontSize: '12px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px',
+                                whiteSpace: 'nowrap'
+                            }}
+                            title="Save current session and start new"
+                        >
+                            ➕ New
+                        </button>
+
+                        <button
+                            onClick={async () => {
+                                if (!sqlQuery.trim()) return;
+                                const btn = document.getElementById('btn-save-param');
+                                if (btn) btn.innerHTML = "Saving...";
+                                try {
+                                    // Dynamic import or use from props if available? We imported executeQuery directly.
+                                    // Need to import saveParameterizedQuery at top. 
+                                    // Since I can't easily change imports at the top without reading again or being risky,
+                                    // I'll resort to a direct fetch or assume I can modify imports in next step.
+                                    // Actually, I should modify imports first. But let's check if I can add it to the import list in this tool call?
+                                    // No, replace_file_content is contiguous. 
+                                    // I will use another tool call to update imports.
+                                    // For now, I will use the imported API function (which I will add in next step).
+                                    // allow me to add the logic here assuming import exists.
+                                    const { saveParameterizedQuery } = await import('../../api');
+                                    const res = await saveParameterizedQuery(sqlQuery);
+                                    if (res.status === 'success') {
+                                        alert(`Saved as: ${res.data.name}\nParams: ${res.data.params.join(', ')}`);
+                                    }
+                                } catch (e) {
+                                    alert("Failed to save parameterized query");
+                                    console.error(e);
+                                } finally {
+                                    if (btn) btn.innerText = "💾 Save";
+                                }
+                            }}
+                            id="btn-save-param"
+                            style={{
+                                background: '#f59e0b', color: 'white', border: 'none', padding: '4px 12px', borderRadius: '4px',
+                                cursor: 'pointer', fontSize: '12px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px'
+                            }}
+                            title="AI Auto-Parameterize & Save"
+                        >
+                            💾 Save
+                        </button>
+
+                        <button
+                            onClick={() => handleExecute()}
+                            disabled={isExecuting}
+                            style={{
+                                background: '#22c55e', color: 'white', border: 'none', padding: '4px 12px', borderRadius: '4px',
+                                cursor: isExecuting ? 'wait' : 'pointer', fontSize: '12px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px'
+                            }}
+                        >
+                            {isExecuting ? 'Running...' : '▶ Execute'}
+                        </button>
+
+                        <button
+                            onClick={onTune}
+                            style={{
+                                background: '#8b5cf6', color: 'white', border: 'none', padding: '4px 12px', borderRadius: '4px',
+                                cursor: 'pointer', fontSize: '12px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px'
+                            }}
+                            title="Analyze Execution Plan"
+                        >
+                            ⚡ Tune
+                        </button>
+
+                        {/* Save Button Removed - Auto Save is Active */}
+
+                        <button
+                            onClick={() => setShowDiff(!showDiff)}
+                            style={{
+                                background: showDiff ? '#475569' : 'transparent',
+                                border: '1px solid #475569',
+                                color: showDiff ? 'white' : '#cbd5e1',
+                                padding: '4px 12px', borderRadius: '4px',
+                                cursor: 'pointer', fontSize: '12px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px'
+                            }}
+                            title="Toggle Diff View"
+                        >
+                            ⚖️ Diff
+                        </button>
+                        <button
+                            onClick={() => copyText(sqlQuery)}
+                            style={{
+                                background: 'transparent',
+                                border: '1px solid #475569',
+                                color: '#cbd5e1',
+                                padding: '4px 8px',
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center'
+                            }}
+                            title="Copy SQL"
+                        >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                            </svg>
+                        </button>
+                        <button
+                            onClick={() => {
+                                if (confirm("Reset current editor state? (Does not delete saved queries)")) {
+                                    setSqlQuery('');
+                                    setChatHistory([]);
+                                    setSessionTitle('Untitled Session');
+                                    setExecutionResult(null);
+                                    setPlanText(null);
+                                }
+                            }}
+                            style={{
+                                background: 'transparent',
+                                border: '1px solid #475569',
+                                color: '#cbd5e1',
+                                padding: '4px 8px',
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                fontSize: '11px', fontWeight: 600
+                            }}
+                            title="Clear Plan (Reset Editor & History)"
+                        >
+                            🗑️
+                        </button>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, marginLeft: '10px' }}>
 
                         <div style={{ position: 'relative', display: 'flex', alignItems: 'center', flex: 1 }}>
                             <input
@@ -588,148 +728,6 @@ const QueryEditorTab = forwardRef<QueryEditorRef, QueryEditorTabProps>(({
                             )}
 
                         </div>
-                    </div>
-
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                        <button
-                            onClick={() => {
-                                if (onNewSession) {
-                                    onNewSession();
-                                }
-                                // Clear local results
-                                setExecutionResult(null);
-                                setPlanText(null);
-                                setExecError(null);
-                                setActiveTab('results');
-                            }}
-                            style={{
-                                background: '#3b82f6', color: 'white', border: 'none', padding: '4px 12px', borderRadius: '4px',
-                                cursor: 'pointer', fontSize: '12px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px',
-                                whiteSpace: 'nowrap'
-                            }}
-                            title="Save current session and start new"
-                        >
-                            ➕ New Query
-                        </button>
-
-
-
-                        <button
-                            onClick={() => handleExecute()}
-                            disabled={isExecuting}
-                            style={{
-                                background: '#22c55e', color: 'white', border: 'none', padding: '4px 12px', borderRadius: '4px',
-                                cursor: isExecuting ? 'wait' : 'pointer', fontSize: '12px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px'
-                            }}
-                        >
-                            {isExecuting ? 'Running...' : '▶ Execute'}
-                        </button>
-
-                        <button
-                            onClick={onTune}
-                            style={{
-                                background: '#8b5cf6', color: 'white', border: 'none', padding: '4px 12px', borderRadius: '4px',
-                                cursor: 'pointer', fontSize: '12px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px'
-                            }}
-                            title="Analyze Execution Plan"
-                        >
-                            ⚡ Query Tune
-                        </button>
-
-                        <button
-                            onClick={async () => {
-                                if (!sqlQuery.trim()) return;
-                                const btn = document.getElementById('btn-save-param');
-                                if (btn) btn.innerHTML = "Saving...";
-                                try {
-                                    // Dynamic import or use from props if available? We imported executeQuery directly.
-                                    // Need to import saveParameterizedQuery at top. 
-                                    // Since I can't easily change imports at the top without reading again or being risky,
-                                    // I'll resort to a direct fetch or assume I can modify imports in next step.
-                                    // Actually, I should modify imports first. But let's check if I can add it to the import list in this tool call?
-                                    // No, replace_file_content is contiguous. 
-                                    // I will use another tool call to update imports.
-                                    // For now, I will use the imported API function (which I will add in next step).
-                                    // allow me to add the logic here assuming import exists.
-                                    const { saveParameterizedQuery } = await import('../../api');
-                                    const res = await saveParameterizedQuery(sqlQuery);
-                                    if (res.status === 'success') {
-                                        alert(`Saved as: ${res.data.name}\nParams: ${res.data.params.join(', ')}`);
-                                    }
-                                } catch (e) {
-                                    alert("Failed to save parameterized query");
-                                    console.error(e);
-                                } finally {
-                                    if (btn) btn.innerText = "💾 Save Param";
-                                }
-                            }}
-                            id="btn-save-param"
-                            style={{
-                                background: '#f59e0b', color: 'white', border: 'none', padding: '4px 12px', borderRadius: '4px',
-                                cursor: 'pointer', fontSize: '12px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px'
-                            }}
-                            title="AI Auto-Parameterize & Save"
-                        >
-                            💾 Save Param
-                        </button>
-
-                        {/* Save Button Removed - Auto Save is Active */}
-
-                        <button
-                            onClick={() => setShowDiff(!showDiff)}
-                            style={{
-                                background: showDiff ? '#475569' : 'transparent',
-                                border: '1px solid #475569',
-                                color: showDiff ? 'white' : '#cbd5e1',
-                                padding: '4px 12px', borderRadius: '4px',
-                                cursor: 'pointer', fontSize: '12px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px'
-                            }}
-                            title="Toggle Diff View"
-                        >
-                            ⚖️ Diff
-                        </button>
-                        <button
-                            onClick={() => copyText(sqlQuery)}
-                            style={{
-                                background: 'transparent',
-                                border: '1px solid #475569',
-                                color: '#cbd5e1',
-                                padding: '4px 8px',
-                                borderRadius: '4px',
-                                cursor: 'pointer',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center'
-                            }}
-                            title="Copy SQL"
-                        >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                            </svg>
-                        </button>
-                        <button
-                            onClick={() => {
-                                if (confirm("Reset current editor state? (Does not delete saved queries)")) {
-                                    setSqlQuery('');
-                                    setChatHistory([]);
-                                    setSessionTitle('Untitled Session');
-                                    setExecutionResult(null);
-                                    setPlanText(null);
-                                }
-                            }}
-                            style={{
-                                background: 'transparent',
-                                border: '1px solid #475569',
-                                color: '#cbd5e1',
-                                padding: '4px 8px',
-                                borderRadius: '4px',
-                                cursor: 'pointer',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                fontSize: '11px', fontWeight: 600
-                            }}
-                            title="Clear Plan (Reset Editor & History)"
-                        >
-                            🗑️
-                        </button>
                     </div>
                 </div>
 

@@ -406,7 +406,7 @@ const QueryTuneTab: React.FC<QueryTuneTabProps> = ({
                                         }}>
                                             <div style={{ fontSize: '24px', marginBottom: '10px' }}>⚡</div>
                                             <div>No plan visualization available.</div>
-                                            <div style={{ fontSize: '12px', marginTop: '5px', color: '#64748b' }}>Run "Query Tune" from the Editor to generate a plan.</div>
+                                            <div style={{ fontSize: '12px', marginTop: '5px', color: '#64748b' }}>Run "Tune" from the Editor to generate a plan.</div>
                                         </div>
                                     </div>
                                 )}
