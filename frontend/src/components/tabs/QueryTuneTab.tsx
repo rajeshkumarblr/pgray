@@ -19,13 +19,13 @@ interface QueryTuneTabProps {
     loading: boolean;
     error: string;
 
-    flowWrapperRef: any;
-    reactFlowInstance: any;
     setReactFlowInstance: (instance: any) => void;
     nodeTypes: any;
 
     onRefreshPlan: () => void;
     onAnalyzeNode?: (node: any) => void;
+    onCompare?: () => void;
+    baselineMetrics?: { planning: number, execution: number } | null;
 }
 
 const QueryTuneTab: React.FC<QueryTuneTabProps> = ({
@@ -33,18 +33,24 @@ const QueryTuneTab: React.FC<QueryTuneTabProps> = ({
     nodes, edges, onNodesChange, onNodeClick, onPaneClick,
     explainResult, explainText,
     loading, error,
-    flowWrapperRef, setReactFlowInstance,
+    setReactFlowInstance,
     nodeTypes,
     onRefreshPlan,
-    onAnalyzeNode
+    onAnalyzeNode,
+    onCompare,
+    baselineMetrics
 }) => {
+    // Internal Ref for the flow wrapper
+    const flowWrapperRef = React.useRef<HTMLDivElement>(null);
+
     // Context Menu State
     const [menu, setMenu] = React.useState<{ x: number, y: number, node: any } | null>(null);
 
     const onNodeContextMenu = React.useCallback(
         (event: React.MouseEvent, node: Node) => {
             event.preventDefault();
-            const pane = flowWrapperRef.current.getBoundingClientRect();
+            const pane = flowWrapperRef.current?.getBoundingClientRect();
+            if (!pane) return;
             setMenu({
                 x: event.clientX - pane.left,
                 y: event.clientY - pane.top,
@@ -58,6 +64,23 @@ const QueryTuneTab: React.FC<QueryTuneTabProps> = ({
         setMenu(null);
         if (onPaneClick) onPaneClick(event);
     }, [onPaneClick]);
+
+    // Fallback for custom nodes dispatching global event
+    React.useEffect(() => {
+        const handlePgrayMenu = (e: CustomEvent) => {
+            const pane = flowWrapperRef.current?.getBoundingClientRect();
+            if (!pane) return;
+
+            setMenu({
+                x: e.detail.x - pane.left,
+                y: e.detail.y - pane.top,
+                node: e.detail.node,
+            });
+        };
+        window.addEventListener('pgray-node-contextmenu', handlePgrayMenu as EventListener);
+        return () => window.removeEventListener('pgray-node-contextmenu', handlePgrayMenu as EventListener);
+    }, [flowWrapperRef]);
+
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#334155', overflow: 'hidden' }} onClick={() => setMenu(null)}>
@@ -84,6 +107,24 @@ const QueryTuneTab: React.FC<QueryTuneTabProps> = ({
                                 </span>
                             )}
                         </>
+                    )}
+                    {baselineMetrics && (
+                        <button
+                            onClick={onCompare}
+                            title="Compare current Plan/Exec time with baseline (first run)"
+                            style={{
+                                background: '#334155',
+                                border: '1px solid #475569',
+                                color: '#93c5fd',
+                                fontSize: '10px',
+                                padding: '2px 8px',
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                                marginLeft: '10px'
+                            }}
+                        >
+                            ⚖ Compare
+                        </button>
                     )}
                     <button
                         onClick={onRefreshPlan}

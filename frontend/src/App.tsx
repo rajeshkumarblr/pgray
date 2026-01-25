@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { Node, Edge, applyNodeChanges, NodeChange } from 'reactflow';
 import ConnectionModal from './components/ConnectionModal';
 import { connectDb, explainQuery, getSavedQueryContent, executeQuery, saveParameterizedQuery, getSchema, getConnectionConfig } from './api';
@@ -7,6 +7,7 @@ import { parsePlanToFlow } from './utils/planLayout';
 // Workspace
 import QueryWorkspace from './components/QueryWorkspace';
 import AIChatSidebar from './components/AIChatSidebar';
+import Toast from './components/Toast';
 
 function App() {
   const [isModalOpen, setIsModalOpen] = useState(true);
@@ -70,7 +71,15 @@ function App() {
   });
   const [showDiff, setShowDiff] = useState(false);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
-  const [selectedModel, setSelectedModel] = useState<string>('qwen2.5-coder:14b'); // Default Model
+  const [selectedModel] = useState<string>('qwen2.5-coder:14b'); // Default Model
+
+  // Insights State
+  const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
+  const [actionableInsights, setActionableInsights] = useState<{ id: string, sql: string, description?: string }[]>([]);
+  const [insightResults, setInsightResults] = useState<{ [id: string]: { status: 'success' | 'error', message: string } }>({});
+
+  // Performance Comparison State
+  const [baselineMetrics, setBaselineMetrics] = useState<{ planning: number, execution: number } | null>(null);
 
   // Resize State
   const [sidebarWidth, setSidebarWidth] = useState(400);
@@ -124,7 +133,26 @@ function App() {
           setConnectionInfo(connRes.data);
           setIsModalOpen(false);
           // Auto-connect
-          connectDb(connRes.data).catch(e => console.error("Auto-connect failed", e));
+          await connectDb(connRes.data).catch(e => console.error("Auto-connect failed", e));
+
+          // Auto-execute if query exists (Startup Restore)
+          if (sqlQuery && sqlQuery.trim()) {
+            setIsExecuting(true);
+            executeQuery(connRes.data, sqlQuery, 50)
+              .then(execRes => {
+                if (!cancelled) {
+                  setExecutionResult(execRes.data);
+                  setExecError(null);
+                }
+              })
+              .catch(err => {
+                console.error("Startup execution failed", err);
+                // Silent fail on startup is okay, maybe they changed DBs
+              })
+              .finally(() => {
+                if (!cancelled) setIsExecuting(false);
+              });
+          }
         }
       } catch {
         // Ignore network errors on init
@@ -210,14 +238,22 @@ function App() {
       const res = await explainQuery(connectionInfo, sqlQuery, true);
       if (res.data && res.data.json) {
         let rawPlan = res.data.json;
-        // Normalize plan if array
         if (Array.isArray(rawPlan) && rawPlan.length > 0) rawPlan = rawPlan;
 
         setExplainResult(rawPlan);
         if (res.data.text) setExplainText(res.data.text);
         else setExplainText(JSON.stringify(res.data.json, null, 2));
 
-        // Parse to Flow
+        // -- CAPTURE METRICS --
+        const plan = Array.isArray(rawPlan) ? rawPlan[0] : rawPlan;
+        const pTime = plan['Planning Time'] || 0;
+        const eTime = (plan['Execution Time'] || plan['Total Runtime']) || 0;
+
+        // If this is the FIRST successful run or explicit reset, set baseline
+        if (!baselineMetrics) {
+          setBaselineMetrics({ planning: pTime, execution: eTime });
+        }
+
         let planRoot = Array.isArray(rawPlan) ? (rawPlan[0]['QUERY PLAN'] || rawPlan[0]['Plan']) : rawPlan;
         if (planRoot) {
           const { nodes: newNodes, edges: newEdges } = parsePlanToFlow(planRoot);
@@ -233,8 +269,67 @@ function App() {
     }
   };
 
-  const handleAIStream = async (userMsg: string) => {
-    setChatHistory(prev => [...prev, { role: 'user', content: userMsg }]);
+  const handleRunInsight = async (id: string, sql: string) => {
+    setIsExecuting(true);
+    try {
+      await executeQuery(connectionInfo, sql, 50);
+      setInsightResults(prev => ({
+        ...prev,
+        [id]: { status: 'success', message: 'Executed successfully' }
+      }));
+      setToast({ message: 'Insight executed successfully!', type: 'success' });
+    } catch (err: any) {
+      setInsightResults(prev => ({
+        ...prev,
+        [id]: { status: 'error', message: err.message || 'Execution failed' }
+      }));
+      setToast({ message: 'Failed to execute insight', type: 'error' });
+    } finally {
+      setIsExecuting(false);
+    }
+  };
+
+  const handleComparePerformance = async () => {
+    if (!baselineMetrics || !connectionInfo || !sqlQuery) return;
+    setLoadingExplain(true);
+    try {
+      const res = await explainQuery(connectionInfo, sqlQuery, true);
+      if (res.data && res.data.json) {
+        let rawPlan = res.data.json;
+        if (Array.isArray(rawPlan) && rawPlan.length > 0) rawPlan = rawPlan;
+
+        setExplainResult(rawPlan);
+        if (res.data.text) setExplainText(res.data.text);
+
+        const plan = Array.isArray(rawPlan) ? rawPlan[0] : rawPlan;
+        const newP = plan['Planning Time'] || 0;
+        const newE = (plan['Execution Time'] || plan['Total Runtime']) || 0;
+
+        const diffP = newP - baselineMetrics.planning;
+        const diffE = newE - baselineMetrics.execution;
+        const pSign = diffP > 0 ? '+' : '';
+        const eSign = diffE > 0 ? '+' : '';
+
+        const msg = `Plan: ${pSign}${diffP.toFixed(2)}ms, Exec: ${eSign}${diffE.toFixed(2)}ms`;
+        const type = diffE < 0 ? 'success' : 'info';
+        setToast({ message: `Comparison: ${msg}`, type });
+
+        let planRoot = Array.isArray(rawPlan) ? (rawPlan[0]['QUERY PLAN'] || rawPlan[0]['Plan']) : rawPlan;
+        if (planRoot) {
+          const { nodes: newNodes, edges: newEdges } = parsePlanToFlow(planRoot);
+          setNodes(newNodes);
+          setEdges(newEdges);
+        }
+      }
+    } catch (err: any) {
+      setToast({ message: 'Comparison failed', type: 'error' });
+    } finally {
+      setLoadingExplain(false);
+    }
+  };
+
+  const handleAIStream = async (userMsg: string, displayMsg?: string) => {
+    setChatHistory(prev => [...prev, { role: 'user', content: displayMsg || userMsg }]);
     setAiLoading(true);
     setAiStatus('thinking');
     setDiffBaseQuery(sqlQuery);
@@ -242,7 +337,8 @@ function App() {
     const startTimeStr = performance.now();
 
     try {
-      const promptToSend = `Existing SQL:\n\`\`\`sql\n${sqlQuery}\n\`\`\`\n\nUser Request: ${userMsg}`;
+      const promptToSend = displayMsg ? userMsg : `Existing SQL:\n\`\`\`sql\n${sqlQuery}\n\`\`\`\n\nUser Request: ${userMsg}`;
+
       const response = await fetch('http://localhost:9000/api/generate_sql_stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -256,7 +352,6 @@ function App() {
       });
 
       if (!response.ok || !response.body) throw new Error("Network response was not ok");
-
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let done = false;
@@ -270,132 +365,27 @@ function App() {
         if (value) {
           const chunk = decoder.decode(value, { stream: true });
           streamBuffer += chunk;
-
           if (streamBuffer.length > 10 && aiStatus === 'thinking') setAiStatus('generating');
-
           setChatHistory(prev => {
             const newHist = [...prev];
             const last = newHist[newHist.length - 1];
-            if (last.role === 'assistant') {
-              last.content = streamBuffer;
-            }
+            if (last.role === 'assistant') { last.content = streamBuffer; }
             return newHist;
           });
-
-          // Live Editor Update
-          const match = streamBuffer.match(/```sql\s*([\s\S]*?)```/) || streamBuffer.match(/```sql\s*([\s\S]*)$/);
-          if (match && match[1]) {
-            // Strip Title line if it sneaks in
-            const rawSql = match[1].trim();
-            const cleanSql = rawSql.replace(/^Title:.*(\r\n|\n|\r)?/im, '').trim();
-            setSqlQuery(cleanSql);
-          }
         }
       }
-
-      // Cleanup
-      let finalQuery = "";
-      const sqlMatch = streamBuffer.match(/```sql\s*([\s\S]*?)```/);
-      if (sqlMatch && sqlMatch[1]) finalQuery = sqlMatch[1].replace(/^Title:.*(\r\n|\n|\r)?/im, '').trim();
-      else {
-        // Fallback cleanup
-        // No title expected
-        let clean = streamBuffer.trim();
-        if (/^(SELECT|WITH|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER)/i.test(clean)) finalQuery = clean;
-      }
-
-      if (finalQuery) setSqlQuery(finalQuery);
-
-      const endTime = performance.now();
-      const durationSeconds = ((endTime - startTimeStr) / 1000).toFixed(2);
 
       setAiLoading(false);
       setAiStatus('idle');
-
-      // 4. Auto-Execute for Plan & Timings (User Request)
-      if (finalQuery && connectionInfo) {
-        try {
-          setIsExecuting(true); // Show spinner in results
-
-          // 1. Execute Query (Fast Path - Show Results immediately)
-          executeQuery(connectionInfo, finalQuery, 50)
-            .then(execRes => {
-              setExecutionResult(execRes.data);
-              setExecError(null);
-            })
-            .catch(err => {
-              setExecError(err.message || "Query execution failed");
-            })
-            .finally(() => {
-              setIsExecuting(false);
-            });
-
-          // 2. Explain Analyze (Background - Update Timings when ready)
-          explainQuery(connectionInfo, finalQuery, true).then(explainRes => {
-            if (explainRes.data && explainRes.data.json) {
-              const plan = explainRes.data.json[0]; // Assuming array
-              const pTimeVal = plan['Planning Time'] || 0;
-              const eTimeVal = (plan['Execution Time'] || plan['Total Runtime']) || 0;
-              const totalTimeVal = pTimeVal + eTimeVal;
-
-              const pTime = pTimeVal.toFixed(2);
-              const eTime = eTimeVal.toFixed(2);
-              const tTime = totalTimeVal.toFixed(2);
-
-              // Update History with these times
-              setChatHistory(prev => {
-                const newHistory = [...prev];
-                const lastIndex = newHistory.length - 1;
-                if (lastIndex >= 0 && newHistory[lastIndex].role === 'assistant') {
-                  newHistory[lastIndex].status = 'success';
-                  newHistory[lastIndex].hidden = false;
-                  newHistory[lastIndex].respTime = durationSeconds;
-                  // New Format fields
-                  (newHistory[lastIndex] as any).totalTime = tTime;
-                  newHistory[lastIndex].planTime = pTime;
-                  newHistory[lastIndex].execTime = eTime;
-                }
-                return newHistory;
-              });
-
-              // Populate Tune Tab State
-              setExplainResult([plan]); // Ensure array
-              if (explainRes.data.text) setExplainText(explainRes.data.text);
-              else setExplainText(JSON.stringify(plan, null, 2));
-
-              // Visualizer Nodes
-              let planRoot = plan['QUERY PLAN'] || plan['Plan'];
-              if (planRoot) {
-                const { nodes: newNodes, edges: newEdges } = parsePlanToFlow(planRoot);
-                setNodes(newNodes);
-                setEdges(newEdges);
-              }
-            }
-          }).catch(err => {
-            console.error("Auto-explain failed", err);
-            // Not fatal for results
-          });
-
-        } catch (err: any) {
-          // Catch immediate sync errors if any, though promises handle async
-          console.error("Auto-run setup failed", err);
-        }
-      } else {
-        // No query generated or no connection, just finalize
-        setChatHistory(prev => {
-          const newHistory = [...prev];
-          const lastIndex = newHistory.length - 1;
-          if (lastIndex >= 0 && newHistory[lastIndex].role === 'assistant') {
-            newHistory[lastIndex].status = 'success';
-            newHistory[lastIndex].hidden = false;
-            newHistory[lastIndex].respTime = durationSeconds;
-          }
-          return newHistory;
-        });
-      }
+      // Finalize history status
+      setChatHistory(prev => {
+        const newHist = [...prev];
+        const last = newHist[newHist.length - 1];
+        if (last.role === 'assistant') { last.status = 'success'; last.hidden = false; }
+        return newHist;
+      });
 
     } catch (error: any) {
-      console.error(error);
       setAiLoading(false);
       setAiStatus('idle');
       setChatHistory(prev => {
@@ -412,27 +402,75 @@ function App() {
   };
 
   const handleAnalyzeNode = async (node: Node) => {
-    // Open Sidebar if needed (assume width > 0 means open, or just ensure it's visible)
+    // Open Sidebar
     if (sidebarWidth < 50) setSidebarWidth(400);
 
     const nodeLabel = node.data.label;
     const nodeDetails = JSON.stringify(node.data.details, null, 2);
 
-    // Construct Prompt
+    // Construct Prompt with Full Context
     const prompt = `I am analyzing a specific node in the query plan: "${nodeLabel}".
     
-Node Details:
+Current SQL:
+\`\`\`sql
+${sqlQuery}
+\`\`\`
+
+Full Execution Plan:
+\`\`\`
+${explainText}
+\`\`\`
+
+Target Node Details:
 ${nodeDetails}
 
-Please analyze this specific operation. 
-1. Is this operation expensive?
-2. Why is the database choosing this method?
-3. Suggestions for optimization (e.g. indexes, query changes).
+Please provide a detailed analysis in the following format:
+
+1. **Summary**: Briefly explain what this node is doing (e.g. "Scanning table users using index idx_users_email").
+2. **Performance Analysis**: Is this operation expensive? Analyze cost, row estimates vs actuals, and timing. Loop count? 
+3. **Optimization Strategy**: Suggest concrete steps to optimize this.
+4. **Actionable SQL**:
+   - Provide standard SQL commands (like CREATE INDEX, VACUUM, ANALYZE, etc.) that could fix the issue.
+   - Output them in separate SQL code blocks.
+   - Example:
+     \`\`\`sql
+     CREATE INDEX idx_users_email ON users (email);
+     \`\`\`
 `;
 
-    // Send to AI
-    handleAIStream(prompt);
+    // Standard Chat Stream
+    handleAIStream(prompt, "Analyze Query and Plan");
   };
+
+  // Parsing Insights from AI Stream (Hook into existing handleAIStream logic)
+  useEffect(() => {
+    if (chatHistory.length === 0) return;
+    const lastMsg = chatHistory[chatHistory.length - 1];
+    if (lastMsg.role === 'assistant' && lastMsg.status !== 'error') {
+      // Regex to find SQL blocks
+      const sqlBlocks = [];
+      const regex = /```sql\s*([\s\S]*?)```/g;
+      let match;
+      while ((match = regex.exec(lastMsg.content)) !== null) {
+        const sql = match[1].trim();
+        // Valid insight if it's DDL or specific optimization
+        if (/^(CREATE|DROP|ALTER|VACUUM|ANALYZE|CLUSTER|REINDEX)/i.test(sql)) {
+          sqlBlocks.push({
+            id: Math.random().toString(36).substr(2, 9),
+            sql: sql,
+            description: "Suggested Optimization"
+          });
+        }
+      }
+      // Only update if we found something new to avoid flickering? 
+      // Actually, let's just set it if we're done or periodically.
+      // For now, simple set.
+      if (sqlBlocks.length > 0) {
+        setActionableInsights(sqlBlocks);
+      }
+    }
+  }, [chatHistory]);
+
 
   return (
     <div style={{ height: '100vh', width: '100vw', display: 'flex', background: '#0f172a', overflow: 'hidden' }}>
@@ -483,6 +521,11 @@ Please analyze this specific operation.
           onCopy={() => navigator.clipboard.writeText(sqlQuery)}
           onReset={() => { setSqlQuery(''); setExecutionResult(null); }}
           onAnalyzeNode={handleAnalyzeNode}
+          insights={actionableInsights}
+          onRunInsight={handleRunInsight}
+          insightResults={insightResults}
+          onCompare={handleComparePerformance}
+          baselineMetrics={baselineMetrics}
         />
       </div>
 
@@ -515,7 +558,17 @@ Please analyze this specific operation.
       {/* Connection Modal */}
       {isModalOpen && (
         <ConnectionModal
-          onConnect={(conn) => { setConnectionInfo(conn); setIsModalOpen(false); connectDb(conn); }}
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          onSubmit={(conn) => { setConnectionInfo(conn); setIsModalOpen(false); connectDb(conn); }}
+        />
+      )}
+
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
         />
       )}
     </div>

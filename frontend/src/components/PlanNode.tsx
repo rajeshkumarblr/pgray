@@ -31,7 +31,15 @@ const formatRows = (rows: number | undefined) => {
   return rows.toString();
 };
 
-const PlanNode = ({ data, selected }: NodeProps<PlanNodeData>) => {
+const PlanNode = ({ id, data, selected }: NodeProps<PlanNodeData>) => {
+  const handleContextMenu = React.useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    // Dispatch custom event to ensure context menu works even if ReactFlow swallows it
+    window.dispatchEvent(new CustomEvent('pgray-node-contextmenu', {
+      detail: { x: e.clientX, y: e.clientY, node: { id, data } }
+    }));
+  }, [id, data]);
+
   const severity =
     typeof data.severity_score === 'number' && Number.isFinite(data.severity_score)
       ? data.severity_score
@@ -172,7 +180,7 @@ const PlanNode = ({ data, selected }: NodeProps<PlanNodeData>) => {
   };
 
   return (
-    <div style={containerStyle}>
+    <div style={containerStyle} onContextMenu={handleContextMenu}>
       <Handle type="target" position={Position.Left} style={targetHandleStyle} />
 
       <div style={headerStyle}>

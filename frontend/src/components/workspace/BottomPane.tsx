@@ -1,10 +1,10 @@
-import React from 'react';
+import InsightsTab from './InsightsTab';
 import ResultsTable from '../ResultsTable';
 import NodeDetailsPanel from '../NodeDetailsPanel';
 
 interface BottomPaneProps {
-    activeTab: 'results' | 'details';
-    setActiveTab: (tab: 'results' | 'details') => void;
+    activeTab: 'results' | 'details' | 'insights';
+    setActiveTab: (tab: 'results' | 'details' | 'insights') => void;
 
     // Results Props
     executionResult: any;
@@ -15,6 +15,11 @@ interface BottomPaneProps {
     fullPlan: any;
     onCloseDetails: () => void;
 
+    // Insights Props
+    insights: any[];
+    onRunInsight: (id: string, sql: string) => void;
+    insightResults: any;
+
     height: number;
     isExpanded: boolean;
     onToggleExpand: () => void;
@@ -24,11 +29,9 @@ const BottomPane: React.FC<BottomPaneProps> = ({
     activeTab, setActiveTab,
     executionResult, execError,
     selectedNode, fullPlan, onCloseDetails,
+    insights, onRunInsight, insightResults,
     height, isExpanded, onToggleExpand
 }) => {
-
-    // If collapsed, render just a thin bar or nothing?
-    // Usually a header bar is always visible.
 
     return (
         <div style={{
@@ -70,6 +73,18 @@ const BottomPane: React.FC<BottomPaneProps> = ({
                     >
                         Node Details
                     </button>
+                    <button
+                        onClick={() => { setActiveTab('insights'); if (!isExpanded) onToggleExpand(); }}
+                        style={{
+                            padding: '0 12px', height: '34px',
+                            background: activeTab === 'insights' ? '#0f172a' : 'transparent',
+                            color: activeTab === 'insights' ? '#f1f5f9' : '#94a3b8',
+                            border: 'none', borderTop: activeTab === 'insights' ? '2px solid #3b82f6' : '2px solid transparent',
+                            cursor: 'pointer', fontSize: '12px', fontWeight: 600
+                        }}
+                    >
+                        Actionable Insights {insights && insights.length > 0 ? `(${insights.length})` : ''}
+                    </button>
                 </div>
 
                 <div style={{ display: 'flex', gap: '10px' }}>
@@ -109,6 +124,14 @@ const BottomPane: React.FC<BottomPaneProps> = ({
                                 fullPlan={fullPlan}
                             />
                         </div>
+                    )}
+
+                    {activeTab === 'insights' && (
+                        <InsightsTab
+                            insights={insights}
+                            onRunInsight={onRunInsight}
+                            insightResults={insightResults}
+                        />
                     )}
                 </div>
             )}

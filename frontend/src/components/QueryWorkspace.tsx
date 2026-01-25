@@ -48,7 +48,14 @@ interface QueryWorkspaceProps {
     // Misc
     onCopy: () => void;
     onReset: () => void;
-    onAnalyzeNode: (node: any) => void;
+    onAnalyzeNode: (node: Node) => void;
+
+    // Insights
+    insights: any[];
+    onRunInsight: (id: string, sql: string) => void;
+    insightResults: any;
+    onCompare: () => void;
+    baselineMetrics: { planning: number, execution: number } | null;
 }
 
 const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
@@ -59,14 +66,16 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
     selectedNode, setSelectedNode,
     nodes, edges, onNodesChange, onNodeClick, onPaneClick,
     diffBaseQuery, showDiff, setShowDiff,
-    onCopy, onReset, onAnalyzeNode
+    onCopy, onReset, onAnalyzeNode,
+    insights, onRunInsight, insightResults,
+    onCompare, baselineMetrics
 }) => {
     // Layout State
     const [activeCenterTab, setActiveCenterTab] = useState<'editor' | 'tune' | 'server'>('editor');
     const [tuneTabMode, setTuneTabMode] = useState<'plan' | 'text'>('plan'); // New State
     const [bottomExpanded, setBottomExpanded] = useState(true);
     const [bottomHeight, setBottomHeight] = useState(() => Math.max(150, window.innerHeight * 0.2)); // 20% default
-    const [activeBottomTab, setActiveBottomTab] = useState<'results' | 'details'>('results');
+    const [activeBottomTab, setActiveBottomTab] = useState<'results' | 'details' | 'insights'>('results');
 
     // Resizing Bottom Pane
     const isResizingBottom = useRef(false);
@@ -117,15 +126,32 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
         }
     }, [selectedNode]);
 
+    // Auto-open Insights if we get new ones
+    useEffect(() => {
+        if (insights && insights.length > 0) {
+            setActiveBottomTab('insights');
+            if (!bottomExpanded) setBottomExpanded(true);
+        }
+    }, [insights]);
+
     // Handle Tab Switching
     const handleExecuteWrapper = () => {
         setActiveCenterTab('editor');
         onExecute();
     };
 
+    const handleEditorWrapper = () => {
+        setActiveCenterTab('editor');
+        setActiveBottomTab('results');
+    };
+
     const handleTuneWrapper = () => {
         setActiveCenterTab('tune');
-        onTune();
+        setActiveBottomTab('details');
+        // Auto-trigger if missing
+        if (!explainResult || (explainResult && Array.isArray(explainResult) && explainResult.length === 0)) {
+            onTune();
+        }
     };
 
     const tabStyle = (tab: string) => ({
@@ -169,8 +195,8 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
 
                 {/* 2. Tabs Row (Below Toolbar) */}
                 <div style={{ display: 'flex', background: '#334155', borderBottom: '1px solid #475569', paddingLeft: '10px' }}>
-                    <div onClick={() => setActiveCenterTab('editor')} style={tabStyle('editor')}>Editor</div>
-                    <div onClick={() => setActiveCenterTab('tune')} style={tabStyle('tune')}>Tune</div>
+                    <div onClick={handleEditorWrapper} style={tabStyle('editor')}>Editor</div>
+                    <div onClick={handleTuneWrapper} style={tabStyle('tune')}>Analyze</div>
                     <div onClick={() => setActiveCenterTab('server')} style={tabStyle('server')}>Server</div>
                 </div>
 
@@ -216,12 +242,12 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                             explainText={explainText}
                             loading={loadingExplain}
                             error={explainError}
-                            flowWrapperRef={null as any}
-                            reactFlowInstance={null}
                             setReactFlowInstance={() => { }}
                             nodeTypes={nodeTypes}
                             onAnalyzeNode={onAnalyzeNode}
                             onRefreshPlan={onTune}
+                            onCompare={onCompare}
+                            baselineMetrics={baselineMetrics}
                         />
                     </div>
 
@@ -262,6 +288,9 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                     height={bottomHeight}
                     isExpanded={bottomExpanded}
                     onToggleExpand={() => setBottomExpanded(!bottomExpanded)}
+                    insights={insights}
+                    onRunInsight={onRunInsight}
+                    insightResults={insightResults}
                 />
             </div>
         </div>

@@ -16,7 +16,10 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
     *   **Text-to-SQL**: Generate complex SQL from natural language questions.
     *   **Instant Execution**: Automatically runs `EXPLAIN ANALYZE` on generated queries to fetch real performance metrics immediately.
     *   **Compact Chat UI**: SQL previews are unobtrusive text links; timings are displayed as `(P: 8ms, E: 78ms)`.
-    *   **Analysis Mode**: Ask "Analyze Node" to get specific optimization advice for expensive operations (Seq Scans, Joins).
+    *   **Interactive Analysis**: Ask "Analyze Node" to get deep optimization advice.
+    *   **Actionable Insights**: AI automatically suggests SQL fixes (e.g., `CREATE INDEX`) which are extracted into a dedicated "Insights" tab.
+    *   **Granular Execution**: Execute suggested optimizations individually with instant success/failure feedback via toast notifications.
+    *   **Performance Comparison**: Measure impact with a "Compare" tool that shows optimization gains (e.g., "Planning: -10ms") against your original baseline.
 
 *   **Flexible Workspace**:
     *   **Three-Pane Layout**: Editor (Left), Visualizer (Center), Assistant (Right).

@@ -5,50 +5,10 @@ interface NodeDetailsPanelProps {
     onClose: () => void;
 }
 
-const JsonTree = ({ data, selectedNodeDetails }: { data: any, selectedNodeDetails: any }) => {
-    const isMatch = data === selectedNodeDetails;
-    const elementRef = React.useRef<HTMLDivElement>(null);
 
-    React.useEffect(() => {
-        if (isMatch && elementRef.current) {
-            elementRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-    }, [isMatch]);
-
-    if (typeof data !== 'object' || data === null) {
-        return <span style={{ color: '#86efac' }}>{JSON.stringify(data)}</span>;
-    }
-
-    return (
-        <div
-            ref={isMatch ? elementRef : null}
-            style={{
-                fontFamily: 'monospace',
-                fontSize: '12px',
-                lineHeight: '1.5',
-                backgroundColor: isMatch ? 'rgba(234, 179, 8, 0.2)' : 'transparent', // Yellow/20 highlight
-                borderRadius: '4px',
-                padding: isMatch ? '2px 4px' : '0'
-            }}
-        >
-            {Array.isArray(data) ? '[' : '{'}
-            <div style={{ paddingLeft: '15px' }}>
-                {Object.entries(data).map(([key, value], index, arr) => (
-                    <div key={key}>
-                        <span style={{ color: '#60a5fa' }}>"{key}"</span>: <JsonTree data={value} selectedNodeDetails={selectedNodeDetails} />
-                        {index < arr.length - 1 ? ',' : ''}
-                    </div>
-                ))}
-            </div>
-            {Array.isArray(data) ? ']' : '}'}
-        </div>
-    );
-};
 
 const NodeDetailsPanel: React.FC<NodeDetailsPanelProps & { fullPlan: any }> = ({
-    selectedNode,
-    onClose,
-    fullPlan
+    selectedNode
 }) => {
 
 
@@ -82,14 +42,6 @@ const NodeDetailsPanel: React.FC<NodeDetailsPanelProps & { fullPlan: any }> = ({
             );
         });
     };
-
-    // Extract root plan for JSON view
-    let rootPlan = fullPlan;
-    if (Array.isArray(fullPlan) && fullPlan.length > 0 && fullPlan[0].Plan) {
-        rootPlan = fullPlan[0].Plan;
-    } else if (fullPlan && fullPlan.Plan) {
-        rootPlan = fullPlan.Plan;
-    }
 
     // Prepare content based on selection
     const headerTitle = selectedNode ? selectedNode.data.label : "Plan Insights";
