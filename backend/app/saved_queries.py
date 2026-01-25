@@ -36,6 +36,19 @@ def list_saved_queries():
         print(f"Error listing saved queries: {e}")
         return []
 
+def list_parameterized_queries():
+    """Lists queries from queries.json"""
+    try:
+        filepath = os.path.join(SAVED_QUERIES_DIR, "queries.json")
+        if os.path.exists(filepath):
+             with open(filepath, "r") as f:
+                 data = json.load(f)
+                 return data.get("queries", [])
+        return []
+    except Exception as e:
+        print(f"Error listing parameterized queries: {e}")
+        return []
+
 def get_saved_query(name: str):
     """Returns dict { sql, history, title } from session_history.json"""
     try:

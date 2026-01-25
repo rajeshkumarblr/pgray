@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Node } from 'reactflow';
 import SchemaBrowser from './workspace/SchemaBrowser';
 import WorkspaceToolbar from './workspace/WorkspaceToolbar';
 import BottomPane from './workspace/BottomPane';
@@ -6,6 +7,7 @@ import SimpleEditor from './SimpleEditor';
 import DiffView from './DiffView';
 import QueryTuneTab from './tabs/QueryTuneTab';
 import ServerTuneTab from './tabs/ServerTuneTab';
+import SavedQueriesTab from './tabs/SavedQueriesTab';
 import PlanNode from './PlanNode'; // Import Custom Node
 import { getSavedQueries } from '../api';
 
@@ -56,6 +58,7 @@ interface QueryWorkspaceProps {
     insightResults: any;
     onCompare: () => void;
     baselineMetrics: { planning: number, execution: number } | null;
+    queriesRefreshTrigger: number;
 }
 
 const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
@@ -68,10 +71,10 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
     diffBaseQuery, showDiff, setShowDiff,
     onCopy, onReset, onAnalyzeNode,
     insights, onRunInsight, insightResults,
-    onCompare, baselineMetrics
+    onCompare, baselineMetrics, queriesRefreshTrigger
 }) => {
     // Layout State
-    const [activeCenterTab, setActiveCenterTab] = useState<'editor' | 'tune' | 'server'>('editor');
+    const [activeCenterTab, setActiveCenterTab] = useState<'editor' | 'tune' | 'server' | 'queries'>('editor');
     const [tuneTabMode, setTuneTabMode] = useState<'plan' | 'text'>('plan'); // New State
     const [bottomExpanded, setBottomExpanded] = useState(true);
     const [bottomHeight, setBottomHeight] = useState(() => Math.max(150, window.innerHeight * 0.2)); // 20% default
@@ -196,6 +199,7 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                 {/* 2. Tabs Row (Below Toolbar) */}
                 <div style={{ display: 'flex', background: '#334155', borderBottom: '1px solid #475569', paddingLeft: '10px' }}>
                     <div onClick={handleEditorWrapper} style={tabStyle('editor')}>Editor</div>
+                    <div onClick={() => setActiveCenterTab('queries')} style={tabStyle('queries')}>Queries</div>
                     <div onClick={handleTuneWrapper} style={tabStyle('tune')}>Analyze</div>
                     <div onClick={() => setActiveCenterTab('server')} style={tabStyle('server')}>Server</div>
                 </div>
@@ -257,6 +261,19 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                         height: '100%'
                     }}>
                         <ServerTuneTab connectionInfo={connectionInfo} />
+                    </div>
+
+                    {/* Queries Tab */}
+                    <div style={{
+                        display: activeCenterTab === 'queries' ? 'block' : 'none',
+                        height: '100%'
+                    }}>
+                        <SavedQueriesTab onExecute={(sql) => {
+                            setSqlQuery(sql);
+                            onExecute();
+                        }}
+                            refreshTrigger={queriesRefreshTrigger}
+                        />
                     </div>
                 </div>
 

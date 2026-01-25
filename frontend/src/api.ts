@@ -129,3 +129,13 @@ export const saveParameterizedQuery = async (sql: string) => {
     const response = await api.post('/queries/save_parameterized', { sql });
     return response.data;
 };
+
+export const analyzeQuery = async (sql: string) => {
+    const response = await api.post('/queries/analyze', { sql });
+    return response.data;
+};
+
+export const saveQueryFinal = async (name: string, sql: string, params: any[], original_sql: string) => {
+    const response = await api.post('/queries/save', { name, sql, params, original_sql });
+    return response.data;
+};

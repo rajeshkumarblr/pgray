@@ -1,13 +1,16 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { Node, Edge, applyNodeChanges, NodeChange } from 'reactflow';
 import ConnectionModal from './components/ConnectionModal';
-import { connectDb, explainQuery, getSavedQueryContent, executeQuery, saveParameterizedQuery, getSchema, getConnectionConfig } from './api';
+import { connectDb, explainQuery, getSavedQueryContent, executeQuery, getSchema, getConnectionConfig } from './api';
 import { parsePlanToFlow } from './utils/planLayout';
 
 // Workspace
 import QueryWorkspace from './components/QueryWorkspace';
 import AIChatSidebar from './components/AIChatSidebar';
 import Toast from './components/Toast';
+import SaveSessionModal from './components/SaveSessionModal';
+import { analyzeQuery, saveQueryFinal } from './api';
+
 
 function App() {
   const [isModalOpen, setIsModalOpen] = useState(true);
@@ -195,18 +198,50 @@ function App() {
     setShowDiff(false);
   };
 
-  const handleSaveParameterized = async () => {
+  // New Save State
+  const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
+  const [saveAnalysis, setSaveAnalysis] = useState<{ title: string, params: any[], originalSql: string }>({ title: '', params: [], originalSql: '' });
+  const [queriesRefreshTrigger, setQueriesRefreshTrigger] = useState(0);
+
+  const handleStartSave = async () => {
     if (!sqlQuery.trim()) return;
+
+    // 1. Open Modal Immediately
+    setSaveAnalysis({
+      title: '', // Start Empty
+      params: [],
+      originalSql: sqlQuery
+    });
+    setIsSaveModalOpen(true);
+
     try {
-      const res = await saveParameterizedQuery(sqlQuery);
+      const res = await analyzeQuery(sqlQuery);
       if (res.status === 'success') {
-        const newTitle = res.data.name;
-        setSessionTitle(newTitle); // Update Session Title
-        alert(`Saved as: ${newTitle}\nParams: ${res.data.params.join(', ')}`);
+        // 2. Update state asynchronously
+        setSaveAnalysis(prev => ({
+          ...prev,
+          title: sessionTitle !== 'Untitled Session' ? sessionTitle : res.data.title,
+          params: res.data.parameters,
+        }));
       }
-    } catch (e: any) {
-      alert("Failed to save parameterized query");
-      console.error(e);
+    } catch (e) {
+      console.error("Analysis failed", e);
+      // Optional: Inform user
+    }
+  };
+
+  const handleFinalSave = async (title: string, sql: string, params: string[]) => {
+    try {
+      const res = await saveQueryFinal(title, sql, params, saveAnalysis.originalSql);
+      if (res.status === 'success') {
+        setSessionTitle(title);
+        alert(`Saved as: ${title}`);
+        setIsSaveModalOpen(false);
+        setQueriesRefreshTrigger(prev => prev + 1);
+      }
+    } catch (e) {
+      console.error("Save failed", e);
+      alert("Failed to save query.");
     }
   };
 
@@ -328,13 +363,15 @@ function App() {
     }
   };
 
-  const handleAIStream = async (userMsg: string, displayMsg?: string) => {
+  const handleAIStream = async (userMsg: string, displayMsg?: string, isAnalysis: boolean = false) => {
     setChatHistory(prev => [...prev, { role: 'user', content: displayMsg || userMsg }]);
     setAiLoading(true);
     setAiStatus('thinking');
-    setDiffBaseQuery(sqlQuery);
+    // Only set DiffBase if we are generating a NEW query (not analysis) to allow diffing against old one
+    if (!isAnalysis) {
+      setDiffBaseQuery(sqlQuery);
+    }
 
-    const startTimeStr = performance.now();
 
     try {
       const promptToSend = displayMsg ? userMsg : `Existing SQL:\n\`\`\`sql\n${sqlQuery}\n\`\`\`\n\nUser Request: ${userMsg}`;
@@ -347,7 +384,9 @@ function App() {
           schema_data: schema,
           history: chatHistory,
           model: selectedModel,
-          connection: connectionInfo
+          connection: connectionInfo,
+          // If analysis, pass plan/query context is handled by prompt info usually, but let's be safe
+          sql_query: isAnalysis ? sqlQuery : undefined
         })
       });
 
@@ -366,12 +405,30 @@ function App() {
           const chunk = decoder.decode(value, { stream: true });
           streamBuffer += chunk;
           if (streamBuffer.length > 10 && aiStatus === 'thinking') setAiStatus('generating');
+
           setChatHistory(prev => {
             const newHist = [...prev];
             const last = newHist[newHist.length - 1];
             if (last.role === 'assistant') { last.content = streamBuffer; }
             return newHist;
           });
+
+          // Real-time Editor Fill (Only for SQL Generation)
+          if (!isAnalysis) {
+            const sqlMarker = "```sql";
+            const markerIndex = streamBuffer.indexOf(sqlMarker);
+            if (markerIndex !== -1) {
+              // Extract everything after ```sql
+              let extracted = streamBuffer.substring(markerIndex + sqlMarker.length);
+              // Check if there is a closing ```
+              const closingIndex = extracted.indexOf("```");
+              if (closingIndex !== -1) {
+                extracted = extracted.substring(0, closingIndex);
+              }
+              // Update Editor
+              setSqlQuery(extracted.trimStart());
+            }
+          }
         }
       }
 
@@ -384,6 +441,34 @@ function App() {
         if (last.role === 'assistant') { last.status = 'success'; last.hidden = false; }
         return newHist;
       });
+
+      // Auto-Execute if Generation
+      if (!isAnalysis && streamBuffer) {
+        const sqlMarker = "```sql";
+        const markerIndex = streamBuffer.indexOf(sqlMarker);
+        if (markerIndex !== -1) {
+          let extracted = streamBuffer.substring(markerIndex + sqlMarker.length);
+          const closingIndex = extracted.indexOf("```");
+          if (closingIndex !== -1) {
+            extracted = extracted.substring(0, closingIndex).trim();
+            // Execute
+            if (extracted && connectionInfo) {
+              setIsExecuting(true);
+              setExecError(null);
+              setExecutionResult(null);
+              try {
+                const res = await executeQuery(connectionInfo, extracted, 50);
+                setExecutionResult(res.data);
+              } catch (err: any) {
+                console.error("Auto Execution failed", err);
+                setExecError(err.response?.data?.detail || err.message || "Query execution failed");
+              } finally {
+                setIsExecuting(false);
+              }
+            }
+          }
+        }
+      }
 
     } catch (error: any) {
       setAiLoading(false);
@@ -439,7 +524,7 @@ Please provide a detailed analysis in the following format:
 `;
 
     // Standard Chat Stream
-    handleAIStream(prompt, "Analyze Query and Plan");
+    handleAIStream(prompt, "Analyze Query and Plan", true);
   };
 
   // Parsing Insights from AI Stream (Hook into existing handleAIStream logic)
@@ -488,7 +573,7 @@ Please provide a detailed analysis in the following format:
           setSessionTitle={setSessionTitle}
           onLoadSession={handleLoadSession}
           onNewSession={handleNewSession}
-          onSaveSession={handleSaveParameterized}
+          onSaveSession={handleStartSave}
 
           onExecute={handleExecute}
           isExecuting={isExecuting}
@@ -526,6 +611,7 @@ Please provide a detailed analysis in the following format:
           insightResults={insightResults}
           onCompare={handleComparePerformance}
           baselineMetrics={baselineMetrics}
+          queriesRefreshTrigger={queriesRefreshTrigger}
         />
       </div>
 
@@ -569,6 +655,17 @@ Please provide a detailed analysis in the following format:
           message={toast.message}
           type={toast.type}
           onClose={() => setToast(null)}
+        />
+      )}
+
+      {isSaveModalOpen && (
+        <SaveSessionModal
+          isOpen={isSaveModalOpen}
+          onClose={() => setIsSaveModalOpen(false)}
+          onSave={handleFinalSave}
+          initialTitle={saveAnalysis.title}
+          initialParams={saveAnalysis.params}
+          originalSql={saveAnalysis.originalSql}
         />
       )}
     </div>

@@ -1,39 +1,25 @@
 {
   "queries": [
     {
-      "id": "20260123081605",
+      "id": "20260125113424",
       "name": "Movies by Actor",
-      "sql": "SELECT DISTINCT m1.name AS movie_name, m1.date FROM movies m1 JOIN casts c1 ON m1.id = c1.movie_id JOIN people p1 ON c1.person_id = p1.id JOIN jobs j1 ON c1.job_id = j1.id JOIN casts c2 ON m1.id = c2.movie_id JOIN people p2 ON c2.person_id = p2.id JOIN jobs j2 ON c2.job_id = j2.id WHERE p1.name = :actor_name AND j1.name ILIKE '%actor%' AND p2.name = :co_star_name AND j2.name ILIKE '%actor%' ORDER BY m1.date NULLS LAST;",
+      "sql": "SELECT m.name AS movie_name, m.date AS release_date\nFROM movies m\nJOIN casts c ON m.id = c.movie_id\nJOIN people p ON c.person_id = p.id\nJOIN jobs j ON c.job_id = j.id\nWHERE p.name = :actor_name AND j.name = 'Actor'\nORDER BY m.date DESC NULLS LAST;\n",
       "params": [
-        "actor_name",
-        "co_star_name"
+        "actor_name"
       ],
-      "original_sql": "SELECT DISTINCT m1.name AS movie_name, m1.date\nFROM movies m1\nJOIN casts c1 ON m1.id = c1.movie_id\nJOIN people p1 ON c1.person_id = p1.id\nJOIN jobs j1 ON c1.job_id = j1.id\nJOIN casts c2 ON m1.id = c2.movie_id\nJOIN people p2 ON c2.person_id = p2.id\nJOIN jobs j2 ON c2.job_id = j2.id\nWHERE p1.name = 'Tom Hanks' AND j1.name ILIKE '%actor%'\n  AND p2.name = 'Meg Ryan' AND j2.name ILIKE '%actor%'\nORDER BY m1.date NULLS LAST;",
-      "created_at": "2026-01-23T08:16:05.005137"
+      "original_sql": "SELECT m.name AS movie_name, m.date AS release_date\nFROM movies m\nJOIN casts c ON m.id = c.movie_id\nJOIN people p ON c.person_id = p.id\nJOIN jobs j ON c.job_id = j.id\nWHERE p.name = 'Jennifer Aniston' AND j.name = 'Actor'\nORDER BY m.date DESC NULLS LAST;\n",
+      "created_at": "2026-01-25T11:34:24.858150"
     },
     {
-      "id": "20260124113050",
-      "name": "Movies by Actor",
-      "sql": "SELECT m.name AS movie_name, m.date AS release_date FROM movies m JOIN casts c ON m.id = c.movie_id JOIN jobs j ON c.job_id = j.id JOIN people p ON c.person_id = p.id WHERE p.name = :actor_name AND j.name IN (:job1, :job2) ORDER BY m.date DESC NULLS LAST;",
+      "id": "20260125133734",
+      "name": "Movies by two actors together",
+      "sql": "SELECT m1.name AS movie_name, m1.date AS release_date\nFROM movies m1\nJOIN casts c1 ON m1.id = c1.movie_id\nJOIN people p1 ON c1.person_id = p1.id\nJOIN jobs j1 ON c1.job_id = j1.id\nWHERE p1.name = :actor1_name AND j1.name = 'Actor'\nINTERSECT\nSELECT m2.name AS movie_name, m2.date AS release_date\nFROM movies m2\nJOIN casts c2 ON m2.id = c2.movie_id\nJOIN people p2 ON c2.person_id = p2.id\nJOIN jobs j2 ON c2.job_id = j2.id\nWHERE p2.name = :actor2_name AND j2.name = 'Actor'\nORDER BY release_date DESC NULLS LAST;\n",
       "params": [
-        "actor_name",
-        "job1",
-        "job2"
+        "actor1_name",
+        "actor2_name"
       ],
-      "original_sql": "SELECT m.name AS movie_name, m.date AS release_date\nFROM movies m\nJOIN casts c ON m.id = c.movie_id\nJOIN jobs j ON c.job_id = j.id\nJOIN people p ON c.person_id = p.id\nWHERE p.name = 'Jennifer Aniston' AND j.name IN ('Actor', 'Actress')\nORDER BY m.date DESC NULLS LAST;",
-      "created_at": "2026-01-24T11:30:50.778250"
-    },
-    {
-      "id": "20260124163932",
-      "name": "Movies by Actor",
-      "sql": "SELECT m.name AS movie_name, m.date AS release_date FROM movies m JOIN casts c ON m.id = c.movie_id JOIN people p ON c.person_id = p.id JOIN jobs j ON c.job_id = j.id WHERE p.name = :actor_name AND j.name = :job_name AND m.kind = :movie_kind ORDER BY m.date DESC NULLS LAST;",
-      "params": [
-        "actor_name",
-        "job_name",
-        "movie_kind"
-      ],
-      "original_sql": "SELECT m.name AS movie_name, m.date AS release_date\nFROM movies m\nJOIN casts c ON m.id = c.movie_id\nJOIN people p ON c.person_id = p.id\nJOIN jobs j ON c.job_id = j.id\nWHERE p.name = 'Jennifer Aniston' AND j.name = 'Actor' AND m.kind = 'movie'\nORDER BY m.date DESC NULLS LAST;",
-      "created_at": "2026-01-24T16:39:32.122245"
+      "original_sql": "SELECT m1.name AS movie_name, m1.date AS release_date\nFROM movies m1\nJOIN casts c1 ON m1.id = c1.movie_id\nJOIN people p1 ON c1.person_id = p1.id\nJOIN jobs j1 ON c1.job_id = j1.id\nWHERE p1.name = 'Tom Hanks' AND j1.name = 'Actor'\nINTERSECT\nSELECT m2.name AS movie_name, m2.date AS release_date\nFROM movies m2\nJOIN casts c2 ON m2.id = c2.movie_id\nJOIN people p2 ON c2.person_id = p2.id\nJOIN jobs j2 ON c2.job_id = j2.id\nWHERE p2.name = 'Meg Ryan' AND j2.name = 'Actor'\nORDER BY release_date DESC NULLS LAST;\n",
+      "created_at": "2026-01-25T13:37:34.146498"
     }
   ]
 }

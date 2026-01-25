@@ -146,8 +146,12 @@ class SaveQueryRequest(BaseModel):
 @app.get("/api/saved_queries")
 async def get_saved_queries_endpoint():
     try:
-        from app.saved_queries import list_saved_queries
-        return {"status": "success", "queries": list_saved_queries()}
+        from app.saved_queries import list_saved_queries, list_parameterized_queries
+        return {
+            "status": "success", 
+            "queries": list_saved_queries(),
+            "parameterized": list_parameterized_queries()
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -259,26 +263,33 @@ class ParameterizeRequest(BaseModel):
     sql: str
     model: str = "qwen2.5-coder"
 
-@app.post("/api/queries/save_parameterized")
-async def save_parameterized_endpoint(request: ParameterizeRequest):
+@app.post("/api/queries/analyze")
+async def analyze_query_endpoint(request: ParameterizeRequest):
     try:
-        from app.ai import generate_parameterized_query
+        from app.ai import analyze_parameterized_query
+        result = await analyze_parameterized_query(request.sql, request.model)
+        if "error" in result:
+             raise HTTPException(status_code=500, detail=result["error"])
+        return {"status": "success", "data": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class SaveFinalQueryRequest(BaseModel):
+    name: str
+    sql: str
+    params: list
+    original_sql: str
+
+@app.post("/api/queries/save")
+async def save_final_query_endpoint(request: SaveFinalQueryRequest):
+    try:
         from app.saved_queries import save_parameterized_query as save_db
-        
-        # 1. Generate Logic
-        ai_result = await generate_parameterized_query(request.sql, request.model)
-        
-        if "error" in ai_result:
-             raise HTTPException(status_code=500, detail=ai_result["error"])
-             
-        # 2. Save
         saved_record = save_db(
-            ai_result.get("name", "Untitled Query"),
-            ai_result.get("sql", request.sql),
-            ai_result.get("params", []),
-            request.sql
+            request.name,
+            request.sql,
+            request.params,
+            request.original_sql
         )
-        
         return {"status": "success", "data": saved_record}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -88,6 +88,42 @@ const BottomPane: React.FC<BottomPaneProps> = ({
                 </div>
 
                 <div style={{ display: 'flex', gap: '10px' }}>
+                    {activeTab === 'results' && executionResult && (
+                        <button
+                            onClick={() => {
+                                if (!executionResult || !executionResult.rows || !executionResult.columns) return;
+                                const headers = executionResult.columns.join(',');
+                                const rows = executionResult.rows.map((row: any[]) =>
+                                    row.map(cell => {
+                                        if (cell === null) return '';
+                                        const str = String(cell);
+                                        if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+                                            return `"${str.replace(/"/g, '""')}"`;
+                                        }
+                                        return str;
+                                    }).join(',')
+                                ).join('\n');
+
+                                const csvContent = headers + '\n' + rows;
+                                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                                const url = URL.createObjectURL(blob);
+                                const link = document.createElement("a");
+                                link.setAttribute("href", url);
+                                link.setAttribute("download", `query_results_${new Date().getTime()}.csv`);
+                                document.body.appendChild(link);
+                                link.click();
+                                document.body.removeChild(link);
+                            }}
+                            style={{
+                                background: '#334155', color: '#e2e8f0', border: '1px solid #475569',
+                                borderRadius: '4px', padding: '2px 8px', fontSize: '11px', cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', gap: '4px'
+                            }}
+                        >
+                            <span>⬇</span> CSV
+                        </button>
+                    )}
+
                     <button
                         onClick={onToggleExpand}
                         style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer' }}

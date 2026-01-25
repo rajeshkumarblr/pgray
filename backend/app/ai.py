@@ -312,22 +312,33 @@ async def generate_title(prompt: str, model: str = "qwen2.5-coder") -> str:
         logger.error(f"Title generation failed: {e}")
         return "Untitled Session"
 
-async def generate_parameterized_query(sql_query: str, model: str = "qwen2.5-coder") -> dict:
+async def analyze_parameterized_query(sql_query: str, model: str = "qwen2.5-coder") -> dict:
     """
-    Analyzes an SQL query and returns a parameterized version.
+    Analyzes SQL to propose a Title and potential Parameters.
+    Returns:
+    {
+      "title": "...",
+      "parameters": [
+         { "name": "actor_name", "original_value": "'Tom Hanks'" },
+         ...
+      ]
+    }
     """
     prompt = (
-        "You are an expert SQL Assistant. Your task is to parameterize a given SQL query.\n"
-        "1. Identify hardcoded literal values (strings, numbers) in the WHERE clause.\n"
-        "2. Replace them with named parameters (e.g., :actor_name, :year, :min_revenue).\n"
-        "3. Generate a descriptive, generic name for this query (e.g. 'Movies by Actor').\n"
-        "4. Output strictly valid JSON.\n\n"
+        "You are an expert SQL Assistant.\n"
+        "1. Analyze the given SQL query.\n"
+        "2. Suggest a short, descriptive Title (3-5 words).\n"
+        "3. Identify ALL literal values (strings, numbers) in WHERE/JAVING clauses that could be parameters.\n"
+        "4. For each, propose a parameter name (e.g. :actor_name) and extraction the original value.\n"
+        "5. Output valid JSON.\n\n"
         f"Input SQL:\n```sql\n{sql_query}\n```\n\n"
         "Output Format:\n"
         "{\n"
-        "  \"name\": \"...\",\n"
-        "  \"sql\": \"...\",\n"
-        "  \"params\": [\"param1\", \"param2\"]\n"
+        "  \"title\": \"Movies by Actor\",\n"
+        "  \"parameters\": [\n"
+        "    { \"name\": \"actor_name\", \"original_value\": \"'Tom Hanks'\" },\n"
+        "    { \"name\": \"min_year\", \"original_value\": \"2000\" }\n"
+        "  ]\n"
         "}"
     )
     
@@ -335,7 +346,7 @@ async def generate_parameterized_query(sql_query: str, model: str = "qwen2.5-cod
         "model": model, 
         "prompt": prompt,
         "stream": False,
-        "format": "json", # Force JSON mode if supported, otherwise prompt is strong
+        "format": "json",
         "options": { "temperature": 0.1 }
     }
     
@@ -346,23 +357,22 @@ async def generate_parameterized_query(sql_query: str, model: str = "qwen2.5-cod
             data = response.json()
             content = data.get("response", "")
             
-            # Parse JSON
             try:
+                import json
                 result = json.loads(content)
+                # Ensure structure
+                if "title" not in result: result["title"] = "Untitled Query"
+                if "parameters" not in result: result["parameters"] = []
+                # Fix up parameters if they are just strings (handling loose AI response)
+                fixed_params = []
+                for p in result["parameters"]:
+                    if isinstance(p, dict) and "name" in p and "original_value" in p:
+                        fixed_params.append(p)
+                result["parameters"] = fixed_params
                 return result
             except json.JSONDecodeError:
-                # Fallback: try to extract JSON block
-                import re
-                match = re.search(r"\{.*\}", content, re.DOTALL)
-                if match:
-                    return json.loads(match.group(0))
-                raise ValueError("Could not parse AI response as JSON")
-                
+                 return { "title": "Untitled Query", "parameters": [] }
+                 
     except Exception as e:
-        logger.error(f"Parameterized Query Generation failed: {e}")
-        return {
-            "name": "Error Generating Query",
-            "sql": sql_query,
-            "params": [],
-            "error": str(e)
-        }
+        logger.error(f"Analyze Query failed: {e}")
+        return { "title": "Error Analyzing", "parameters": [], "error": str(e) }
