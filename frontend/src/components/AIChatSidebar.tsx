@@ -117,84 +117,43 @@ const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
                     if (isCodeBlock) {
                         const sql = part.replace(/^```[\w]*\n?|```$/g, '').trim();
                         if (!sql) return null;
+
+                        // Extract first line for preview
+                        const firstLine = sql.split('\n')[0].substring(0, 50) + (sql.length > 50 ? '...' : '');
+
                         return (
                             <div
                                 key={i}
                                 style={{
                                     display: 'flex',
                                     flexDirection: 'column',
-                                    gap: '6px',
-                                    margin: '8px 0',
-                                    background: '#334155',
-                                    borderRadius: '6px',
-                                    padding: '8px',
-                                    border: '1px solid #475569'
+                                    gap: '2px',
+                                    margin: '4px 0',
                                 }}
                             >
-                                <div style={{ display: 'flex', gap: '8px' }}>
-                                    <button
-                                        onClick={() => {
-                                            if (onRunSql) onRunSql(sql);
-                                        }}
-                                        style={{
-                                            background: '#3b82f6',
-                                            border: 'none',
-                                            color: 'white',
-                                            padding: '4px 10px',
-                                            borderRadius: '4px',
-                                            fontSize: '11px',
-                                            cursor: 'pointer',
-                                            fontWeight: 'bold',
-                                            flex: 1
-                                        }}
-                                        title="Load SQL into editor"
-                                    >
-                                        SQL
-                                    </button>
-                                    <button
-                                        onClick={() => {
-                                            if (onDiff) onDiff(sql);
-                                        }}
-                                        style={{
-                                            background: 'transparent',
-                                            border: '1px solid #475569',
-                                            color: '#cbd5e1',
-                                            padding: '4px 10px',
-                                            borderRadius: '4px',
-                                            fontSize: '11px',
-                                            cursor: 'pointer',
-                                            flex: 1,
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            gap: '4px'
-                                        }}
-                                        title="Diff against current editor content"
-                                    >
-                                        Diff
-                                    </button>
+                                <div
+                                    onClick={() => { if (onRunSql) onRunSql(sql); }}
+                                    style={{
+                                        cursor: 'pointer',
+                                        color: '#60a5fa',
+                                        fontSize: '13px',
+                                        fontFamily: 'monospace',
+                                        textDecoration: 'none',
+                                        display: 'flex', alignItems: 'center', gap: '6px'
+                                    }}
+                                    onMouseEnter={(e) => (e.currentTarget.style.textDecoration = 'underline')}
+                                    onMouseLeave={(e) => (e.currentTarget.style.textDecoration = 'none')}
+                                    title="Click to load SQL"
+                                >
+                                    <span style={{ fontSize: '14px' }}>📄</span>
+                                    <span>{firstLine}</span>
                                 </div>
 
                                 {(respTime || planTime || execTime) && (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '10px', color: '#94a3b8', marginTop: '4px', borderTop: '1px solid #475569', paddingTop: '6px' }}>
-                                        {respTime && (
-                                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                <span>Query generation time:</span>
-                                                <span style={{ color: '#cbd5e1' }}>{respTime}s</span>
-                                            </div>
-                                        )}
-                                        {planTime && (
-                                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                <span>Query planning time:</span>
-                                                <span style={{ color: '#cbd5e1' }}>{planTime}ms</span>
-                                            </div>
-                                        )}
-                                        {execTime && (
-                                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                <span>Query execution time:</span>
-                                                <span style={{ color: '#cbd5e1' }}>{execTime}ms</span>
-                                            </div>
-                                        )}
+                                    <div style={{ fontSize: '10px', color: '#64748b', marginLeft: '24px' }}>
+                                        {/* Format: T: 86.83 ms(P: 8.42ms, E: 78.41ms) */}
+                                        {(msg as any).totalTime ? `T: ${(msg as any).totalTime}ms ` : ''}
+                                        ({planTime ? `P: ${planTime}ms` : ''}{planTime && execTime ? ', ' : ''}{execTime ? `E: ${execTime}ms` : ''})
                                     </div>
                                 )}
                             </div>

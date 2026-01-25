@@ -214,12 +214,8 @@ async def generate_sql_stream(prompt: str, schema_context: str = None, schema_da
     if plan_text:
         optimization_context += f"### Execution Plan (Text)\n```text\n{plan_text}\n```\n\n"
     
-    is_first_turn = not history
-    title_instruction = ""
-    if is_first_turn:
-        title_instruction = "1. **First line MUST be a title** in this format: `Title: Short Session Name`\n"
-    else:
-        title_instruction = "1. Do NOT output a Title line. Start directly with the SQL block.\n"
+    # Always disable title for now as per user request
+    title_instruction = "1. Do NOT output a Title line. Start directly with the SQL block.\n"
 
     # ... Prompt construction ...
     if plan_text:
@@ -253,12 +249,12 @@ async def generate_sql_stream(prompt: str, schema_context: str = None, schema_da
             "Generate a SQL query to answer the following question.\n"
             f"Current Request: {prompt}\n\n"
             "### Guidelines\n"
-            f"{title_instruction}"
+            "1. Output ONLY the SQL code block. Do NOT include any 'Title:' line.\n"
             "2. Output valid SQL to answer the question.\n"
             "3. Use markdown formatting: ```sql ... ```\n"
             "4. Ensure column names and table names exist in the schema.\n"
             "5. **CRITICAL**: If you use `ORDER BY` clause, you MUST specify `NULLS LAST`.\n"
-            "6. **CRITICAL**: If the user asks for 'acted by' or 'movies with actor', you MUST join the `jobs` table to filter by job type (e.g. 'actor', 'actress'). Do not assume `casts` table implies acting without checking job.\n"
+            "6. **CRITICAL**: If the user asks for 'acted by' or 'movies with actor' or 'actress', you MUST join the `jobs` table to filter by job type. The ONLY valid job name for actors/actresses is 'Actor'. Do NOT use 'Actress'.\n"
             "7. Output ONLY the SQL code block. Do NOT include any explanations, introductions, or 'Here is the SQL'.\n"
         )
 

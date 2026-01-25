@@ -287,3 +287,14 @@ def save_parameterized_query(name: str, sql: str, params: list, original_sql: st
         print(f"Error saving parameterized query: {e}")
         raise e
 
+def delete_all_saved_queries():
+    try:
+        if os.path.exists(SAVED_QUERIES_DIR):
+            import shutil
+            shutil.rmtree(SAVED_QUERIES_DIR)
+            os.makedirs(SAVED_QUERIES_DIR)
+        return True
+    except Exception as e:
+        print(f"Error deleting saved queries: {e}")
+        return False
+
