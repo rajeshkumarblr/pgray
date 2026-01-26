@@ -310,41 +310,6 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
                     <>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                             <h2 style={{ margin: 0, fontSize: '20px' }}>{selectedQuery.name}</h2>
-                            <div style={{ display: 'flex', gap: '8px' }}>
-                                <button
-                                    onClick={(e) => handleEditQuery(e, selectedQuery)}
-                                    style={{
-                                        background: '#334155', color: '#e2e8f0', border: '1px solid #475569',
-                                        padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '13px',
-                                        display: 'flex', alignItems: 'center', gap: '6px'
-                                    }}
-                                    title="Edit query in main editor"
-                                >
-                                    ✏️ Edit
-                                </button>
-                                <button
-                                    onClick={(e) => handleDuplicateQuery(e, selectedQuery)}
-                                    style={{
-                                        background: '#334155', color: '#e2e8f0', border: '1px solid #475569',
-                                        padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '13px',
-                                        display: 'flex', alignItems: 'center', gap: '6px'
-                                    }}
-                                    title="Create a copy of this query"
-                                >
-                                    📄 Duplicate
-                                </button>
-                                <button
-                                    onClick={(e) => handleDeleteQuery(e, selectedQuery.id)}
-                                    style={{
-                                        background: '#ef444422', color: '#ef4444', border: '1px solid #ef4444',
-                                        padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '13px',
-                                        display: 'flex', alignItems: 'center', gap: '6px'
-                                    }}
-                                    title="Delete this query permanently"
-                                >
-                                    🗑️ Delete
-                                </button>
-                            </div>
                         </div>
 
                         <div style={{ marginBottom: '20px' }}>
@@ -410,27 +375,65 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
                             </div>
                         )}
 
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px', gap: '10px' }}>
-                            <button
-                                onClick={handleAnalyze}
-                                style={{
-                                    background: '#8b5cf6', color: 'white', border: 'none', padding: '10px 24px',
-                                    borderRadius: '4px', cursor: 'pointer', fontWeight: 600, fontSize: '14px',
-                                    display: 'flex', alignItems: 'center', gap: '8px'
-                                }}
-                            >
-                                <span>⚡</span> Analyze
-                            </button>
-                            <button
-                                onClick={handleExecute}
-                                style={{
-                                    background: '#10b981', color: 'white', border: 'none', padding: '10px 24px',
-                                    borderRadius: '4px', cursor: 'pointer', fontWeight: 600, fontSize: '14px',
-                                    display: 'flex', alignItems: 'center', gap: '8px'
-                                }}
-                            >
-                                <span>▶</span> Execute
-                            </button>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px' }}>
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                                <button
+                                    onClick={(e) => handleEditQuery(e, selectedQuery)}
+                                    style={{
+                                        background: 'transparent', color: '#94a3b8', border: '1px solid #475569',
+                                        padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '13px',
+                                        display: 'flex', alignItems: 'center', gap: '6px'
+                                    }}
+                                    title="Edit query in main editor"
+                                >
+                                    ✏️ Edit
+                                </button>
+                                <button
+                                    onClick={(e) => handleDuplicateQuery(e, selectedQuery)}
+                                    style={{
+                                        background: 'transparent', color: '#94a3b8', border: '1px solid #475569',
+                                        padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '13px',
+                                        display: 'flex', alignItems: 'center', gap: '6px'
+                                    }}
+                                    title="Create a copy of this query"
+                                >
+                                    📄 Duplicate
+                                </button>
+                                <button
+                                    onClick={(e) => handleDeleteQuery(e, selectedQuery.id)}
+                                    style={{
+                                        background: 'transparent', color: '#ef4444', border: '1px solid #ef4444',
+                                        padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '13px',
+                                        display: 'flex', alignItems: 'center', gap: '6px'
+                                    }}
+                                    title="Delete this query permanently"
+                                >
+                                    🗑️ Delete
+                                </button>
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '10px' }}>
+                                <button
+                                    onClick={handleAnalyze}
+                                    style={{
+                                        background: '#8b5cf6', color: 'white', border: 'none', padding: '10px 24px',
+                                        borderRadius: '4px', cursor: 'pointer', fontWeight: 600, fontSize: '14px',
+                                        display: 'flex', alignItems: 'center', gap: '8px'
+                                    }}
+                                >
+                                    <span>⚡</span> Analyze
+                                </button>
+                                <button
+                                    onClick={handleExecute}
+                                    style={{
+                                        background: '#10b981', color: 'white', border: 'none', padding: '10px 24px',
+                                        borderRadius: '4px', cursor: 'pointer', fontWeight: 600, fontSize: '14px',
+                                        display: 'flex', alignItems: 'center', gap: '8px'
+                                    }}
+                                >
+                                    <span>▶</span> Execute
+                                </button>
+                            </div>
                         </div>
                     </>
                 ) : (
