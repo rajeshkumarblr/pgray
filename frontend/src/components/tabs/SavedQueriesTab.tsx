@@ -375,7 +375,8 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
                             </div>
                         )}
 
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px' }}>
+                        <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                            {/* Management Actions */}
                             <div style={{ display: 'flex', gap: '8px' }}>
                                 <button
                                     onClick={(e) => handleEditQuery(e, selectedQuery)}
@@ -412,7 +413,8 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
                                 </button>
                             </div>
 
-                            <div style={{ display: 'flex', gap: '10px' }}>
+                            {/* Execution Actions */}
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
                                 <button
                                     onClick={handleAnalyze}
                                     style={{
