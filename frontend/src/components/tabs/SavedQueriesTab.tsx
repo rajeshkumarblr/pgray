@@ -296,41 +296,9 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
                             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                         }}
                     >
-                        <div style={{ overflow: 'hidden' }}>
+                        <div style={{ overflow: 'hidden', width: '100%' }}>
                             <div style={{ fontSize: '14px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{q.name}</div>
                             <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>{new Date(q.created_at).toLocaleDateString()}</div>
-                        </div>
-                        <div style={{ display: 'flex', gap: '5px' }}>
-                            <button
-                                onClick={(e) => handleEditQuery(e, q)}
-                                style={{
-                                    background: 'transparent', border: 'none', color: '#94a3b8',
-                                    cursor: 'pointer', padding: '4px', fontSize: '14px'
-                                }}
-                                title="Edit (Load into Editor)"
-                            >
-                                ✏️
-                            </button>
-                            <button
-                                onClick={(e) => handleDuplicateQuery(e, q)}
-                                style={{
-                                    background: 'transparent', border: 'none', color: '#94a3b8',
-                                    cursor: 'pointer', padding: '4px', fontSize: '14px'
-                                }}
-                                title="Duplicate"
-                            >
-                                📄
-                            </button>
-                            <button
-                                onClick={(e) => handleDeleteQuery(e, q.id)}
-                                style={{
-                                    background: 'transparent', border: 'none', color: '#64748b',
-                                    cursor: 'pointer', padding: '4px', fontSize: '14px'
-                                }}
-                                title="Delete Query"
-                            >
-                                🗑️
-                            </button>
                         </div>
                     </div>
                 ))}
@@ -340,7 +308,45 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
             <div style={{ flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
                 {selectedQuery ? (
                     <>
-                        <h2 style={{ margin: '0 0 20px 0', fontSize: '20px' }}>{selectedQuery.name}</h2>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                            <h2 style={{ margin: 0, fontSize: '20px' }}>{selectedQuery.name}</h2>
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                                <button
+                                    onClick={(e) => handleEditQuery(e, selectedQuery)}
+                                    style={{
+                                        background: '#334155', color: '#e2e8f0', border: '1px solid #475569',
+                                        padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '13px',
+                                        display: 'flex', alignItems: 'center', gap: '6px'
+                                    }}
+                                    title="Edit query in main editor"
+                                >
+                                    ✏️ Edit
+                                </button>
+                                <button
+                                    onClick={(e) => handleDuplicateQuery(e, selectedQuery)}
+                                    style={{
+                                        background: '#334155', color: '#e2e8f0', border: '1px solid #475569',
+                                        padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '13px',
+                                        display: 'flex', alignItems: 'center', gap: '6px'
+                                    }}
+                                    title="Create a copy of this query"
+                                >
+                                    📄 Duplicate
+                                </button>
+                                <button
+                                    onClick={(e) => handleDeleteQuery(e, selectedQuery.id)}
+                                    style={{
+                                        background: '#ef444422', color: '#ef4444', border: '1px solid #ef4444',
+                                        padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '13px',
+                                        display: 'flex', alignItems: 'center', gap: '6px'
+                                    }}
+                                    title="Delete this query permanently"
+                                >
+                                    🗑️ Delete
+                                </button>
+                            </div>
+                        </div>
+
                         <div style={{ marginBottom: '20px' }}>
                             <label style={{ display: 'block', color: '#94a3b8', fontSize: '12px', marginBottom: '8px' }}>SQL Template</label>
                             <div style={{
