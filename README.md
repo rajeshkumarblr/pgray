@@ -33,6 +33,8 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
     *   **Parameterized Storage**: Saved queries are automatically parameterized (e.g., `WHERE name = $1`) for reuse.
     *   **History**: Access previously saved sessions and resume work instantly.
     *   **Queries Tab**: Dedicated tab to explore, fill parameters (e.g., `:actor_name`), and Execute saved queries without losing context.
+    *   **Searchable Dropdowns**: Parameters with table/column metadata show a searchable dropdown that filters potential values from the database in real-time.
+    *   **Delete Support**: Easily delete saved queries directly from the list.
 
 *   **Deep Analytics**:
     *   **Results Tab**: View actual query result rows immediately.

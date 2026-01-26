@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from app.models import ConnectionRequest, ExplainRequest, QueryRequest, GenerateSqlRequest, ExplainSqlRequest
+from app.models import ConnectionRequest, ExplainRequest, QueryRequest, GenerateSqlRequest, ExplainSqlRequest, ConnectionInfo
 from app.connection import test_connection
 from app.explain import execute_explain, execute_query_results
 from app.history import init_db, add_history_item, get_history_items
@@ -294,3 +294,29 @@ async def save_final_query_endpoint(request: SaveFinalQueryRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+class DistinctValuesRequest(BaseModel):
+    table: str
+    column: str
+    connection: ConnectionInfo
+    search: str = None # Optional search term
+
+@app.post("/api/db/values")
+async def get_distinct_values_endpoint(request: DistinctValuesRequest):
+    try:
+        from app.db_utils import get_distinct_values
+        values = get_distinct_values(request.connection, request.table, request.column, request.search) 
+        return {"status": "success", "values": values}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/queries/{query_id}")
+async def delete_query_endpoint(query_id: str):
+    try:
+        from app.saved_queries import delete_saved_query
+        success = delete_saved_query(query_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Query not found")
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

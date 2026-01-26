@@ -4,20 +4,23 @@ interface Parameter {
     name: string;
     original_value: string;
     active: boolean;
+    table?: string | null;
+    column?: string | null;
 }
 
 interface SaveSessionModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onSave: (title: string, sql: string, params: string[]) => void;
+    onSave: (title: string, sql: string, params: any[]) => void;
 
     // Initial Data from Analysis
     initialTitle: string;
     initialParams: Parameter[];
     originalSql: string;
+    loading?: boolean;
 }
 
-const SaveSessionModal: React.FC<SaveSessionModalProps> = ({ isOpen, onClose, onSave, initialTitle, initialParams, originalSql }) => {
+const SaveSessionModal: React.FC<SaveSessionModalProps> = ({ isOpen, onClose, onSave, initialTitle, initialParams, originalSql, loading = false }) => {
     const [title, setTitle] = useState(initialTitle);
     const [params, setParams] = useState<Parameter[]>(initialParams);
     const [previewSql, setPreviewSql] = useState(originalSql);
@@ -43,8 +46,13 @@ const SaveSessionModal: React.FC<SaveSessionModalProps> = ({ isOpen, onClose, on
     }, [params, originalSql]);
 
     const handleSave = () => {
-        const activeParamNames = params.filter(p => p.active).map(p => p.name);
-        onSave(title, previewSql, activeParamNames);
+        const activeParams = params.filter(p => p.active).map(p => ({
+            name: p.name,
+            original_value: p.original_value,
+            table: p.table,
+            column: p.column
+        }));
+        onSave(title, previewSql, activeParams);
     };
 
     if (!isOpen) return null;
@@ -77,7 +85,11 @@ const SaveSessionModal: React.FC<SaveSessionModalProps> = ({ isOpen, onClose, on
                 <div style={{ marginBottom: '20px' }}>
                     <label style={{ display: 'block', color: '#94a3b8', fontSize: '13px', marginBottom: '8px' }}>Detected Parameters (Uncheck to keep hardcoded)</label>
                     <div style={{ background: '#0f172a', borderRadius: '4px', padding: '10px', border: '1px solid #334155', maxHeight: '150px', overflowY: 'auto' }}>
-                        {params.length === 0 ? (
+                        {loading ? (
+                            <div style={{ color: '#64748b', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span>⚡</span> Analyzing query for parameters...
+                            </div>
+                        ) : params.length === 0 ? (
                             <div style={{ color: '#64748b', fontSize: '12px', fontStyle: 'italic' }}>No parameters detected.</div>
                         ) : (
                             params.map((param, idx) => (

@@ -311,3 +311,29 @@ def delete_all_saved_queries():
         print(f"Error deleting saved queries: {e}")
         return False
 
+def delete_saved_query(query_id: str):
+    """
+    Deletes a specific parameterized query by ID.
+    """
+    try:
+        print(f"DEBUG: Deleting query with ID: {query_id}")
+        filepath = os.path.join(SAVED_QUERIES_DIR, "queries.json")
+        if not os.path.exists(filepath):
+            return False
+            
+        with open(filepath, "r") as f:
+            data = json.load(f)
+            
+        initial_count = len(data.get("queries", []))
+        data["queries"] = [q for q in data.get("queries", []) if q.get("id") != query_id]
+        
+        if len(data["queries"]) == initial_count:
+            return False # Not found
+            
+        with open(filepath, "w") as f:
+            json.dump(data, f, indent=2)
+            
+        return True
+    except Exception as e:
+        print(f"Error deleting query: {e}")
+        return False

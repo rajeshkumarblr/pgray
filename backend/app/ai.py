@@ -328,16 +328,20 @@ async def analyze_parameterized_query(sql_query: str, model: str = "qwen2.5-code
         "You are an expert SQL Assistant.\n"
         "1. Analyze the given SQL query.\n"
         "2. Suggest a short, descriptive Title (3-5 words).\n"
-        "3. Identify ALL literal values (strings, numbers) in WHERE/JAVING clauses that could be parameters.\n"
-        "4. For each, propose a parameter name (e.g. :actor_name) and extraction the original value.\n"
+        "3. Identify ALL literal values (strings, numbers) in WHERE/HAVING clauses that could be parameters.\n"
+        "4. For each parameter, identifying the TABLE and COLUMN it is filtering.\n"
         "5. Output valid JSON.\n\n"
         f"Input SQL:\n```sql\n{sql_query}\n```\n\n"
         "Output Format:\n"
         "{\n"
         "  \"title\": \"Movies by Actor\",\n"
         "  \"parameters\": [\n"
-        "    { \"name\": \"actor_name\", \"original_value\": \"'Tom Hanks'\" },\n"
-        "    { \"name\": \"min_year\", \"original_value\": \"2000\" }\n"
+        "    { \n"
+        "      \"name\": \"actor_name\", \n"
+        "      \"original_value\": \"'Tom Hanks'\", \n"
+        "      \"table\": \"people\", \n"
+        "      \"column\": \"name\" \n"
+        "    }\n"
         "  ]\n"
         "}"
     )
@@ -359,14 +363,25 @@ async def analyze_parameterized_query(sql_query: str, model: str = "qwen2.5-code
             
             try:
                 import json
+                import re
+                
+                # Try to extract JSON structure directly
+                # Finds the first { and the last }
+                json_match = re.search(r"(\{.*\})", content, re.DOTALL)
+                if json_match:
+                    content = json_match.group(1).strip()
+                
                 result = json.loads(content)
                 # Ensure structure
                 if "title" not in result: result["title"] = "Untitled Query"
                 if "parameters" not in result: result["parameters"] = []
-                # Fix up parameters if they are just strings (handling loose AI response)
+                # Fix up parameters
                 fixed_params = []
                 for p in result["parameters"]:
                     if isinstance(p, dict) and "name" in p and "original_value" in p:
+                        # Normalize keys if missing
+                        if "table" not in p: p["table"] = None
+                        if "column" not in p: p["column"] = None
                         fixed_params.append(p)
                 result["parameters"] = fixed_params
                 return result

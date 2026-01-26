@@ -200,37 +200,42 @@ function App() {
 
   // New Save State
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
-  const [saveAnalysis, setSaveAnalysis] = useState<{ title: string, params: any[], originalSql: string }>({ title: '', params: [], originalSql: '' });
+  const [saveAnalysis, setSaveAnalysis] = useState<{ title: string, params: any[], originalSql: string, loading: boolean }>({ title: '', params: [], originalSql: '', loading: false });
   const [queriesRefreshTrigger, setQueriesRefreshTrigger] = useState(0);
 
   const handleStartSave = async () => {
     if (!sqlQuery.trim()) return;
 
-    // 1. Open Modal Immediately
+    // 1. Open Modal Immediately with Loading State
     setSaveAnalysis({
-      title: '', // Start Empty
+      title: '',
       params: [],
-      originalSql: sqlQuery
+      originalSql: sqlQuery,
+      loading: true
     });
     setIsSaveModalOpen(true);
 
     try {
       const res = await analyzeQuery(sqlQuery);
-      if (res.status === 'success') {
+      if (res && res.status === 'success' && res.data) {
         // 2. Update state asynchronously
         setSaveAnalysis(prev => ({
           ...prev,
           title: sessionTitle !== 'Untitled Session' ? sessionTitle : res.data.title,
           params: res.data.parameters,
+          loading: false
         }));
+      } else {
+        // Stop loading even if invalid
+        setSaveAnalysis(prev => ({ ...prev, loading: false }));
       }
     } catch (e) {
       console.error("Analysis failed", e);
-      // Optional: Inform user
+      setSaveAnalysis(prev => ({ ...prev, loading: false }));
     }
   };
 
-  const handleFinalSave = async (title: string, sql: string, params: string[]) => {
+  const handleFinalSave = async (title: string, sql: string, params: any[]) => {
     try {
       const res = await saveQueryFinal(title, sql, params, saveAnalysis.originalSql);
       if (res.status === 'success') {
@@ -666,6 +671,7 @@ Please provide a detailed analysis in the following format:
           initialTitle={saveAnalysis.title}
           initialParams={saveAnalysis.params}
           originalSql={saveAnalysis.originalSql}
+          loading={saveAnalysis.loading}
         />
       )}
     </div>

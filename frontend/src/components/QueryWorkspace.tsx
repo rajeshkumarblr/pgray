@@ -268,11 +268,13 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                         display: activeCenterTab === 'queries' ? 'block' : 'none',
                         height: '100%'
                     }}>
-                        <SavedQueriesTab onExecute={(sql) => {
-                            setSqlQuery(sql);
-                            onExecute();
-                        }}
+                        <SavedQueriesTab
+                            onExecute={(sql) => {
+                                setSqlQuery(sql);
+                                onExecute();
+                            }}
                             refreshTrigger={queriesRefreshTrigger}
+                            connectionInfo={connectionInfo}
                         />
                     </div>
                 </div>

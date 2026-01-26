@@ -139,3 +139,23 @@ export const saveQueryFinal = async (name: string, sql: string, params: any[], o
     const response = await api.post('/queries/save', { name, sql, params, original_sql });
     return response.data;
 };
+
+export const getDistinctValues = async (connection: any, table: string, column: string, search: string = '') => {
+    try {
+        const response = await api.post('/db/values', { connection, table, column, search });
+        return response.data;
+    } catch (error) {
+        console.error("Error fetching distinct values:", error);
+        return { status: "error", values: [] };
+    }
+};
+
+export const deleteQuery = async (id: string) => {
+    try {
+        const response = await api.delete(`/queries/${id}`);
+        return response.data;
+    } catch (error) {
+        console.error("Error deleting query:", error);
+        throw error;
+    }
+};
