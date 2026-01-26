@@ -62,6 +62,7 @@ interface QueryWorkspaceProps {
     activeTab: 'editor' | 'tune' | 'server' | 'queries';
     setActiveTab: (tab: 'editor' | 'tune' | 'server' | 'queries') => void;
     onAnalyzeParamQuery: (sql: string) => void;
+    onEdit: (sql: string, name: string) => void;
 }
 
 const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
@@ -75,7 +76,7 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
     onCopy, onReset, onAnalyzeNode,
     insights, onRunInsight, insightResults,
     onCompare, baselineMetrics, queriesRefreshTrigger,
-    activeTab, setActiveTab, onAnalyzeParamQuery
+    activeTab, setActiveTab, onAnalyzeParamQuery, onEdit
 }) => {
     // Layout State
     // activeTab is now props
@@ -273,13 +274,14 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                         height: '100%'
                     }}>
                         <SavedQueriesTab
-                            onExecute={(sql) => {
+                            onExecute={(sql: string) => {
                                 setSqlQuery(sql);
                                 onExecute(sql);
                             }}
-                            onAnalyze={(sql) => {
+                            onAnalyze={(sql: string) => {
                                 onAnalyzeParamQuery(sql);
                             }}
+                            onEdit={onEdit}
                             refreshTrigger={queriesRefreshTrigger}
                             connectionInfo={connectionInfo}
                         />

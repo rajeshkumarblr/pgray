@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { getSavedQueries, getDistinctValues, deleteQuery } from '../../api';
+import { getSavedQueries, getDistinctValues, deleteQuery, saveQueryFinal } from '../../api';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
@@ -22,6 +22,7 @@ interface ParameterizedQuery {
 interface SavedQueriesTabProps {
     onExecute: (sql: string) => void;
     onAnalyze: (sql: string) => void;
+    onEdit: (sql: string, name: string) => void;
     refreshTrigger?: number;
     connectionInfo: any;
 }
@@ -86,7 +87,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({ value, onChange, on
                 <input
                     type="text"
                     value={inputValue}
-                    onChange={(e) => {
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                         const val = e.target.value;
                         setInputValue(val);
                         onChange(val); // Propagate change immediately (Free Text)
@@ -128,8 +129,8 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({ value, onChange, on
                                     fontSize: '13px',
                                     background: '#1e293b'
                                 }}
-                                onMouseEnter={(e) => e.currentTarget.style.background = '#334155'}
-                                onMouseLeave={(e) => e.currentTarget.style.background = '#1e293b'}
+                                onMouseEnter={(e: React.MouseEvent<HTMLDivElement>) => e.currentTarget.style.background = '#334155'}
+                                onMouseLeave={(e: React.MouseEvent<HTMLDivElement>) => e.currentTarget.style.background = '#1e293b'}
                             >
                                 {opt}
                             </div>
@@ -146,7 +147,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({ value, onChange, on
 };
 
 
-const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze, refreshTrigger, connectionInfo }) => {
+const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze, onEdit, refreshTrigger, connectionInfo }) => {
     const [queries, setQueries] = useState<ParameterizedQuery[]>([]);
     const [selectedQuery, setSelectedQuery] = useState<ParameterizedQuery | null>(null);
     const [paramValues, setParamValues] = useState<{ [key: string]: string }>({});
@@ -182,13 +183,29 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
         }
     };
 
+    const handleDuplicateQuery = async (e: React.MouseEvent, query: ParameterizedQuery) => {
+        e.stopPropagation();
+        const newName = `${query.name} (Copy)`;
+        try {
+            await saveQueryFinal(newName, query.sql, query.params, query.original_sql);
+            loadQueries();
+        } catch (e) {
+            alert("Failed to duplicate query");
+        }
+    };
+
+    const handleEditQuery = (e: React.MouseEvent, query: ParameterizedQuery) => {
+        e.stopPropagation();
+        onEdit(query.original_sql, query.name);
+    };
+
     const fetchOptions = async (pName: string, table: string, column: string, search: string = '') => {
         try {
-            setLoadingOptions(prev => ({ ...prev, [pName]: true }));
+            setLoadingOptions((prev: any) => ({ ...prev, [pName]: true }));
             if (!connectionInfo) return;
             const res = await getDistinctValues(connectionInfo, table, column, search);
             if (res && res.values) {
-                setParamOptions(prev => ({
+                setParamOptions((prev: any) => ({
                     ...prev,
                     [pName]: res.values.map(String) // Ensure strings
                 }));
@@ -196,7 +213,7 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
         } catch (e) {
             console.error(`Failed to fetch options for ${pName}`, e);
         } finally {
-            setLoadingOptions(prev => ({ ...prev, [pName]: false }));
+            setLoadingOptions((prev: any) => ({ ...prev, [pName]: false }));
         }
     };
 
@@ -218,7 +235,7 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
         }
 
         setParamValues(initialParams);
-        setLoadingOptions(prev => ({ ...prev, ...newLoading }));
+        setLoadingOptions((prev: any) => ({ ...prev, ...newLoading }));
     };
 
     const handleExecute = () => {
@@ -283,16 +300,38 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
                             <div style={{ fontSize: '14px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{q.name}</div>
                             <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>{new Date(q.created_at).toLocaleDateString()}</div>
                         </div>
-                        <button
-                            onClick={(e) => handleDeleteQuery(e, q.id)}
-                            style={{
-                                background: 'transparent', border: 'none', color: '#64748b',
-                                cursor: 'pointer', padding: '4px', fontSize: '14px'
-                            }}
-                            title="Delete Query"
-                        >
-                            🗑️
-                        </button>
+                        <div style={{ display: 'flex', gap: '5px' }}>
+                            <button
+                                onClick={(e) => handleEditQuery(e, q)}
+                                style={{
+                                    background: 'transparent', border: 'none', color: '#94a3b8',
+                                    cursor: 'pointer', padding: '4px', fontSize: '14px'
+                                }}
+                                title="Edit (Load into Editor)"
+                            >
+                                ✏️
+                            </button>
+                            <button
+                                onClick={(e) => handleDuplicateQuery(e, q)}
+                                style={{
+                                    background: 'transparent', border: 'none', color: '#94a3b8',
+                                    cursor: 'pointer', padding: '4px', fontSize: '14px'
+                                }}
+                                title="Duplicate"
+                            >
+                                📄
+                            </button>
+                            <button
+                                onClick={(e) => handleDeleteQuery(e, q.id)}
+                                style={{
+                                    background: 'transparent', border: 'none', color: '#64748b',
+                                    cursor: 'pointer', padding: '4px', fontSize: '14px'
+                                }}
+                                title="Delete Query"
+                            >
+                                🗑️
+                            </button>
+                        </div>
                     </div>
                 ))}
             </div>

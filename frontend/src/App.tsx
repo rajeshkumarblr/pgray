@@ -602,6 +602,11 @@ Please provide a detailed analysis in the following format:
           onNewSession={handleNewSession}
           onSaveSession={handleStartSave}
           onAnalyzeParamQuery={handleAnalyzeParamQuery}
+          onEdit={(sql, name) => {
+            setSqlQuery(sql);
+            setSessionTitle(name);
+            setActiveCenterTab('editor');
+          }}
 
           onExecute={handleExecute}
           isExecuting={isExecuting}
