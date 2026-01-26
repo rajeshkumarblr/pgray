@@ -1,7 +1,9 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { getSavedQueries, getDistinctValues, deleteQuery, saveQueryFinal } from '../../api';
+import { getSavedQueries, getDistinctValues, deleteQuery, saveQueryFinal, analyzeQuery } from '../../api';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import SimpleEditor from '../SimpleEditor';
+import SaveSessionModal from '../SaveSessionModal';
 
 interface ParamDef {
     name: string;
@@ -154,6 +156,14 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
     const [paramOptions, setParamOptions] = useState<{ [key: string]: string[] }>({});
     const [loadingOptions, setLoadingOptions] = useState<{ [key: string]: boolean }>({});
 
+    // Editing State
+    const [isEditing, setIsEditing] = useState(false);
+    const [editSql, setEditSql] = useState('');
+    const [originalEditSql, setOriginalEditSql] = useState(''); // Tracking for dirty check
+    const [showSaveModal, setShowSaveModal] = useState(false);
+    const [analyzingSave, setAnalyzingSave] = useState(false);
+    const [saveParams, setSaveParams] = useState<any[]>([]); // Derived params for modal
+
     useEffect(() => {
         loadQueries();
     }, [refreshTrigger]);
@@ -194,10 +204,6 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
         }
     };
 
-    const handleEditQuery = (e: React.MouseEvent, query: ParameterizedQuery) => {
-        e.stopPropagation();
-        onEdit(query.original_sql, query.name);
-    };
 
     const fetchOptions = async (pName: string, table: string, column: string, search: string = '') => {
         try {
@@ -219,6 +225,11 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
 
     const handleSelect = async (q: ParameterizedQuery) => {
         setSelectedQuery(q);
+        // Reset edit state
+        setIsEditing(false);
+        setEditSql('');
+        setOriginalEditSql('');
+
         // Reset params
         const initialParams: any = {};
         const newLoading: { [key: string]: boolean } = {};
@@ -236,6 +247,73 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
 
         setParamValues(initialParams);
         setLoadingOptions((prev: any) => ({ ...prev, ...newLoading }));
+    };
+
+    const handleToggleEdit = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (isEditing) {
+            // Cancel edit
+            if (editSql !== originalEditSql) {
+                if (!confirm("Discard unsaved changes?")) return;
+            }
+            setIsEditing(false);
+        } else {
+            // Start edit
+            if (!selectedQuery) return;
+            // Use original_sql for editing to preserve formatting if possible, 
+            // but selectedQuery.sql is usually the one we want. 
+            // Actually selectedQuery.sql is the template with :params.
+            setEditSql(selectedQuery.sql);
+            setOriginalEditSql(selectedQuery.sql);
+            setIsEditing(true);
+        }
+    };
+
+    const handleSaveClick = async () => {
+        if (!selectedQuery) return;
+        setAnalyzingSave(true);
+        try {
+            // Analyze for params
+            const res = await analyzeQuery(editSql);
+            if (res && res.data) {
+                // res.data.params is [{name, original_value, ...}]
+                // We need to map this to the format SaveSessionModal expects
+                // The modal expects {name, original_value, active, ...}
+                // But wait, analyzeQuery returns parameterized SQL and extracted params.
+                // We mainly just want to verify/update params.
+                // Let's rely on the analysis result.
+                setSaveParams(res.data.params || []);
+                setShowSaveModal(true);
+            }
+        } catch (e) {
+            alert("Failed to analyze query");
+        } finally {
+            setAnalyzingSave(false);
+        }
+    };
+
+    const handleConfirmSave = async (title: string, finalSql: string, activeParams: any[]) => {
+        if (!selectedQuery) return;
+        try {
+            await saveQueryFinal(
+                title, // Allow title edit? Modal allows it.
+                finalSql,
+                activeParams,
+                finalSql // Original SQL is same as final for template
+            );
+            setShowSaveModal(false);
+            setIsEditing(false);
+            loadQueries(); // Refresh list to get updates
+            // Update selected query effectively? loadQueries will reset queries.
+            // We might lose selection or need to find it again.
+            // Let's just refresh.
+        } catch (e) {
+            alert("Failed to save query");
+        }
+    };
+
+    const handleDoubleClick = (q: ParameterizedQuery) => {
+        onEdit(q.original_sql, q.name);
     };
 
     const handleExecute = () => {
@@ -276,6 +354,8 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
     };
 
 
+    // ... (previous code)
+
     return (
         <div style={{ display: 'flex', height: '100%', color: '#e2e8f0' }}>
             {/* List */}
@@ -289,12 +369,14 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
                     <div
                         key={q.id}
                         onClick={() => handleSelect(q)}
+                        onDoubleClick={() => handleDoubleClick(q)}
                         style={{
                             padding: '10px 15px', cursor: 'pointer', borderBottom: '1px solid #1e293b',
                             background: selectedQuery?.id === q.id ? '#334155' : 'transparent',
                             transition: 'background 0.2s',
                             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                         }}
+                        title="Double-click to load in main editor"
                     >
                         <div style={{ overflow: 'hidden', width: '100%' }}>
                             <div style={{ fontSize: '14px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{q.name}</div>
@@ -313,82 +395,76 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
                         </div>
 
                         <div style={{ marginBottom: '20px' }}>
-                            <label style={{ display: 'block', color: '#94a3b8', fontSize: '12px', marginBottom: '8px' }}>SQL Template</label>
-                            <div style={{
-                                background: '#0f172a',
-                                border: '1px solid #334155',
-                                borderRadius: '4px',
-                                overflow: 'hidden'
-                            }}>
-                                <SyntaxHighlighter
-                                    language="sql"
-                                    style={customSyntaxStyle}
-                                    customStyle={{ margin: 0, padding: '15px', fontSize: '13px', background: 'transparent' }}
-                                    wrapLines={true}
-                                >
-                                    {selectedQuery.sql}
-                                </SyntaxHighlighter>
-                            </div>
-                        </div>
+                            <label style={{ display: 'block', color: '#94a3b8', fontSize: '12px', marginBottom: '8px' }}>
+                                SQL Template {isEditing && <span style={{ color: '#fbbf24' }}>(Editing)</span>}
+                            </label>
 
-                        {selectedQuery.params.length > 0 && (
-                            <div style={{ marginBottom: '20px' }}>
-                                <label style={{ display: 'block', color: '#94a3b8', fontSize: '12px', marginBottom: '8px' }}>Parameters</label>
-                                <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '15px', alignItems: 'center', background: '#1e293b', padding: '15px', borderRadius: '4px', border: '1px solid #334155' }}>
-                                    {selectedQuery.params.map(p => {
-                                        const pName = typeof p === 'string' ? p : p.name;
-                                        const isRich = typeof p !== 'string' && p.table && p.column;
-                                        const isLoading = loadingOptions[pName];
-
-                                        return (
-                                            <React.Fragment key={pName}>
-                                                <div style={{ color: '#facc15', fontFamily: 'monospace', fontWeight: 'bold' }}>:{pName}</div>
-                                                {isRich ? (
-                                                    <SearchableSelect
-                                                        value={paramValues[pName] || ''}
-                                                        onChange={(val) => setParamValues({ ...paramValues, [pName]: val })}
-                                                        onSearch={(term) => {
-                                                            if (typeof p !== 'string' && p.table && p.column) {
-                                                                fetchOptions(pName, p.table, p.column, term);
-                                                            }
-                                                        }}
-                                                        options={paramOptions[pName] || []}
-                                                        loading={isLoading}
-                                                        placeholder="Type to search..."
-                                                    />
-                                                ) : (
-                                                    <input
-                                                        type="text"
-                                                        placeholder={`Value for ${pName}`}
-                                                        value={paramValues[pName] || ''}
-                                                        onChange={(e) => setParamValues({ ...paramValues, [pName]: e.target.value })}
-                                                        style={{
-                                                            background: '#0f172a', border: '1px solid #475569', color: 'white',
-                                                            padding: '8px', borderRadius: '4px'
-                                                        }}
-                                                    />
-                                                )}
-                                            </React.Fragment>
-                                        );
-                                    })}
+                            {isEditing ? (
+                                <div style={{
+                                    height: '300px', // Fixed height for editor
+                                    border: '1px solid #fbbf24', // Highlight border
+                                    borderRadius: '4px',
+                                    overflow: 'hidden'
+                                }}>
+                                    <SimpleEditor
+                                        value={editSql}
+                                        onChange={setEditSql}
+                                        language="sql"
+                                    />
                                 </div>
-                            </div>
-                        )}
+                            ) : (
+                                <div style={{
+                                    background: '#0f172a',
+                                    border: '1px solid #334155',
+                                    borderRadius: '4px',
+                                    overflow: 'hidden'
+                                }}>
+                                    <SyntaxHighlighter
+                                        language="sql"
+                                        style={customSyntaxStyle}
+                                        customStyle={{ margin: 0, padding: '15px', fontSize: '13px', background: 'transparent' }}
+                                        wrapLines={true}
+                                    >
+                                        {selectedQuery.sql}
+                                    </SyntaxHighlighter>
+                                </div>
+                            )}
+                        </div>
 
                         <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
                             {/* Management Actions */}
                             <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
                                 <button
-                                    onClick={(e) => handleEditQuery(e, selectedQuery)}
+                                    onClick={(e) => handleToggleEdit(e)}
                                     style={{
-                                        background: 'transparent', color: '#94a3b8', border: '1px solid #475569',
+                                        background: isEditing ? '#fbbf2422' : 'transparent',
+                                        color: isEditing ? '#fbbf24' : '#94a3b8',
+                                        border: isEditing ? '1px solid #fbbf24' : '1px solid #475569',
                                         padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '13px',
                                         display: 'flex', alignItems: 'center', gap: '6px'
                                     }}
-                                    title="Edit query in main editor"
+                                    title={isEditing ? "Cancel Editing" : "Inline Edit"}
                                 >
-                                    ✏️ Edit
+                                    {isEditing ? '❌ Cancel' : '✏️ Edit'}
                                 </button>
+
+                                {isEditing && (
+                                    <button
+                                        onClick={handleSaveClick}
+                                        disabled={editSql === originalEditSql || analyzingSave}
+                                        style={{
+                                            background: (editSql === originalEditSql || analyzingSave) ? 'transparent' : '#3b82f6',
+                                            color: (editSql === originalEditSql || analyzingSave) ? '#64748b' : 'white',
+                                            border: (editSql === originalEditSql || analyzingSave) ? '1px solid #475569' : 'none',
+                                            padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '13px',
+                                            display: 'flex', alignItems: 'center', gap: '6px'
+                                        }}
+                                        title="Save Changes"
+                                    >
+                                        💾 Save
+                                    </button>
+                                )}
+
                                 <button
                                     onClick={(e) => handleDuplicateQuery(e, selectedQuery)}
                                     style={{
@@ -397,6 +473,7 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
                                         display: 'flex', alignItems: 'center', gap: '6px'
                                     }}
                                     title="Create a copy of this query"
+                                    disabled={isEditing}
                                 >
                                     📄 Duplicate
                                 </button>
@@ -408,40 +485,104 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
                                         display: 'flex', alignItems: 'center', gap: '6px'
                                     }}
                                     title="Delete this query permanently"
+                                    disabled={isEditing}
                                 >
                                     🗑️ Delete
                                 </button>
                             </div>
 
                             {/* Execution Actions */}
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                                <button
-                                    onClick={handleAnalyze}
-                                    style={{
-                                        background: '#8b5cf6', color: 'white', border: 'none', padding: '10px 24px',
-                                        borderRadius: '4px', cursor: 'pointer', fontWeight: 600, fontSize: '14px',
-                                        display: 'flex', alignItems: 'center', gap: '8px'
-                                    }}
-                                >
-                                    <span>⚡</span> Analyze
-                                </button>
-                                <button
-                                    onClick={handleExecute}
-                                    style={{
-                                        background: '#10b981', color: 'white', border: 'none', padding: '10px 24px',
-                                        borderRadius: '4px', cursor: 'pointer', fontWeight: 600, fontSize: '14px',
-                                        display: 'flex', alignItems: 'center', gap: '8px'
-                                    }}
-                                >
-                                    <span>▶</span> Execute
-                                </button>
-                            </div>
+                            {!isEditing && (
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                                    <button
+                                        onClick={handleAnalyze}
+                                        style={{
+                                            background: '#8b5cf6', color: 'white', border: 'none', padding: '10px 24px',
+                                            borderRadius: '4px', cursor: 'pointer', fontWeight: 600, fontSize: '14px',
+                                            display: 'flex', alignItems: 'center', gap: '8px'
+                                        }}
+                                    >
+                                        <span>⚡</span> Analyze
+                                    </button>
+                                    <button
+                                        onClick={handleExecute}
+                                        style={{
+                                            background: '#10b981', color: 'white', border: 'none', padding: '10px 24px',
+                                            borderRadius: '4px', cursor: 'pointer', fontWeight: 600, fontSize: '14px',
+                                            display: 'flex', alignItems: 'center', gap: '8px'
+                                        }}
+                                    >
+                                        <span>▶</span> Execute
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Parameters Section - Only show when NOT editing? Or show disabled? 
+                                User inline edits the TEMPLATE, so current parameter values might be invalid or irrelevant 
+                                until re-parsed. Let's hide parameters during edit to avoid confusion.
+                            */}
+                            {!isEditing && selectedQuery.params.length > 0 && (
+                                <div style={{ marginTop: '20px' }}>
+                                    <label style={{ display: 'block', color: '#94a3b8', fontSize: '12px', marginBottom: '8px' }}>Parameters</label>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '15px', alignItems: 'center', background: '#1e293b', padding: '15px', borderRadius: '4px', border: '1px solid #334155' }}>
+                                        {selectedQuery.params.map(p => {
+                                            const pName = typeof p === 'string' ? p : p.name;
+                                            const isRich = typeof p !== 'string' && p.table && p.column;
+                                            const isLoading = loadingOptions[pName];
+
+                                            return (
+                                                <React.Fragment key={pName}>
+                                                    <div style={{ color: '#facc15', fontFamily: 'monospace', fontWeight: 'bold' }}>:{pName}</div>
+                                                    {isRich ? (
+                                                        <SearchableSelect
+                                                            value={paramValues[pName] || ''}
+                                                            onChange={(val) => setParamValues({ ...paramValues, [pName]: val })}
+                                                            onSearch={(term) => {
+                                                                if (typeof p !== 'string' && p.table && p.column) {
+                                                                    fetchOptions(pName, p.table, p.column, term);
+                                                                }
+                                                            }}
+                                                            options={paramOptions[pName] || []}
+                                                            loading={isLoading}
+                                                            placeholder="Type to search..."
+                                                        />
+                                                    ) : (
+                                                        <input
+                                                            type="text"
+                                                            placeholder={`Value for ${pName}`}
+                                                            value={paramValues[pName] || ''}
+                                                            onChange={(e) => setParamValues({ ...paramValues, [pName]: e.target.value })}
+                                                            style={{
+                                                                background: '#0f172a', border: '1px solid #475569', color: 'white',
+                                                                padding: '8px', borderRadius: '4px'
+                                                            }}
+                                                        />
+                                                    )}
+                                                </React.Fragment>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
                         </div>
                     </>
                 ) : (
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#64748b' }}>
-                        Select a query to view details
+                        Select a query to view details <br /> Double-click to load in main editor
                     </div>
+                )}
+
+                {selectedQuery && (
+                    <SaveSessionModal
+                        isOpen={showSaveModal}
+                        onClose={() => setShowSaveModal(false)}
+                        onSave={handleConfirmSave}
+                        initialTitle={selectedQuery.name}
+                        initialParams={saveParams}
+                        originalSql={editSql} // The edited SQL is the "original" for the modal
+                        loading={false}
+                    />
                 )}
             </div>
         </div>
