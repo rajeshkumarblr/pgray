@@ -6,7 +6,7 @@ import datetime
 
 import os
 
-logging.basicConfig(level=logging.INFO)
+
 logger = logging.getLogger(__name__)
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate")
@@ -328,8 +328,8 @@ async def analyze_parameterized_query(sql_query: str, model: str = "qwen2.5-code
         "You are an expert SQL Assistant.\n"
         "1. Analyze the given SQL query.\n"
         "2. Suggest a short, descriptive Title (3-5 words).\n"
-        "3. Identify ALL literal values (strings, numbers) in WHERE/HAVING clauses that could be parameters.\n"
-        "4. For each parameter, identifying the TABLE and COLUMN it is filtering.\n"
+        "3. Identify ALL literal values (strings, numbers) in WHERE/HAVING clauses OR LIMIT/OFFSET clauses that could be parameters.\n"
+        "4. For each parameter, identifying the TABLE and COLUMN it is filtering (Use null if not applicable, e.g., for LIMIT).\n"
         "5. Output valid JSON.\n\n"
         f"Input SQL:\n```sql\n{sql_query}\n```\n\n"
         "Output Format:\n"
@@ -341,6 +341,12 @@ async def analyze_parameterized_query(sql_query: str, model: str = "qwen2.5-code
         "      \"original_value\": \"'Tom Hanks'\", \n"
         "      \"table\": \"people\", \n"
         "      \"column\": \"name\" \n"
+        "    },\n"
+        "    { \n"
+        "      \"name\": \"limit_val\", \n"
+        "      \"original_value\": \"10\", \n"
+        "      \"table\": null, \n"
+        "      \"column\": null \n"
         "    }\n"
         "  ]\n"
         "}"

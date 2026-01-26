@@ -86,6 +86,7 @@ function App() {
 
   // Resize State
   const [sidebarWidth, setSidebarWidth] = useState(400);
+  const [activeCenterTab, setActiveCenterTab] = useState<'editor' | 'tune' | 'server' | 'queries'>('editor');
   const isResizingSidebar = useRef(false);
 
   const startSidebarResize = (e: React.MouseEvent) => {
@@ -240,9 +241,12 @@ function App() {
       const res = await saveQueryFinal(title, sql, params, saveAnalysis.originalSql);
       if (res.status === 'success') {
         setSessionTitle(title);
-        alert(`Saved as: ${title}`);
+        // Alert is annoying, maybe toast?
+        // alert(`Saved as: ${title}`);
+        setToast({ message: `Saved as: ${title}`, type: 'success' });
         setIsSaveModalOpen(false);
         setQueriesRefreshTrigger(prev => prev + 1);
+        setActiveCenterTab('queries'); // Explicitly go to queries
       }
     } catch (e) {
       console.error("Save failed", e);
@@ -250,14 +254,21 @@ function App() {
     }
   };
 
-  const handleExecute = async () => {
-    if (!connectionInfo || !sqlQuery) return;
+  const handleAnalyzeParamQuery = (sql: string) => {
+    setSqlQuery(sql);
+    setActiveCenterTab('tune');
+    // The useEffect in QueryTuneTab or App.tsx ...
+  };
+
+  const handleExecute = async (sqlOverride?: string) => {
+    const queryToRun = sqlOverride || sqlQuery;
+    if (!connectionInfo || !queryToRun) return;
     setIsExecuting(true);
     setExecError(null);
     setExecutionResult(null);
 
     try {
-      const res = await executeQuery(connectionInfo, sqlQuery, 50);
+      const res = await executeQuery(connectionInfo, queryToRun, 50);
       setExecutionResult(res.data);
     } catch (err: any) {
       console.error("Execution failed", err);
@@ -400,6 +411,14 @@ function App() {
       const decoder = new TextDecoder();
       let done = false;
       let streamBuffer = "";
+      let slowWarningTimer: any; // Use simple typing to avoid NodeJS.Timeout error vs number
+
+      // Warning for slow start (Model Loading)
+      slowWarningTimer = setTimeout(() => {
+        if (streamBuffer.length === 0) {
+          setToast({ message: "AI is warming up (loading model)...", type: 'info' });
+        }
+      }, 5000); // 5 seconds
 
       setChatHistory(prev => [...prev, { role: 'assistant', content: '...', status: 'pending', hidden: true }]);
 
@@ -439,6 +458,7 @@ function App() {
 
       setAiLoading(false);
       setAiStatus('idle');
+      clearTimeout(slowWarningTimer);
       // Finalize history status
       setChatHistory(prev => {
         const newHist = [...prev];
@@ -476,6 +496,8 @@ function App() {
       }
 
     } catch (error: any) {
+      // @ts-ignore
+      if (slowWarningTimer) clearTimeout(slowWarningTimer);
       setAiLoading(false);
       setAiStatus('idle');
       setChatHistory(prev => {
@@ -579,6 +601,7 @@ Please provide a detailed analysis in the following format:
           onLoadSession={handleLoadSession}
           onNewSession={handleNewSession}
           onSaveSession={handleStartSave}
+          onAnalyzeParamQuery={handleAnalyzeParamQuery}
 
           onExecute={handleExecute}
           isExecuting={isExecuting}
@@ -617,6 +640,8 @@ Please provide a detailed analysis in the following format:
           onCompare={handleComparePerformance}
           baselineMetrics={baselineMetrics}
           queriesRefreshTrigger={queriesRefreshTrigger}
+          activeTab={activeCenterTab}
+          setActiveTab={setActiveCenterTab}
         />
       </div>
 

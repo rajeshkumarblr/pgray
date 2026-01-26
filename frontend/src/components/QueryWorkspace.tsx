@@ -24,7 +24,7 @@ interface QueryWorkspaceProps {
     onLoadSession: (name: string) => void;
     onNewSession: () => void;
     onSaveSession: () => Promise<void>;
-    onExecute: () => void;
+    onExecute: (sql?: string) => void;
     isExecuting: boolean;
     executionResult: any;
     execError?: string | null;
@@ -59,6 +59,9 @@ interface QueryWorkspaceProps {
     onCompare: () => void;
     baselineMetrics: { planning: number, execution: number } | null;
     queriesRefreshTrigger: number;
+    activeTab: 'editor' | 'tune' | 'server' | 'queries';
+    setActiveTab: (tab: 'editor' | 'tune' | 'server' | 'queries') => void;
+    onAnalyzeParamQuery: (sql: string) => void;
 }
 
 const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
@@ -71,10 +74,11 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
     diffBaseQuery, showDiff, setShowDiff,
     onCopy, onReset, onAnalyzeNode,
     insights, onRunInsight, insightResults,
-    onCompare, baselineMetrics, queriesRefreshTrigger
+    onCompare, baselineMetrics, queriesRefreshTrigger,
+    activeTab, setActiveTab, onAnalyzeParamQuery
 }) => {
     // Layout State
-    const [activeCenterTab, setActiveCenterTab] = useState<'editor' | 'tune' | 'server' | 'queries'>('editor');
+    // activeTab is now props
     const [tuneTabMode, setTuneTabMode] = useState<'plan' | 'text'>('plan'); // New State
     const [bottomExpanded, setBottomExpanded] = useState(true);
     const [bottomHeight, setBottomHeight] = useState(() => Math.max(150, window.innerHeight * 0.2)); // 20% default
@@ -139,17 +143,17 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
 
     // Handle Tab Switching
     const handleExecuteWrapper = () => {
-        setActiveCenterTab('editor');
+        setActiveTab('editor');
         onExecute();
     };
 
     const handleEditorWrapper = () => {
-        setActiveCenterTab('editor');
+        setActiveTab('editor');
         setActiveBottomTab('results');
     };
 
     const handleTuneWrapper = () => {
-        setActiveCenterTab('tune');
+        setActiveTab('tune');
         setActiveBottomTab('details');
         // Auto-trigger if missing
         if (!explainResult || (explainResult && Array.isArray(explainResult) && explainResult.length === 0)) {
@@ -161,10 +165,10 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
         padding: '8px 20px',
         cursor: 'pointer',
         fontSize: '13px',
-        fontWeight: activeCenterTab === tab ? 600 : 500,
-        color: activeCenterTab === tab ? '#e2e8f0' : '#94a3b8',
-        borderBottom: activeCenterTab === tab ? '2px solid #3b82f6' : '2px solid transparent',
-        background: activeCenterTab === tab ? '#1e293b' : 'transparent',
+        fontWeight: activeTab === tab ? 600 : 500,
+        color: activeTab === tab ? '#e2e8f0' : '#94a3b8',
+        borderBottom: activeTab === tab ? '2px solid #3b82f6' : '2px solid transparent',
+        background: activeTab === tab ? '#1e293b' : 'transparent',
     });
 
     return (
@@ -199,9 +203,9 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                 {/* 2. Tabs Row (Below Toolbar) */}
                 <div style={{ display: 'flex', background: '#334155', borderBottom: '1px solid #475569', paddingLeft: '10px' }}>
                     <div onClick={handleEditorWrapper} style={tabStyle('editor')}>Editor</div>
-                    <div onClick={() => setActiveCenterTab('queries')} style={tabStyle('queries')}>Queries</div>
+                    <div onClick={() => setActiveTab('queries')} style={tabStyle('queries')}>Queries</div>
                     <div onClick={handleTuneWrapper} style={tabStyle('tune')}>Analyze</div>
-                    <div onClick={() => setActiveCenterTab('server')} style={tabStyle('server')}>Server</div>
+                    <div onClick={() => setActiveTab('server')} style={tabStyle('server')}>Server</div>
                 </div>
 
                 {/* 3. Center Content */}
@@ -209,7 +213,7 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
 
                     {/* Editor Tab */}
                     <div style={{
-                        display: activeCenterTab === 'editor' ? 'flex' : 'none',
+                        display: activeTab === 'editor' ? 'flex' : 'none',
                         height: '100%', flexDirection: 'column'
                     }}>
                         {showDiff ? (
@@ -231,7 +235,7 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
 
                     {/* Tune Tab */}
                     <div style={{
-                        display: activeCenterTab === 'tune' ? 'block' : 'none',
+                        display: activeTab === 'tune' ? 'block' : 'none',
                         height: '100%'
                     }}>
                         <QueryTuneTab
@@ -257,7 +261,7 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
 
                     {/* Server Tab */}
                     <div style={{
-                        display: activeCenterTab === 'server' ? 'block' : 'none',
+                        display: activeTab === 'server' ? 'block' : 'none',
                         height: '100%'
                     }}>
                         <ServerTuneTab connectionInfo={connectionInfo} />
@@ -265,13 +269,16 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
 
                     {/* Queries Tab */}
                     <div style={{
-                        display: activeCenterTab === 'queries' ? 'block' : 'none',
+                        display: activeTab === 'queries' ? 'block' : 'none',
                         height: '100%'
                     }}>
                         <SavedQueriesTab
                             onExecute={(sql) => {
                                 setSqlQuery(sql);
-                                onExecute();
+                                onExecute(sql);
+                            }}
+                            onAnalyze={(sql) => {
+                                onAnalyzeParamQuery(sql);
                             }}
                             refreshTrigger={queriesRefreshTrigger}
                             connectionInfo={connectionInfo}

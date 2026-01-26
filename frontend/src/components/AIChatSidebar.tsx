@@ -24,7 +24,7 @@ interface AIChatSidebarProps {
 }
 
 const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
-    messages, onClose, onSend, loading, aiState = 'idle', title = "Query Discussion", onRunSql, onDiff,
+    messages, onClose, onSend, loading, aiState = 'idle', title = "Query Discussion", onRunSql,
     selectedModel = "qwen2.5-coder:14b", onModelChange
 }) => {
     const endRef = useRef<HTMLDivElement>(null);

@@ -1,5 +1,5 @@
 
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import ReactFlow, {
     Background,
     Controls,
@@ -213,7 +213,7 @@ const ERDiagram: React.FC<ERDiagramProps> = ({ schema, connectionInfo, onClose }
                     style: { stroke: '#64748b' },
                     label: fk.column,
                     labelStyle: { fill: '#94a3b8', fontSize: 10 },
-                    type: ConnectionLineType.Default,
+                    type: ConnectionLineType.SmoothStep,
                     markerEnd: { type: MarkerType.ArrowClosed, color: '#64748b' },
                 });
             });

@@ -21,6 +21,7 @@ interface ParameterizedQuery {
 
 interface SavedQueriesTabProps {
     onExecute: (sql: string) => void;
+    onAnalyze: (sql: string) => void;
     refreshTrigger?: number;
     connectionInfo: any;
 }
@@ -86,7 +87,9 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({ value, onChange, on
                     type="text"
                     value={inputValue}
                     onChange={(e) => {
-                        setInputValue(e.target.value);
+                        const val = e.target.value;
+                        setInputValue(val);
+                        onChange(val); // Propagate change immediately (Free Text)
                         setIsOpen(true);
                     }}
                     onFocus={() => {
@@ -143,7 +146,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({ value, onChange, on
 };
 
 
-const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, refreshTrigger, connectionInfo }) => {
+const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze, refreshTrigger, connectionInfo }) => {
     const [queries, setQueries] = useState<ParameterizedQuery[]>([]);
     const [selectedQuery, setSelectedQuery] = useState<ParameterizedQuery | null>(null);
     const [paramValues, setParamValues] = useState<{ [key: string]: string }>({});
@@ -219,7 +222,17 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, refreshTri
     };
 
     const handleExecute = () => {
-        if (!selectedQuery) return;
+        const sql = prepareSql();
+        if (sql) onExecute(sql);
+    };
+
+    const handleAnalyze = () => {
+        const sql = prepareSql();
+        if (sql) onAnalyze(sql);
+    };
+
+    const prepareSql = (): string | null => {
+        if (!selectedQuery) return null;
         let sql = selectedQuery.sql;
         let missing = [];
 
@@ -240,11 +253,11 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, refreshTri
 
         if (missing.length > 0) {
             alert(`Please provide values for: ${missing.join(', ')}`);
-            return;
+            return null;
         }
-
-        onExecute(sql);
+        return sql;
     };
+
 
     return (
         <div style={{ display: 'flex', height: '100%', color: '#e2e8f0' }}>
@@ -264,7 +277,6 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, refreshTri
                             background: selectedQuery?.id === q.id ? '#334155' : 'transparent',
                             transition: 'background 0.2s',
                             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                            group: 'item' // for hover logic (simplified)
                         }}
                     >
                         <div style={{ overflow: 'hidden' }}>
@@ -353,7 +365,17 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, refreshTri
                             </div>
                         )}
 
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px', gap: '10px' }}>
+                            <button
+                                onClick={handleAnalyze}
+                                style={{
+                                    background: '#8b5cf6', color: 'white', border: 'none', padding: '10px 24px',
+                                    borderRadius: '4px', cursor: 'pointer', fontWeight: 600, fontSize: '14px',
+                                    display: 'flex', alignItems: 'center', gap: '8px'
+                                }}
+                            >
+                                <span>⚡</span> Analyze
+                            </button>
                             <button
                                 onClick={handleExecute}
                                 style={{

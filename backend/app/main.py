@@ -11,6 +11,8 @@ app = FastAPI(title="PGray Backend")
 
 @app.on_event("startup")
 async def startup_event():
+    from app.logger import setup_logging
+    setup_logging()
     init_db()
 
 # Allow CORS for frontend
