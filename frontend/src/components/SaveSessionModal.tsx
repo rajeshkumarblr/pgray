@@ -33,13 +33,35 @@ const SaveSessionModal: React.FC<SaveSessionModalProps> = ({ isOpen, onClose, on
     // Update Preview SQL based on active parameters
     useEffect(() => {
         let sql = originalSql;
-        params.forEach(p => {
+        // Sort params by length (descending) to avoid replacing substrings of longer params first
+        // although with word boundaries this is less of an issue, intricate strings might still matter.
+        const sortedParams = [...params].sort((a, b) => b.original_value.length - a.original_value.length);
+
+        sortedParams.forEach(p => {
             if (p.active) {
-                // Ensure we replace only exact matches if possible, or simple replace
-                // original_value is likely quoted like "'Tom Hanks'"
-                // If it's a string literal, we replace it.
-                // Simple Replace for MVP - careful with overlapping values
-                sql = sql.replace(p.original_value, `:${p.name}`);
+                try {
+                    // Escape special regex characters in original_value
+                    const escapedValue = p.original_value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+                    // Check if it looks like a number (integer or float)
+                    const isNumber = /^-?\d+(\.\d+)?$/.test(p.original_value);
+
+                    // If number, use word boundaries. 
+                    // If string literal (quoted), usually safe to just match, but word boundaries 
+                    // might fail on symbols inside quotes. 
+                    // Start/End of line or whitespace/punctuation checks are safer for numbers.
+
+                    const pattern = isNumber
+                        ? `\\b${escapedValue}\\b`
+                        : escapedValue; // For strings, use exact match (they usually include quotes)
+
+                    // Global replace
+                    const regex = new RegExp(pattern, 'g');
+                    sql = sql.replace(regex, `:${p.name}`);
+                } catch (e) {
+                    // Fallback to simple replace if regex fails
+                    sql = sql.split(p.original_value).join(`:${p.name}`);
+                }
             }
         });
         setPreviewSql(sql);

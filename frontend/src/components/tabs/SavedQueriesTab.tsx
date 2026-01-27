@@ -148,6 +148,56 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({ value, onChange, on
     );
 };
 
+// --- Rename Modal Component ---
+interface RenameModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+    onRename: (newName: string) => void;
+    currentName: string;
+}
+
+const RenameModal: React.FC<RenameModalProps> = ({ isOpen, onClose, onRename, currentName }) => {
+    const [newName, setNewName] = useState(currentName);
+
+    useEffect(() => {
+        setNewName(currentName);
+    }, [currentName, isOpen]);
+
+    if (!isOpen) return null;
+
+    return (
+        <div style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.7)',
+            display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1100
+        }}>
+            <div style={{
+                background: '#1e293b', borderRadius: '8px', padding: '24px', width: '400px',
+                border: '1px solid #334155', boxShadow: '0 10px 25px rgba(0,0,0,0.5)'
+            }}>
+                <h3 style={{ margin: '0 0 15px 0', color: '#f8fafc', fontSize: '16px' }}>Rename Query</h3>
+                <input
+                    type="text"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    autoFocus
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') onRename(newName);
+                        if (e.key === 'Escape') onClose();
+                    }}
+                    style={{
+                        width: '100%', padding: '10px', borderRadius: '4px', border: '1px solid #334155',
+                        background: '#0f172a', color: 'white', fontSize: '14px', marginBottom: '20px'
+                    }}
+                />
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                    <button onClick={onClose} style={{ padding: '8px 16px', borderRadius: '4px', background: 'transparent', color: '#94a3b8', border: '1px solid #475569', cursor: 'pointer' }}>Cancel</button>
+                    <button onClick={() => onRename(newName)} style={{ padding: '8px 16px', borderRadius: '4px', background: '#3b82f6', color: 'white', border: 'none', cursor: 'pointer', fontWeight: 600 }}>Rename</button>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze, onEdit, refreshTrigger, connectionInfo }) => {
     const [queries, setQueries] = useState<ParameterizedQuery[]>([]);
@@ -159,14 +209,28 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
     // Editing State
     const [isEditing, setIsEditing] = useState(false);
     const [editSql, setEditSql] = useState('');
+    const [editTitle, setEditTitle] = useState(''); // NEW: Track title edits
     const [originalEditSql, setOriginalEditSql] = useState(''); // Tracking for dirty check
     const [showSaveModal, setShowSaveModal] = useState(false);
     const [analyzingSave, setAnalyzingSave] = useState(false);
     const [saveParams, setSaveParams] = useState<any[]>([]); // Derived params for modal
 
+    // Context Menu & Rename State
+    const [contextMenu, setContextMenu] = useState<{ x: number, y: number, queryId: string } | null>(null);
+    const [showRenameModal, setShowRenameModal] = useState(false);
+    const [renameTargetId, setRenameTargetId] = useState<string | null>(null);
+    const [renameOldName, setRenameOldName] = useState('');
+
     useEffect(() => {
         loadQueries();
     }, [refreshTrigger]);
+
+    // Close context menu on global click
+    useEffect(() => {
+        const handleClick = () => setContextMenu(null);
+        document.addEventListener('click', handleClick);
+        return () => document.removeEventListener('click', handleClick);
+    }, []);
 
     const loadQueries = async () => {
         try {
@@ -203,7 +267,6 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
             alert("Failed to duplicate query");
         }
     };
-
 
     const fetchOptions = async (pName: string, table: string, column: string, search: string = '') => {
         try {
@@ -249,6 +312,48 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
         setLoadingOptions((prev: any) => ({ ...prev, ...newLoading }));
     };
 
+    const handleContextMenu = (e: React.MouseEvent, q: ParameterizedQuery) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setContextMenu({ x: e.clientX, y: e.clientY, queryId: q.id });
+    };
+
+    const initiateRename = (q: ParameterizedQuery) => {
+        setRenameTargetId(q.id);
+        setRenameOldName(q.name);
+        setShowRenameModal(true);
+        setContextMenu(null);
+    };
+
+    const handleRenameConfirm = async (newName: string) => {
+        if (!newName || !newName.trim()) return;
+        if (newName === renameOldName) {
+            setShowRenameModal(false);
+            return;
+        }
+
+        const targetQuery = queries.find(q => q.id === renameTargetId);
+        if (!targetQuery) return;
+
+        try {
+            // Save as new name
+            await saveQueryFinal(newName, targetQuery.sql, targetQuery.params, targetQuery.original_sql);
+            // Delete old
+            await deleteQuery(targetQuery.id);
+
+            setShowRenameModal(false);
+            loadQueries();
+
+            if (selectedQuery?.id === targetQuery.id) {
+                setSelectedQuery(null);
+            }
+        } catch (e) {
+            alert("Failed to rename query");
+            console.error(e);
+        }
+    };
+
+
     const handleToggleEdit = (e: React.MouseEvent) => {
         e.stopPropagation();
         if (isEditing) {
@@ -265,6 +370,7 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
             // Actually selectedQuery.sql is the template with :params.
             setEditSql(selectedQuery.sql);
             setOriginalEditSql(selectedQuery.sql);
+            setEditTitle(selectedQuery.name);
             setIsEditing(true);
         }
     };
@@ -328,12 +434,26 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
 
     const prepareSql = (): string | null => {
         if (!selectedQuery) return null;
-        let sql = selectedQuery.sql;
+        // Use edited SQL if editing
+        let sql = isEditing ? editSql : selectedQuery.sql;
         let missing = [];
 
+        // Note: checking params against selectedQuery.params. 
+        // If user added NEW params in editSql without saving, we won't know about them here 
+        // unless we parse editSql. 
+        // But we DO know about existing params.
+        // For accurate execution of EDITED sql with NEW params, user must Save first to update params list.
+        // However, if user REPLACED usage of a param with hardcoded value, this loop will just skip replacement (regex won't match).
+        // That is fine.
+
+        // We still iterate known params to fill them if they exist in SQL.
         for (const p of selectedQuery.params) {
             const pName = typeof p === 'string' ? p : p.name;
             const val = paramValues[pName];
+
+            // Only enforce value IF the param is actually present in the CURRENT sql
+            const regex = new RegExp(`:${pName}\\b`, 'g');
+            if (!regex.test(sql)) continue; // Param not used in current SQL (maybe removed by user)
 
             if (val === undefined || val === '') {
                 missing.push(pName);
@@ -342,66 +462,156 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
 
             const isNumber = /^\d+(\.\d+)?$/.test(val);
             const replacement = isNumber ? val : `'${val.replace(/'/g, "''")}'`;
-            const regex = new RegExp(`:${pName}\\b`, 'g');
             sql = sql.replace(regex, replacement);
         }
 
         if (missing.length > 0) {
-            alert(`Please provide values for: ${missing.join(', ')}`);
+            alert(`Please provide values for: ${missing.join(', ')}\n(If you added new parameters, please Save the query first to update the input fields)`);
             return null;
         }
         return sql;
     };
 
 
-    // ... (previous code)
-
     return (
-        <div style={{ display: 'flex', height: '100%', color: '#e2e8f0' }}>
-            {/* List */}
-            <div style={{ width: '250px', borderRight: '1px solid #334155', overflowY: 'auto' }}>
-                <div style={{ padding: '10px', fontSize: '12px', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase' }}>
-                    Saved Queries
-                </div>
-                {queries.length === 0 && <div style={{ padding: '10px', color: '#64748b', fontSize: '13px' }}>No saved queries found.</div>}
-
-                {queries.map(q => (
-                    <div
-                        key={q.id}
-                        onClick={() => handleSelect(q)}
-                        onDoubleClick={() => handleDoubleClick(q)}
-                        style={{
-                            padding: '10px 15px', cursor: 'pointer', borderBottom: '1px solid #1e293b',
-                            background: selectedQuery?.id === q.id ? '#334155' : 'transparent',
-                            transition: 'background 0.2s',
-                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                        }}
-                        title="Double-click to load in main editor"
-                    >
-                        <div style={{ overflow: 'hidden', width: '100%' }}>
-                            <div style={{ fontSize: '14px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{q.name}</div>
-                            <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>{new Date(q.created_at).toLocaleDateString()}</div>
-                        </div>
+        <div style={{ display: 'flex', height: '100%', color: '#e2e8f0', overflow: 'hidden' }}>
+            {/* List Sidebar */}
+            <div style={{ width: '250px', borderRight: '1px solid #334155', display: 'flex', flexDirection: 'column' }}>
+                <div style={{ flex: 1, overflowY: 'auto' }}>
+                    <div style={{ padding: '10px', fontSize: '12px', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase' }}>
+                        Saved Queries
                     </div>
-                ))}
+                    {queries.length === 0 && <div style={{ padding: '10px', color: '#64748b', fontSize: '13px' }}>No saved queries found.</div>}
+
+                    {queries.map(q => (
+                        <div
+                            key={q.id}
+                            onClick={() => handleSelect(q)}
+                            onDoubleClick={() => handleDoubleClick(q)}
+                            onContextMenu={(e) => handleContextMenu(e, q)}
+                            style={{
+                                padding: '10px 15px', cursor: 'pointer', borderBottom: '1px solid #1e293b',
+                                background: selectedQuery?.id === q.id ? '#334155' : 'transparent',
+                                transition: 'background 0.2s',
+                                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            }}
+                            title="Right-click for options, Double-click to load in main editor"
+                        >
+                            <div style={{ overflow: 'hidden', width: '100%' }}>
+                                <div style={{ fontSize: '14px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{q.name}</div>
+                                <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>{new Date(q.created_at).toLocaleDateString()}</div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+
+                {/* Management Footer */}
+                <div style={{ padding: '10px', borderTop: '1px solid #334155', background: '#0f172a', display: 'flex', gap: '5px', justifyContent: 'space-between' }}>
+                    <button
+                        onClick={(e) => handleToggleEdit(e)}
+                        disabled={!selectedQuery}
+                        style={{
+                            flex: 1,
+                            background: isEditing ? '#fbbf2422' : 'transparent',
+                            color: isEditing ? '#fbbf24' : '#94a3b8',
+                            border: isEditing ? '1px solid #fbbf24' : '1px solid #475569',
+                            padding: '6px', borderRadius: '4px', cursor: selectedQuery ? 'pointer' : 'not-allowed', fontSize: '12px',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
+                            opacity: selectedQuery ? 1 : 0.5
+                        }}
+                        title={isEditing ? "Cancel Editing" : "Inline Edit"}
+                    >
+                        {isEditing ? 'Cancel' : 'Edit'}
+                    </button>
+                    {isEditing ? (
+                        <button
+                            onClick={handleSaveClick}
+                            disabled={!selectedQuery || analyzingSave}
+                            style={{
+                                flex: 2,
+                                background: analyzingSave ? '#334155' : '#3b82f6',
+                                color: 'white',
+                                border: 'none',
+                                padding: '6px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px'
+                            }}
+                            title="Save Changes"
+                        >
+                            {analyzingSave ? 'Saving...' : 'Save'}
+                        </button>
+                    ) : (
+                        <>
+                            <button
+                                onClick={(e) => selectedQuery && handleDuplicateQuery(e, selectedQuery)}
+                                disabled={!selectedQuery || isEditing}
+                                style={{
+                                    flex: 1,
+                                    background: 'transparent', color: '#94a3b8', border: '1px solid #475569',
+                                    padding: '6px', borderRadius: '4px', cursor: selectedQuery ? 'pointer' : 'not-allowed', fontSize: '12px',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
+                                    opacity: selectedQuery ? 1 : 0.5
+                                }}
+                                title="Duplicate"
+                            >
+                                Copy
+                            </button>
+                            <button
+                                onClick={(e) => selectedQuery && handleDeleteQuery(e, selectedQuery.id)}
+                                disabled={!selectedQuery || isEditing}
+                                style={{
+                                    flex: 1,
+                                    background: 'transparent', color: '#ef4444', border: '1px solid #ef4444',
+                                    padding: '6px', borderRadius: '4px', cursor: selectedQuery ? 'pointer' : 'not-allowed', fontSize: '12px',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
+                                    opacity: selectedQuery ? 1 : 0.5
+                                }}
+                                title="Delete"
+                            >
+                                Del
+                            </button>
+                        </>
+                    )}
+                </div>
             </div>
 
-            {/* Details */}
-            <div style={{ flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+            {/* Details Main Content */}
+            <div style={{ flex: 1, padding: '20px', display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
                 {selectedQuery ? (
                     <>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                            <h2 style={{ margin: 0, fontSize: '20px' }}>{selectedQuery.name}</h2>
-                        </div>
+                        <div style={{ flexShrink: 0, marginBottom: '20px' }}>
+                            {/* Title Header */}
+                            {isEditing ? (
+                                <div style={{ marginBottom: '10px' }}>
+                                    <label style={{ display: 'block', color: '#94a3b8', fontSize: '12px', marginBottom: '4px' }}>Query Name</label>
+                                    <input
+                                        type="text"
+                                        value={editTitle}
+                                        onChange={(e) => setEditTitle(e.target.value)}
+                                        style={{
+                                            width: '100%',
+                                            background: '#1e293b', border: '1px solid #fbbf24', color: '#facc15',
+                                            fontSize: '18px', fontWeight: 'bold', padding: '8px', borderRadius: '4px',
+                                            outline: 'none'
+                                        }}
+                                        placeholder="Query Name"
+                                    />
+                                </div>
+                            ) : (
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                                    <h2 style={{ margin: 0, fontSize: '20px' }}>{selectedQuery.name}</h2>
+                                </div>
+                            )}
 
-                        <div style={{ marginBottom: '20px' }}>
                             <label style={{ display: 'block', color: '#94a3b8', fontSize: '12px', marginBottom: '8px' }}>
                                 SQL Template {isEditing && <span style={{ color: '#fbbf24' }}>(Editing)</span>}
                             </label>
+                        </div>
 
+                        {/* Editor -- Flex Grow to fill space */}
+                        <div style={{ flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden', marginBottom: '20px' }}>
                             {isEditing ? (
                                 <div style={{
-                                    height: '300px', // Fixed height for editor
+                                    height: '100%', // Fill flex parent
                                     border: '1px solid #fbbf24', // Highlight border
                                     borderRadius: '4px',
                                     overflow: 'hidden'
@@ -417,113 +627,40 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
                                     background: '#0f172a',
                                     border: '1px solid #334155',
                                     borderRadius: '4px',
-                                    overflow: 'hidden'
+                                    overflow: 'hidden',
+                                    height: '100%', // Fill flex parent
+                                    display: 'flex', flexDirection: 'column'
                                 }}>
-                                    <SyntaxHighlighter
-                                        language="sql"
-                                        style={customSyntaxStyle}
-                                        customStyle={{ margin: 0, padding: '15px', fontSize: '13px', background: 'transparent' }}
-                                        wrapLines={true}
-                                    >
-                                        {selectedQuery.sql}
-                                    </SyntaxHighlighter>
+                                    {/* Scrollable Container for SyntaxHighlighter */}
+                                    <div style={{ flex: 1, overflow: 'auto' }}>
+                                        <SyntaxHighlighter
+                                            language="sql"
+                                            style={customSyntaxStyle}
+                                            customStyle={{
+                                                margin: 0,
+                                                padding: '15px',
+                                                fontSize: '13px',
+                                                background: 'transparent',
+                                                whiteSpace: 'pre-wrap',       // Enable wrapping
+                                                wordBreak: 'break-word',      // Break long words
+                                                overflow: 'hidden'            // Disable internal scrollbar
+                                            }}
+                                            wrapLines={true}
+                                        >
+                                            {selectedQuery.sql}
+                                        </SyntaxHighlighter>
+                                    </div>
                                 </div>
                             )}
                         </div>
 
-                        <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                            {/* Management Actions */}
-                            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                                <button
-                                    onClick={(e) => handleToggleEdit(e)}
-                                    style={{
-                                        background: isEditing ? '#fbbf2422' : 'transparent',
-                                        color: isEditing ? '#fbbf24' : '#94a3b8',
-                                        border: isEditing ? '1px solid #fbbf24' : '1px solid #475569',
-                                        padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '13px',
-                                        display: 'flex', alignItems: 'center', gap: '6px'
-                                    }}
-                                    title={isEditing ? "Cancel Editing" : "Inline Edit"}
-                                >
-                                    {isEditing ? '❌ Cancel' : '✏️ Edit'}
-                                </button>
-
-                                {isEditing && (
-                                    <button
-                                        onClick={handleSaveClick}
-                                        disabled={editSql === originalEditSql || analyzingSave}
-                                        style={{
-                                            background: (editSql === originalEditSql || analyzingSave) ? 'transparent' : '#3b82f6',
-                                            color: (editSql === originalEditSql || analyzingSave) ? '#64748b' : 'white',
-                                            border: (editSql === originalEditSql || analyzingSave) ? '1px solid #475569' : 'none',
-                                            padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '13px',
-                                            display: 'flex', alignItems: 'center', gap: '6px'
-                                        }}
-                                        title="Save Changes"
-                                    >
-                                        💾 Save
-                                    </button>
-                                )}
-
-                                <button
-                                    onClick={(e) => handleDuplicateQuery(e, selectedQuery)}
-                                    style={{
-                                        background: 'transparent', color: '#94a3b8', border: '1px solid #475569',
-                                        padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '13px',
-                                        display: 'flex', alignItems: 'center', gap: '6px'
-                                    }}
-                                    title="Create a copy of this query"
-                                    disabled={isEditing}
-                                >
-                                    📄 Duplicate
-                                </button>
-                                <button
-                                    onClick={(e) => handleDeleteQuery(e, selectedQuery.id)}
-                                    style={{
-                                        background: 'transparent', color: '#ef4444', border: '1px solid #ef4444',
-                                        padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '13px',
-                                        display: 'flex', alignItems: 'center', gap: '6px'
-                                    }}
-                                    title="Delete this query permanently"
-                                    disabled={isEditing}
-                                >
-                                    🗑️ Delete
-                                </button>
-                            </div>
-
-                            {/* Execution Actions */}
-                            {!isEditing && (
-                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                                    <button
-                                        onClick={handleAnalyze}
-                                        style={{
-                                            background: '#8b5cf6', color: 'white', border: 'none', padding: '10px 24px',
-                                            borderRadius: '4px', cursor: 'pointer', fontWeight: 600, fontSize: '14px',
-                                            display: 'flex', alignItems: 'center', gap: '8px'
-                                        }}
-                                    >
-                                        <span>⚡</span> Analyze
-                                    </button>
-                                    <button
-                                        onClick={handleExecute}
-                                        style={{
-                                            background: '#10b981', color: 'white', border: 'none', padding: '10px 24px',
-                                            borderRadius: '4px', cursor: 'pointer', fontWeight: 600, fontSize: '14px',
-                                            display: 'flex', alignItems: 'center', gap: '8px'
-                                        }}
-                                    >
-                                        <span>▶</span> Execute
-                                    </button>
-                                </div>
-                            )}
-
-                            {/* Parameters Section - Only show when NOT editing? Or show disabled? 
-                                User inline edits the TEMPLATE, so current parameter values might be invalid or irrelevant 
-                                until re-parsed. Let's hide parameters during edit to avoid confusion.
-                            */}
-                            {!isEditing && selectedQuery.params.length > 0 && (
-                                <div style={{ marginTop: '20px' }}>
-                                    <label style={{ display: 'block', color: '#94a3b8', fontSize: '12px', marginBottom: '8px' }}>Parameters</label>
+                        <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                            {/* Parameters Section - Show even if editing so execution works */}
+                            {(selectedQuery.params.length > 0 || isEditing) && (
+                                <div>
+                                    <label style={{ display: 'block', color: '#94a3b8', fontSize: '12px', marginBottom: '8px' }}>
+                                        Parameters {isEditing && "(Updates applied after Save)"}
+                                    </label>
                                     <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '15px', alignItems: 'center', background: '#1e293b', padding: '15px', borderRadius: '4px', border: '1px solid #334155' }}>
                                         {selectedQuery.params.map(p => {
                                             const pName = typeof p === 'string' ? p : p.name;
@@ -561,10 +698,36 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
                                                 </React.Fragment>
                                             );
                                         })}
+                                        {selectedQuery.params.length === 0 && <div style={{ color: '#64748b', fontStyle: 'italic', gridColumn: '1 / -1' }}>No parameters in saved query.</div>}
                                     </div>
                                 </div>
                             )}
 
+                            {/* Execution Actions - Moved to Bottom Right */}
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', paddingTop: '10px', borderTop: '1px solid #334155' }}>
+                                <button
+                                    onClick={handleAnalyze}
+                                    style={{
+                                        background: '#8b5cf6', color: 'white', border: 'none', padding: '10px 24px',
+                                        borderRadius: '4px', cursor: 'pointer', fontWeight: 600, fontSize: '14px',
+                                        display: 'flex', alignItems: 'center', gap: '8px'
+                                    }}
+                                    title={isEditing ? "Analyze current edited SQL" : "Analyze saved SQL"}
+                                >
+                                    <span>⚡</span> Analyze
+                                </button>
+                                <button
+                                    onClick={handleExecute}
+                                    style={{
+                                        background: '#10b981', color: 'white', border: 'none', padding: '10px 24px',
+                                        borderRadius: '4px', cursor: 'pointer', fontWeight: 600, fontSize: '14px',
+                                        display: 'flex', alignItems: 'center', gap: '8px'
+                                    }}
+                                    title={isEditing ? "Execute current edited SQL" : "Execute saved SQL"}
+                                >
+                                    <span>▶</span> Execute
+                                </button>
+                            </div>
                         </div>
                     </>
                 ) : (
@@ -578,11 +741,68 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
                         isOpen={showSaveModal}
                         onClose={() => setShowSaveModal(false)}
                         onSave={handleConfirmSave}
-                        initialTitle={selectedQuery.name}
+                        initialTitle={isEditing ? editTitle : selectedQuery.name}
                         initialParams={saveParams}
-                        originalSql={editSql} // The edited SQL is the "original" for the modal
+                        originalSql={editSql}
                         loading={false}
                     />
+                )}
+
+                <RenameModal
+                    isOpen={showRenameModal}
+                    onClose={() => setShowRenameModal(false)}
+                    currentName={renameOldName}
+                    onRename={handleRenameConfirm}
+                />
+
+                {contextMenu && (
+                    <div
+                        style={{
+                            position: 'fixed', top: contextMenu.y, left: contextMenu.x, zIndex: 9999,
+                            background: '#1e293b', border: '1px solid #475569', borderRadius: '4px',
+                            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.5)', overflow: 'hidden'
+                        }}
+                    >
+                        <div
+                            onClick={() => {
+                                const q = queries.find(q => q.id === contextMenu.queryId);
+                                if (q) initiateRename(q);
+                            }}
+                            style={{ padding: '8px 16px', cursor: 'pointer', fontSize: '13px', color: '#e2e8f0', borderBottom: '1px solid #334155', display: 'flex', alignItems: 'center', gap: '8px' }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = '#334155'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                        >
+                            ✏️ Rename
+                        </div>
+                        <div
+                            onClick={(e) => {
+                                const q = queries.find(q => q.id === contextMenu.queryId);
+                                if (q) {
+                                    handleDuplicateQuery(e as any, q);
+                                    setContextMenu(null);
+                                }
+                            }}
+                            style={{ padding: '8px 16px', cursor: 'pointer', fontSize: '13px', color: '#e2e8f0', borderBottom: '1px solid #334155', display: 'flex', alignItems: 'center', gap: '8px' }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = '#334155'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                        >
+                            📄 Duplicate
+                        </div>
+                        <div
+                            onClick={(e) => {
+                                const q = queries.find(q => q.id === contextMenu.queryId);
+                                if (q) {
+                                    handleDeleteQuery(e as any, q.id);
+                                    setContextMenu(null);
+                                }
+                            }}
+                            style={{ padding: '8px 16px', cursor: 'pointer', fontSize: '13px', color: '#ef4444', display: 'flex', alignItems: 'center', gap: '8px' }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = '#334155'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                        >
+                            🗑️ Delete
+                        </div>
+                    </div>
                 )}
             </div>
         </div>

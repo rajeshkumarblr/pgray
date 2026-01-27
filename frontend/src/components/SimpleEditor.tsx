@@ -123,7 +123,7 @@ const SimpleEditor: React.FC<SimpleEditorProps> = ({ value, onChange, language =
                         language={language}
                         style={vscDarkPlus}
                         showLineNumbers={false} // Disabled built-in
-                        wrapLines={true}
+                        wrapLines={false}
                         lineProps={(lineNumber) => {
                             const style: React.CSSProperties = { display: 'block' };
                             if (errorLine === lineNumber) {
@@ -147,7 +147,7 @@ const SimpleEditor: React.FC<SimpleEditorProps> = ({ value, onChange, language =
                             overflow: 'hidden'
                         }}
                         codeTagProps={{
-                            style: { fontFamily: 'Menlo, Monaco, Consolas, "Courier New", monospace' }
+                            style: { fontFamily: 'Menlo, Monaco, Consolas, "Courier New", monospace', whiteSpace: 'pre' }
                         }}
                     >
                         {value || ' '}
@@ -182,7 +182,7 @@ const SimpleEditor: React.FC<SimpleEditorProps> = ({ value, onChange, language =
                         fontFamily: 'Menlo, Monaco, Consolas, "Courier New", monospace',
                         overflow: 'auto', // User scrolls this
                         whiteSpace: 'pre',
-                        zIndex: 1
+                        zIndex: 10
                     }}
                 />
             </div>

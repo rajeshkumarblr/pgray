@@ -52,9 +52,9 @@
       "created_at": "2026-01-26T06:38:19.752214"
     },
     {
-      "id": "20260126114307",
-      "name": "Top successful movies in a year",
-      "sql": "SELECT m.name AS movie_name, m.revenue AS total_revenue\nFROM movies m\nWHERE EXTRACT(YEAR FROM m.date) = :year\nORDER BY m.revenue DESC NULLS LAST\nLIMIT :limit_val;\n",
+      "id": "20260127073504",
+      "name": "Top successful movies in a year(in millions of USD)",
+      "sql": "SELECT m.name AS movie_name, (m.revenue / 1000000) AS total_revenue_in_millions\nFROM movies m\nWHERE EXTRACT(YEAR FROM m.date) = :year\nORDER BY m.revenue DESC NULLS LAST\nLIMIT :limit_val;\n",
       "params": [
         {
           "name": "year",
@@ -69,8 +69,8 @@
           "column": null
         }
       ],
-      "original_sql": "SELECT m.name AS movie_name, m.revenue AS total_revenue\nFROM movies m\nWHERE EXTRACT(YEAR FROM m.date) = 2024\nORDER BY m.revenue DESC NULLS LAST\nLIMIT 1;\n",
-      "created_at": "2026-01-26T11:43:07.001191"
+      "original_sql": "SELECT m.name AS movie_name, (m.revenue / 1000000) AS total_revenue_in_millions\nFROM movies m\nWHERE EXTRACT(YEAR FROM m.date) = 2024\nORDER BY m.revenue DESC NULLS LAST\nLIMIT 1;\n",
+      "created_at": "2026-01-27T07:35:04.743713"
     }
   ]
 }
