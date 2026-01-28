@@ -42,6 +42,8 @@ interface AIAssistantProps {
     onStreamCode?: (code: string) => void;
 }
 
+import { getAIModels } from '../api';
+
 const AIAssistant: React.FC<AIAssistantProps> = ({ schema, onApplyCode, connectionInfo, onStreamCode }) => {
     const [messages, setMessages] = useState<Message[]>(() => {
         const saved = localStorage.getItem('pgray_chat_history');
@@ -58,7 +60,29 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ schema, onApplyCode, connecti
     const [loading, setLoading] = useState(false);
     const [showPromptIdx, setShowPromptIdx] = useState<number | null>(null);
     const [model, setModel] = useState<string>("qwen2.5-coder:14b");
+    const [availableModels, setAvailableModels] = useState<string[]>([]);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        // Fetch models
+        const loadModels = async () => {
+            const models = await getAIModels();
+            if (models && models.length > 0) {
+                setAvailableModels(models);
+                // Set default if current not in list? Or keep preference?
+                // Let's stick with user pref or first available if not set
+                if (!models.includes(model) && models.length > 0) {
+                    // Check if qwen is there
+                    const qwen = models.find((m: string) => m.includes('qwen'));
+                    setModel(qwen || models[0]);
+                }
+            } else {
+                // Fallback
+                setAvailableModels(["qwen2.5-coder:14b", "llama3", "mistral"]);
+            }
+        };
+        loadModels();
+    }, []);
 
     const handleApply = (code: string) => {
         try {
@@ -234,7 +258,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ schema, onApplyCode, connecti
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0f172a', borderLeft: '1px solid #334155', position: 'relative' }}>
             <div style={{ padding: '15px', borderBottom: '1px solid #1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <h3 style={{ fontSize: '13px', fontWeight: 'bold', color: '#a855f7', margin: 0 }}>Create Query with AI:</h3>
+                    <h3 style={{ fontSize: '13px', fontWeight: 'bold', color: '#a855f7', margin: 0 }}>Create Query with AI (UPDATED):</h3>
                     <select
                         value={model}
                         onChange={(e) => setModel(e.target.value)}
@@ -245,14 +269,13 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ schema, onApplyCode, connecti
                             borderRadius: '4px',
                             fontSize: '11px',
                             padding: '2px 4px',
-                            cursor: 'pointer'
+                            cursor: 'pointer',
+                            maxWidth: '150px'
                         }}
                     >
-                        <option value="qwen2.5-coder">qwen2.5-coder (7b)</option>
-                        <option value="qwen2.5-coder:14b">qwen2.5-coder:14b</option>
-                        <option value="sqlcoder">sqlcoder</option>
-                        <option value="llama3">llama3</option>
-                        <option value="mistral">mistral</option>
+                        {availableModels.map(m => (
+                            <option key={m} value={m}>{m}</option>
+                        ))}
                     </select>
                 </div>
                 <button

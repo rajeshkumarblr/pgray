@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { Node, Edge, applyNodeChanges, NodeChange } from 'reactflow';
-import ConnectionModal from './components/ConnectionModal';
+import SettingsModal from './components/SettingsModal';
 import { connectDb, explainQuery, getSavedQueryContent, executeQuery, getSchema, getConnectionConfig } from './api';
 import { parsePlanToFlow } from './utils/planLayout';
 
@@ -13,11 +13,9 @@ import { analyzeQuery, saveQueryFinal } from './api';
 
 
 function App() {
-  const [isModalOpen, setIsModalOpen] = useState(true);
+  const [showSettingsModal, setShowSettingsModal] = useState(true);
   const [connectionInfo, setConnectionInfo] = useState<any>(null);
-  const [sqlQuery, setSqlQuery] = useState(() => {
-    return localStorage.getItem('pgray_sql_query') || '';
-  });
+  const [sqlQuery, setSqlQuery] = useState('');
 
   // Results State (Lifted)
   const [executionResult, setExecutionResult] = useState<any>(null);
@@ -47,9 +45,7 @@ function App() {
 
 
   // Session State
-  const [sessionTitle, setSessionTitle] = useState(() => {
-    return localStorage.getItem('pgray_session_title') || 'Untitled Session';
-  });
+  const [sessionTitle, setSessionTitle] = useState('Untitled Query');
 
   const [chatHistory, setChatHistory] = useState<{
     role: 'user' | 'assistant',
@@ -57,12 +53,10 @@ function App() {
     status?: 'success' | 'error' | 'pending',
     hidden?: boolean,
     respTime?: string,
+    ttft?: string,
     planTime?: string,
     execTime?: string
-  }[]>(() => {
-    const saved = localStorage.getItem('pgray_chat_history');
-    return saved ? JSON.parse(saved) : [];
-  });
+  }[]>([]);
 
   const [schema, setSchema] = useState<any>(null);
   const [loadingSchema, setLoadingSchema] = useState(false);
@@ -74,12 +68,29 @@ function App() {
   });
   const [showDiff, setShowDiff] = useState(false);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
-  const [selectedModel] = useState<string>('qwen2.5-coder:14b'); // Default Model
+
+  // AI Config
+  const [localModel, setLocalModel] = useState<string>(() => {
+    return localStorage.getItem('pgray_local_model') || 'qwen2.5-coder:latest';
+  });
+  const [activeProvider, setActiveProvider] = useState<string>(() => {
+    return localStorage.getItem('pgray_ai_provider') || 'local';
+  });
+  const [geminiModel, setGeminiModel] = useState<string>(() => {
+    return localStorage.getItem('pgray_gemini_model') || 'gemini-1.5-flash';
+  });
 
   // Insights State
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
   const [actionableInsights, setActionableInsights] = useState<{ id: string, sql: string, description?: string }[]>([]);
   const [insightResults, setInsightResults] = useState<{ [id: string]: { status: 'success' | 'error', message: string } }>({});
+
+  const [googleApiKey, setGoogleApiKey] = useState(() => {
+    return localStorage.getItem('pgray_google_api_key') || '';
+  });
+  const [ollamaUrl, setOllamaUrl] = useState(() => {
+    return localStorage.getItem('pgray_ollama_url') || 'http://localhost:11434';
+  });
 
   // Performance Comparison State
   const [baselineMetrics, setBaselineMetrics] = useState<{ planning: number, execution: number } | null>(null);
@@ -115,6 +126,11 @@ function App() {
   useEffect(() => { localStorage.setItem('pgray_session_title', sessionTitle); }, [sessionTitle]);
   useEffect(() => { localStorage.setItem('pgray_diff_base', diffBaseQuery); }, [diffBaseQuery]);
   useEffect(() => { localStorage.setItem('pgray_sql_query', sqlQuery); }, [sqlQuery]);
+  useEffect(() => { localStorage.setItem('pgray_google_api_key', googleApiKey); }, [googleApiKey]);
+  useEffect(() => { localStorage.setItem('pgray_ollama_url', ollamaUrl); }, [ollamaUrl]);
+  useEffect(() => { localStorage.setItem('pgray_local_model', localModel); }, [localModel]);
+  useEffect(() => { localStorage.setItem('pgray_ai_provider', activeProvider); }, [activeProvider]);
+  useEffect(() => { localStorage.setItem('pgray_gemini_model', geminiModel); }, [geminiModel]);
 
   // Schema Fetching
   useEffect(() => {
@@ -135,7 +151,7 @@ function App() {
         const connRes = await getConnectionConfig();
         if (!cancelled && connRes && connRes.status === 'success' && connRes.data) {
           setConnectionInfo(connRes.data);
-          setIsModalOpen(false);
+          setShowSettingsModal(false);
           // Auto-connect
           await connectDb(connRes.data).catch(e => console.error("Auto-connect failed", e));
 
@@ -157,9 +173,23 @@ function App() {
                 if (!cancelled) setIsExecuting(false);
               });
           }
+        } else {
+          // Try loading from localStorage defaults if backend config missing
+          try {
+            const defs = JSON.parse(localStorage.getItem('pgray_connection_defaults') || '{}');
+            if (defs.host && defs.database && defs.username) {
+              // Ideally we need password. It's not saved. 
+              // So we just show modal with pre-filled values (handled by Modal itself).
+              // But maybe user *wants* to connect?
+              // Just leave modal open.
+              setShowSettingsModal(true);
+            } else {
+              setShowSettingsModal(true);
+            }
+          } catch { setShowSettingsModal(true); }
         }
       } catch {
-        // Ignore network errors on init
+        setShowSettingsModal(true);
       }
     })();
     return () => { cancelled = true; };
@@ -392,6 +422,7 @@ function App() {
 
     try {
       const promptToSend = displayMsg ? userMsg : `Existing SQL:\n\`\`\`sql\n${sqlQuery}\n\`\`\`\n\nUser Request: ${userMsg}`;
+      const startTime = performance.now();
 
       const response = await fetch('http://localhost:9000/api/generate_sql_stream', {
         method: 'POST',
@@ -400,10 +431,12 @@ function App() {
           prompt: promptToSend,
           schema_data: schema,
           history: chatHistory,
-          model: selectedModel,
+          model: activeProvider === 'local' ? localModel : geminiModel,
           connection: connectionInfo,
           // If analysis, pass plan/query context is handled by prompt info usually, but let's be safe
-          sql_query: isAnalysis ? sqlQuery : undefined
+          sql_query: isAnalysis ? sqlQuery : undefined,
+          apiKey: googleApiKey,
+          ollamaUrl: activeProvider === 'local' ? ollamaUrl : undefined
         })
       });
 
@@ -413,6 +446,7 @@ function App() {
       let done = false;
       let streamBuffer = "";
       let slowWarningTimer: any; // Use simple typing to avoid NodeJS.Timeout error vs number
+      let firstTokenTime = 0;
 
       // Warning for slow start (Model Loading)
       slowWarningTimer = setTimeout(() => {
@@ -431,10 +465,19 @@ function App() {
           streamBuffer += chunk;
           if (streamBuffer.length > 10 && aiStatus === 'thinking') setAiStatus('generating');
 
+          let ttftVal: string | undefined = undefined;
+          if (firstTokenTime === 0) {
+            firstTokenTime = performance.now();
+            ttftVal = (firstTokenTime - startTime).toFixed(2);
+          }
+
           setChatHistory(prev => {
             const newHist = [...prev];
             const last = newHist[newHist.length - 1];
-            if (last.role === 'assistant') { last.content = streamBuffer; }
+            if (last.role === 'assistant') {
+              last.content = streamBuffer;
+              if (ttftVal) last.ttft = ttftVal;
+            }
             return newHist;
           });
 
@@ -608,6 +651,7 @@ Please provide a detailed analysis in the following format:
             setSessionTitle(name);
             setActiveCenterTab('editor');
           }}
+          onOpenSettings={() => setShowSettingsModal(true)}
 
           onExecute={handleExecute}
           isExecuting={isExecuting}
@@ -674,15 +718,32 @@ Please provide a detailed analysis in the following format:
           title="AI Assistant"
           onRunSql={(sql) => { setSqlQuery(sql); }}
           onClose={() => { }}
+          selectedModel={activeProvider}
+          onModelChange={setActiveProvider}
+          googleApiKey={googleApiKey}
+          onSetGoogleApiKey={setGoogleApiKey}
         />
       </div>
 
-      {/* Connection Modal */}
-      {isModalOpen && (
-        <ConnectionModal
-          isOpen={isModalOpen}
-          onClose={() => setIsModalOpen(false)}
-          onSubmit={(conn) => { setConnectionInfo(conn); setIsModalOpen(false); connectDb(conn); }}
+      {/* Settings Modal */}
+      {showSettingsModal && (
+        <SettingsModal
+          isOpen={showSettingsModal}
+          onClose={() => setShowSettingsModal(false)}
+          connectionInfo={connectionInfo}
+          onConnect={(conn) => {
+            setConnectionInfo(conn);
+            setShowSettingsModal(false);
+            connectDb(conn);
+          }}
+          ollamaUrl={ollamaUrl}
+          onSaveOllamaUrl={setOllamaUrl}
+          geminiKey={googleApiKey}
+          onSaveGeminiKey={setGoogleApiKey}
+          geminiModel={geminiModel}
+          onSaveGeminiModel={setGeminiModel}
+          localModel={localModel}
+          onSaveLocalModel={setLocalModel}
         />
       )}
 

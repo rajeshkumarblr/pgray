@@ -3,6 +3,7 @@ import requests
 import httpx # Async Support
 import json
 import datetime
+import time
 
 import os
 
@@ -116,6 +117,7 @@ def explain_sql_query(query: str, schema_context: str = None, schema_data: dict 
         "model": model,
         "prompt": prompt,
         "stream": False,
+        "keep_alive": "60m",
         "options": { "temperature": 0.2 }
     }
 
@@ -145,6 +147,7 @@ def explain_sql_query(query: str, schema_context: str = None, schema_data: dict 
             "model": model, 
             "prompt": full_prompt,
             "stream": False,
+            "keep_alive": "60m",
             "options": { "temperature": 0.2 }
         }
 
@@ -198,14 +201,22 @@ def explain_sql_query(query: str, schema_context: str = None, schema_data: dict 
         "prompt": debug_prompt
     }
 
-async def generate_sql_stream(prompt: str, schema_context: str = None, schema_data: dict = None, history: list = None, model: str = "qwen2.5-coder", plan_text: str = None, sql_query: str = None):
+async def generate_sql_stream(prompt: str, schema_context: str = None, schema_data: dict = None, history: list = None, model: str = "qwen2.5-coder", plan_text: str = None, sql_query: str = None, apiKey: str = None, ollamaUrl: str = None):
     """
     Async Generator that streams the response from Ollama using httpx.
     """
+    # Use custom URL if provided, else default
+    active_ollama_url = ollamaUrl if ollamaUrl else OLLAMA_URL
+    # Ensure no trailing slash for consistency if we append /api/...
+    active_ollama_url = active_ollama_url.rstrip('/')
+
+    schema_text = ""
     if schema_data:
-        schema_context = format_schema_ddl(schema_data)
-    elif not schema_context:
-        schema_context = "-- No schema provided"
+        schema_text = format_schema_ddl(schema_data)
+    elif schema_context:
+        schema_text = schema_context
+    else:
+        schema_text = "-- No schema provided"
 
     # optimization context
     optimization_context = ""
@@ -229,7 +240,7 @@ async def generate_sql_stream(prompt: str, schema_context: str = None, schema_da
             "   - Do NOT repeat the original SELECT query unless you are purposely rewriting it for logic.\n"
             "   - Explain WHY these indexes will help.\n\n"
             "### Database Schema\n"
-            f"{schema_context}\n\n"
+            f"{schema_text}\n\n"
             f"{optimization_context}"
             "### Task\n"
             "Analyze the plan and suggest optimizations/indexes.\n"
@@ -243,7 +254,7 @@ async def generate_sql_stream(prompt: str, schema_context: str = None, schema_da
         base_prompt = (
             "You are a helpful SQL Assistant. Your goal is to generate correct, efficient SQL queries.\n"
             "### Database Schema\n"
-            f"{schema_context}\n\n"
+            f"{schema_text}\n\n"
             f"{optimization_context}"
             "### Task\n"
             "Generate a SQL query to answer the following question.\n"
@@ -262,17 +273,41 @@ async def generate_sql_stream(prompt: str, schema_context: str = None, schema_da
     payload = {
         "model": model, 
         "prompt": base_prompt,
+        "keep_alive": "60m", # Keep model loaded for 1 hour
         "stream": True,  # ENABLE STREAMING
         "options": { "temperature": 0.1 } # Lower temperature for diffs
     }
 
+    if model.startswith("gemini"):
+        if not apiKey:
+             yield "-- Error: Gemini model selected but no API Key provided."
+             return
+        
+        
+        # generate_gemini_stream is defined in this module
+        async for chunk in generate_gemini_stream(base_prompt, model, apiKey):
+             yield chunk
+        return
+
     try:
-        async with httpx.AsyncClient() as client:
-            async with client.stream("POST", OLLAMA_URL, json=payload, timeout=300) as response:
-                response.raise_for_status()
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            start_time = time.time()
+            # print(f"DEBUG: sending to {active_ollama_url}/api/generate")
+            async with client.stream("POST", f"{active_ollama_url}/api/generate", json=payload) as response:
+                if response.status_code != 200:
+                    error_detail = await response.aread()
+                    logger.error(f"Ollama API error: {response.status_code} - {error_detail.decode()}")
+                    yield f"\n-- Error from Ollama API: {response.status_code} - {error_detail.decode()}"
+                    return
+
                 full_response = ""
+                first_chunk = True
                 async for line in response.aiter_lines():
                     if line:
+                        if first_chunk:
+                            ttft = time.time() - start_time
+                            logger.info(f"Create SQL Stream TTFT: {ttft:.4f}s")
+                            first_chunk = False
                         body = json.loads(line)
                         token = body.get("response", "")
                         if token:
@@ -297,6 +332,7 @@ async def generate_title(prompt: str, model: str = "qwen2.5-coder") -> str:
     payload = {
         "model": model, 
         "prompt": f"{sys_prompt}\nUser Request: {prompt}\nTitle:",
+        "keep_alive": "60m",
         "stream": False,
         "options": { "temperature": 0.3 }
     }
@@ -387,6 +423,7 @@ async def analyze_parameterized_query(sql_query: str, model: str = "qwen2.5-code
         "model": model, 
         "prompt": prompt,
         "stream": False,
+        "keep_alive": "60m",
         "format": "json",
         "options": { "temperature": 0.1 }
     }
@@ -462,3 +499,154 @@ async def analyze_parameterized_query(sql_query: str, model: str = "qwen2.5-code
     }
     
     return final_result
+
+async def list_models() -> list:
+    """
+    Fetches available models from Ollama /api/tags.
+    """
+    try:
+        # Construct base URL from OLLAMA_URL
+        # OLLAMA_URL defaults to .../api/generate
+        base_url = OLLAMA_URL.replace("/api/generate", "")
+        tags_url = f"{base_url}/api/tags"
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.get(tags_url, timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                # Ollama returns { "models": [ { "name": "..." }, ... ] }
+                models = [m["name"] for m in data.get("models", [])]
+                return models
+                
+    except Exception as e:
+        logger.error(f"Failed to list models: {e}")
+    
+    # Fallback
+    return ["qwen2.5-coder:latest", "qwen2.5-coder", "llama3", "mistral"]
+
+async def warmup_model(model: str = "qwen2.5-coder:latest"):
+    """
+    Sends a keep-alive request to Ollama to load the model into memory.
+    """
+    try:
+        # Just sending an empty generate request with keep_alive
+        payload = {
+            "model": model,
+            "prompt": "", 
+            "keep_alive": "60m",
+            "stream": False
+        }
+        async with httpx.AsyncClient() as client:
+            # We don't care about the response, just triggering the load
+            # Use short timeout, if it times out, the load is arguably started? 
+            # Actually, Ollama blocks until loaded.
+            # So we should run this fire-and-forget or async?
+            # The client (frontend) shouldn't wait 60s for warmup.
+            # So we set timeout to 1s? 
+            # If we timeout, the request might be cancelled by Ollama?
+            # Better to let it run in background task? 
+            # FastAPI BackgroundTasks is perfect here.
+            # BUT for now, let's just send the request with a small timeout and catch exception.
+            # If it's already loaded, it returns instantly.
+            # If loading, it will block. 
+            await client.post(OLLAMA_URL, json=payload, timeout=1.0)
+    except httpx.TimeoutException:
+        # Expected if model is loading
+        pass 
+    except Exception as e:
+        logger.error(f"Warmup failed: {e}")
+
+async def generate_gemini_stream(prompt: str, model: str, api_key: str):
+    """
+    Streams response from Google Gemini API.
+    """
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent?key={api_key}"
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.1}
+    }
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            logger.info(f"DEBUG: Gemini URL: {url.replace(api_key, 'HIDDEN')}") # Redact key
+            async with client.stream("POST", url, json=payload, timeout=60) as response:
+                if response.status_code != 200:
+                    err_text = await response.aread()
+                    error_msg = err_text.decode('utf-8')
+                    logger.error(f"Gemini Error {response.status_code}: {error_msg}")
+                    
+                    if response.status_code == 404:
+                         # Try to list models to help debug
+                         try:
+                             list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+                             list_resp = await client.get(list_url, timeout=10)
+                             if list_resp.status_code == 200:
+                                 models_data = list_resp.json()
+                                 avail = [m.get('name') for m in models_data.get('models', [])]
+                                 logger.info(f"DEBUG: Available Gemini Models: {avail}")
+                             else:
+                                 logger.error(f"Failed to list models: {list_resp.status_code}")
+                         except Exception as list_e:
+                             logger.error(f"Failed to list models exception: {list_e}")
+
+                    yield f"-- Error from Google: {response.status_code} {error_msg}"
+                    return
+
+                # Gemini returns a JSON array '[' ... ',' ... ',' ... ']'
+                # Use a buffer to handle potentially split JSON chunks, or simplistic parsing
+                # Actually, standard usage is parsing line by line if possible, or chunk by chunk
+                # But Gemini returns a continuous JSON list.
+                # Simplify: naive parsing for "text": "..."
+                # Or use the fact that chunks usually come as complete JSON objects wrapped in the list structure.
+                
+                async for line in response.aiter_lines():
+                    if line:
+                        # Simple regex to extract text to ensure we don't break on complex JSON parsing
+                        # We look for "text": "..."
+                        # BUT Gemini logic: candidates[0].content.parts[0].text
+                        import re
+                        # Non-greedy match for text value. Handle escaped quotes?
+                        # This is risky. Better to try loading JSON if possible.
+                        # Clean the line: remove leading ',' or '[' or ']'
+                        cleaned = line.strip().lstrip(',').lstrip('[').rstrip(']').rstrip(',')
+                        if not cleaned: continue
+                        
+                        # Strategy 1: Attempt to parse full object (existing)
+                        try:
+                            # logger.info(f"DEBUG: Gemini Line: {cleaned}")
+                            data = json.loads(cleaned)
+                            # Extract text
+                            candidates = data.get("candidates", [])
+                            if candidates:
+                                content = candidates[0].get("content", {})
+                                parts = content.get("parts", [])
+                                if parts:
+                                    text = parts[0].get("text", "")
+                                    if text:
+                                        # logger.info(f"DEBUG: yielded {text}")
+                                        yield text
+                            continue # Success
+                        except:
+                            pass
+
+                        # Strategy 2: Handle partial line like "text": "..."
+                        # Gemini often sends this key-value pair on its own line in the stream
+                        if '"text":' in cleaned:
+                            try:
+                                # Construct a fake object to let JSON parser handle escaping
+                                # Remove trailing comma if present
+                                fragment = cleaned.rstrip(',')
+                                # If it doesn't start with Brace, wrap it
+                                if not fragment.startswith('{'):
+                                    fragment = '{' + fragment + '}'
+                                
+                                data = json.loads(fragment)
+                                if "text" in data:
+                                    yield data["text"]
+                            except Exception as e:
+                                # logger.error(f"Gemini Fragment Parse Error: {cleaned} | {e}")
+                                pass
+
+    except Exception as e:
+        logger.error(f"Gemini stream failed: {e}")
+        yield f"-- Error: {str(e)}"

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -133,7 +133,9 @@ async def generate_sql_stream_endpoint(request: GenerateSqlRequest):
                 request.history, 
                 request.model,
                 request.plan_text,
-                request.sql_query
+                request.sql_query,
+                request.apiKey,
+                request.ollamaUrl
             ),
             media_type="text/plain"
         )
@@ -323,3 +325,26 @@ async def delete_query_endpoint(query_id: str):
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/models")
+async def get_models_endpoint():
+    try:
+        from app.ai import list_models
+        models = await list_models()
+        return {"status": "success", "models": models}
+    except Exception as e:
+        return {"status": "error", "models": ["qwen2.5-coder"], "message": str(e)}
+
+class WarmupRequest(BaseModel):
+    model: str = "qwen2.5-coder:latest"
+
+@app.post("/api/warmup")
+async def warmup_endpoint(request: WarmupRequest, background_tasks: BackgroundTasks):
+    try:
+        from app.ai import warmup_model
+        # Run in background to not block the typing user
+        background_tasks.add_task(warmup_model, request.model)
+        return {"status": "success"}
+    except Exception as e:
+        # Don't fail the request, just log
+        return {"status": "ignored", "error": str(e)}

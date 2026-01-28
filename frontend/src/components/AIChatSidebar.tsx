@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
+import { warmupModel } from '../api';
 
 interface Message {
     role: 'user' | 'assistant';
@@ -6,6 +7,7 @@ interface Message {
     status?: 'success' | 'error' | 'pending';
     hidden?: boolean;
     respTime?: string; // AI Generation Time
+    ttft?: string; // Time to First Token
     planTime?: string; // DB Plan Time
     execTime?: string; // DB Exec Time
 }
@@ -21,20 +23,27 @@ interface AIChatSidebarProps {
     onDiff?: (sql: string) => void;
     selectedModel?: string;
     onModelChange?: (model: string) => void;
+    googleApiKey?: string;
+    onSetGoogleApiKey?: (key: string) => void;
+    onOpenSettings?: () => void;
 }
 
 const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
     messages, onClose, onSend, loading, aiState = 'idle', title = "Query Discussion", onRunSql,
-    selectedModel = "qwen2.5-coder:14b", onModelChange
+    selectedModel = "qwen2.5-coder:latest", onModelChange,
+    googleApiKey = '', onSetGoogleApiKey, onOpenSettings
 }) => {
     const endRef = useRef<HTMLDivElement>(null);
     const [input, setInput] = useState('');
     const [inputHistory, setInputHistory] = useState<string[]>([]);
     const [historyIndex, setHistoryIndex] = useState(-1);
+    const [hasWarmedUp, setHasWarmedUp] = useState(false);
+    // const [showKeyInput, setShowKeyInput] = useState(false); // Removed
 
     useEffect(() => {
         endRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages, aiState]);
+    // ... (rest of logic) ...
 
     const handleSend = () => {
         if (input.trim() && !loading && aiState === 'idle') {
@@ -42,6 +51,7 @@ const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
             setInputHistory(prev => [...prev, input]);
             setHistoryIndex(-1);
             setInput('');
+            setHasWarmedUp(false); // Reset for next interaction
         }
     };
 
@@ -149,11 +159,11 @@ const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
                                     <span>{firstLine}</span>
                                 </div>
 
-                                {(respTime || planTime || execTime) && (
+                                {(respTime || planTime || execTime || msg.ttft) && (
                                     <div style={{ fontSize: '10px', color: '#64748b', marginLeft: '24px' }}>
-                                        {/* Format: T: 86.83 ms(P: 8.42ms, E: 78.41ms) */}
+                                        {/* Format: T: 86.83 ms (TTFT: 12ms, P: 8.42ms, E: 78.41ms) */}
                                         {(msg as any).totalTime ? `T: ${(msg as any).totalTime}ms ` : ''}
-                                        ({planTime ? `P: ${planTime}ms` : ''}{planTime && execTime ? ', ' : ''}{execTime ? `E: ${execTime}ms` : ''})
+                                        ({msg.ttft ? `TTFT: ${msg.ttft}ms, ` : ''}{planTime ? `P: ${planTime}ms` : ''}{planTime && execTime ? ', ' : ''}{execTime ? `E: ${execTime}ms` : ''})
                                     </div>
                                 )}
                             </div>
@@ -198,15 +208,24 @@ const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
                                 cursor: 'pointer'
                             }}
                         >
-                            <option value="qwen2.5-coder:32b">Qwen 32B (Very Slow)</option>
-                            <option value="qwen2.5-coder:14b">Qwen 14B (Slow)</option>
-                            <option value="qwen2.5-coder:7b">Qwen 7B (Fast)</option>
-                            <option value="qwen2.5-coder:1.5b">Qwen 1.5B (Fastest)</option>
-                            <option value="llama3">Llama 3</option>
+                            <option value="local">Local AI (Ollama)</option>
+                            <option value="gemini">Google Gemini</option>
                         </select>
                     )}
+                    {/* Key Input Removed - Managed in Settings */}
                 </div>
-                <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer' }}>✕</button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                    {onOpenSettings && (
+                        <button
+                            onClick={onOpenSettings}
+                            style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '14px' }}
+                            title="Global Settings (DB & AI)"
+                        >
+                            ⚙️
+                        </button>
+                    )}
+                    <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer' }}>✕</button>
+                </div>
             </div>
 
             <div style={{ flex: 1, overflowY: 'auto', padding: '10px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -293,7 +312,14 @@ const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
                 <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                     <textarea
                         value={input}
-                        onChange={(e) => setInput(e.target.value)}
+                        onChange={(e) => {
+                            const val = e.target.value;
+                            setInput(val);
+                            if (!hasWarmedUp && val.trim().length > 0) {
+                                setHasWarmedUp(true);
+                                warmupModel(selectedModel);
+                            }
+                        }}
                         onKeyDown={handleKeyDown}
                         disabled={loading || aiState !== 'idle'}
                         placeholder={(loading || aiState !== 'idle') ? (aiState === 'generating' ? "Generating..." : "Thinking...") : "Ask AI..."}
@@ -356,7 +382,7 @@ const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
                     </div>
                 </div>
             </div>
-        </div>
+        </div >
     );
 };
 

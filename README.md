@@ -21,6 +21,9 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
     *   **Actionable Insights**: AI automatically suggests SQL fixes (e.g., `CREATE INDEX`) which are extracted into a dedicated "Insights" tab.
     *   **Granular Execution**: Execute suggested optimizations individually with instant success/failure feedback via toast notifications.
     *   **Performance Comparison**: Measure impact with a "Compare" tool that shows optimization gains (e.g., "Planning: -10ms") against your original baseline.
+    *   **Dual Engine Support**: Switch seamlessly between **Local AI** (Ollama) for privacy and **Google Gemini** for enhanced reasoning.
+    *   **Smart Warmup**: "Warmup-on-Type" ensures models are loaded and ready before you even hit send, minimizing latency.
+    *   **Performance Metrics**: Real-time "Time to First Token" (TTFT) tracking to monitor AI responsiveness.
 
 *   **Flexible Workspace**:
     *   **Three-Pane Layout**: Editor (Left), Visualizer (Center), Assistant (Right).
@@ -38,6 +41,8 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
     *   **Enhanced Layout**: SQL Editor maximizes to fill the screen ("flex-grow") with long-line wrapping, while keeping controls pinned to the footer.
     *   **Searchable Dropdowns**: Parameters with table/column metadata show a searchable dropdown that filters potential values from the database in real-time.
     *   **Fast Save**: Intelligent title skipping and robust regex parameter detection ensure saving is instant and accurate, even for complex queries.
+    *   **Settings Management**: Centralized configuration modal (Gear Icon) to manage Database Connections, AI Providers (Ollama/Gemini), and specific Model versions (e.g., `gemini-1.5-flash`).
+    *   **Clean Startup**: Application always launches in a pristine state ("New Query") to prevent context clutter.
 
 *   **Deep Analytics**:
     *   **Results Tab**: View actual query result rows immediately.
@@ -57,7 +62,8 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
 
 *   Docker and Docker Compose
 *   A local PostgreSQL database
-*   [Ollama](https://ollama.ai/) running locally (for AI features)
+*   [Ollama](https://ollama.ai/) running locally (for Local AI mode)
+*   (Optional) Google AI Studio API Key (for Cloud AI mode)
 
 ### Installation & Run
 

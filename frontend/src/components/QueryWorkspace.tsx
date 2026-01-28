@@ -63,6 +63,7 @@ interface QueryWorkspaceProps {
     setActiveTab: (tab: 'editor' | 'tune' | 'server' | 'queries') => void;
     onAnalyzeParamQuery: (sql: string) => void;
     onEdit: (sql: string, name: string) => void;
+    onOpenSettings?: () => void;
 }
 
 const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
@@ -76,7 +77,8 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
     onCopy, onReset, onAnalyzeNode,
     insights, onRunInsight, insightResults,
     onCompare, baselineMetrics, queriesRefreshTrigger,
-    activeTab, setActiveTab, onAnalyzeParamQuery, onEdit
+    activeTab, setActiveTab, onAnalyzeParamQuery, onEdit,
+    onOpenSettings
 }) => {
     // Layout State
     // activeTab is now props
@@ -199,6 +201,7 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                     setShowDiff={setShowDiff}
                     onCopy={onCopy}
                     onReset={onReset}
+                    onOpenSettings={onOpenSettings}
                 />
 
                 {/* 2. Tabs Row (Below Toolbar) */}

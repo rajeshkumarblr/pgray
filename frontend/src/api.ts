@@ -11,6 +11,19 @@ export const api = axios.create({
     },
 });
 
+export const getAIModels = async () => {
+    try {
+        const response = await api.get('/models');
+        if (response.data && response.data.models) {
+            return response.data.models;
+        }
+        return [];
+    } catch (e) {
+        console.error("Failed to fetch models", e);
+        return [];
+    }
+};
+
 export const getPgSettings = async (connection: any) => {
     try {
         const response = await axios.post(`${API_BASE_URL}/api/settings`, { connection });
@@ -157,5 +170,14 @@ export const deleteQuery = async (id: string) => {
     } catch (error) {
         console.error("Error deleting query:", error);
         throw error;
+    }
+};
+
+export const warmupModel = async (model: string) => {
+    // Fire and forget, don't throw
+    try {
+        await api.post('/warmup', { model });
+    } catch (e) {
+        console.warn("Warmup failed (ignored)", e);
     }
 };

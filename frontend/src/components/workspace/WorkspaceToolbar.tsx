@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 
 interface WorkspaceToolbarProps {
     sessionTitle: string;
@@ -17,19 +17,20 @@ interface WorkspaceToolbarProps {
     setShowDiff: (show: boolean) => void;
     onCopy: () => void;
     onReset: () => void;
+    onOpenSettings?: () => void;
 }
 
 const WorkspaceToolbar: React.FC<WorkspaceToolbarProps> = ({
     sessionTitle, setSessionTitle,
-    savedQueries, onLoadSession, onNewSession,
+    onNewSession,
     onSaveSession,
     onExecute, isExecuting,
     onTune,
     showDiff, setShowDiff,
     onCopy, onReset,
-    // activeTab, setActiveTab // Removed
+    onOpenSettings
 }) => {
-    const [showSessionList, setShowSessionList] = useState(false);
+    // const [showSessionList, setShowSessionList] = useState(false); // Removed
 
     // const tabStyle = (tab: string) => ({ // Removed
     //     padding: '4px 12px',
@@ -158,7 +159,7 @@ const WorkspaceToolbar: React.FC<WorkspaceToolbarProps> = ({
                         type="text"
                         value={sessionTitle}
                         onChange={(e) => setSessionTitle(e.target.value)}
-                        placeholder="Untitled Session"
+                        placeholder="Untitled Query"
                         style={{
                             background: 'transparent',
                             border: 'none',
@@ -168,76 +169,24 @@ const WorkspaceToolbar: React.FC<WorkspaceToolbarProps> = ({
                             fontSize: '13px',
                             width: '100%',
                             outline: 'none',
-                            paddingRight: '25px'
                         }}
-                        title="Type to rename session"
+                        title="Query Name"
                     />
-
-                    {/* Dropdown Trigger */}
-                    <div
-                        onClick={() => setShowSessionList(!showSessionList)}
-                        style={{
-                            position: 'absolute',
-                            right: 0,
-                            top: 0,
-                            bottom: 0,
-                            width: '24px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: 'pointer',
-                            color: '#94a3b8'
-                        }}
-                        title="Show All Sessions"
-                    >
-                        ▼
-                    </div>
-
-                    {/* Dropdown List */}
-                    {showSessionList && (
-                        <div style={{
-                            position: 'absolute',
-                            top: '100%',
-                            left: 0,
-                            right: 0,
-                            maxHeight: '300px',
-                            overflowY: 'auto',
-                            background: '#1e293b',
-                            border: '1px solid #475569',
-                            borderRadius: '4px',
-                            marginTop: '4px',
-                            zIndex: 1000,
-                            boxShadow: '0 4px 6px rgba(0,0,0,0.3)'
-                        }}>
-                            {savedQueries.map(q => (
-                                <div
-                                    key={q}
-                                    onClick={() => {
-                                        onLoadSession(q);
-                                        setShowSessionList(false);
-                                    }}
-                                    style={{
-                                        padding: '8px 12px',
-                                        fontSize: '13px',
-                                        color: '#e2e8f0',
-                                        cursor: 'pointer',
-                                        borderBottom: '1px solid #334155',
-                                        transition: 'background 0.2s'
-                                    }}
-                                    onMouseEnter={(e) => (e.currentTarget.style.background = '#334155')}
-                                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                                >
-                                    {q || "(Untitled)"}
-                                </div>
-                            ))}
-                            {savedQueries.length === 0 && (
-                                <div style={{ padding: '8px', color: '#64748b', fontSize: '12px', textAlign: 'center' }}>
-                                    No saved sessions found.
-                                </div>
-                            )}
-                        </div>
-                    )}
                 </div>
+
+                {onOpenSettings && (
+                    <button
+                        onClick={onOpenSettings}
+                        style={{
+                            background: '#1e293b', border: '1px solid #475569', color: '#94a3b8',
+                            borderRadius: '4px', padding: '6px 10px', cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px'
+                        }}
+                        title="Settings (Connection & AI)"
+                    >
+                        ⚙️ Settings
+                    </button>
+                )}
             </div>
         </div>
     );

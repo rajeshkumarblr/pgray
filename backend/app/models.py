@@ -34,8 +34,11 @@ class GenerateSqlRequest(BaseModel):
     connection: Optional[ConnectionInfo] = None # Added for server-side validation
     plan_text: Optional[str] = None # Added for optimization context
     sql_query: Optional[str] = None # Added for optimization context
+    apiKey: Optional[str] = None # Google API Key
+    ollamaUrl: Optional[str] = None # Custom Ollama URL
 
 class ExplainSqlRequest(BaseModel):
     query: str
     schema_data: Optional[dict] = None
     model: Optional[str] = "qwen2.5-coder"
+    apiKey: Optional[str] = None
