@@ -54,11 +54,14 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
     
 ## Gallery
 
-![Main Interface](screenshots/screenshot.png)
-*(Main Interface showing Visualizer and AI Assistant)*
+![Visual Explain & Analysis](screenshots/screenshot_analyze_query.png)
+*(Interactive Visualizer with Node Analytics and AI Insights)*
 
-![New Query](screenshots/screenshot_new_query.png)
-*(Clean Startup with Empty Editor)*
+![Saved Queries & Parameters](screenshots/screenshot_queries.png)
+*(Saved Queries Manager with Parameter Support)*
+
+![Clean Editor](screenshots/screenshot_new_query.png)
+*(Clean Startup with SQL Editor and AI Chat)*
 
 ## Architecture
 

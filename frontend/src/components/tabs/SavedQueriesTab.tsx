@@ -27,6 +27,7 @@ interface SavedQueriesTabProps {
     onEdit: (sql: string, name: string) => void;
     refreshTrigger?: number;
     connectionInfo: any;
+    setSqlQuery: (sql: string) => void;
 }
 
 const customSyntaxStyle = {
@@ -199,7 +200,7 @@ const RenameModal: React.FC<RenameModalProps> = ({ isOpen, onClose, onRename, cu
     );
 };
 
-const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze, onEdit, refreshTrigger, connectionInfo }) => {
+const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze, onEdit, refreshTrigger, connectionInfo, setSqlQuery }) => {
     const [queries, setQueries] = useState<ParameterizedQuery[]>([]);
     const [selectedQuery, setSelectedQuery] = useState<ParameterizedQuery | null>(null);
     const [paramValues, setParamValues] = useState<{ [key: string]: string }>({});
@@ -418,17 +419,8 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
         onEdit(q.original_sql, q.name);
     };
 
-    const handleExecute = () => {
-        const sql = prepareSql();
-        if (sql) onExecute(sql);
-    };
 
-    const handleAnalyze = () => {
-        const sql = prepareSql();
-        if (sql) onAnalyze(sql);
-    };
-
-    const prepareSql = (): string | null => {
+    const prepareSql = (silent = false): string | null => {
         if (!selectedQuery) return null;
         // Use edited SQL if editing
         let sql = isEditing ? editSql : selectedQuery.sql;
@@ -462,11 +454,28 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
         }
 
         if (missing.length > 0) {
-            alert(`Please provide values for: ${missing.join(', ')}\n(If you added new parameters, please Save the query first to update the input fields)`);
-            return null;
+            if (!silent) alert(`Please provide values for: ${missing.join(', ')}\n(If you added new parameters, please Save the query first to update the input fields)`);
+            return null; // Return null if missing parameters (and strict mode)
+            // Ideally for live preview we might return the raw SQL?
+            // But if we push raw SQL with :params to App.tsx, global execute will fail with syntax error. 
+            // Better to push it so user sees *something* is inconsistent? 
+            // Or push it so they can *see* it. 
+            // Let's return the partially substituted SQL for now? 
+            // App behavior: if I select a query, I want to execute it.
+            // If I push partial SQL, PG will error.
+            // That's fine.
+            return sql;
         }
         return sql;
     };
+
+    // Keep global sqlQuery in sync with current params
+    useEffect(() => {
+        const sql = prepareSql(true);
+        if (sql) {
+            setSqlQuery(sql);
+        }
+    }, [selectedQuery, paramValues, isEditing, editSql]);
 
 
     return (
@@ -699,31 +708,7 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
                                 </div>
                             )}
 
-                            {/* Execution Actions - Moved to Bottom Right */}
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', paddingTop: '10px', borderTop: '1px solid #334155' }}>
-                                <button
-                                    onClick={handleAnalyze}
-                                    style={{
-                                        background: '#8b5cf6', color: 'white', border: 'none', padding: '10px 24px',
-                                        borderRadius: '4px', cursor: 'pointer', fontWeight: 600, fontSize: '14px',
-                                        display: 'flex', alignItems: 'center', gap: '8px'
-                                    }}
-                                    title={isEditing ? "Analyze current edited SQL" : "Analyze saved SQL"}
-                                >
-                                    <span>⚡</span> Analyze
-                                </button>
-                                <button
-                                    onClick={handleExecute}
-                                    style={{
-                                        background: '#10b981', color: 'white', border: 'none', padding: '10px 24px',
-                                        borderRadius: '4px', cursor: 'pointer', fontWeight: 600, fontSize: '14px',
-                                        display: 'flex', alignItems: 'center', gap: '8px'
-                                    }}
-                                    title={isEditing ? "Execute current edited SQL" : "Execute saved SQL"}
-                                >
-                                    <span>▶</span> Execute
-                                </button>
-                            </div>
+                            {/* Execution Actions Removed - Handled Globally */}
                         </div>
                     </>
                 ) : (

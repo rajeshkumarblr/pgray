@@ -287,6 +287,7 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                             onEdit={onEdit}
                             refreshTrigger={queriesRefreshTrigger}
                             connectionInfo={connectionInfo}
+                            setSqlQuery={setSqlQuery}
                         />
                     </div>
                 </div>
