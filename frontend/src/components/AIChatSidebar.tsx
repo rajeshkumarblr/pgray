@@ -26,12 +26,13 @@ interface AIChatSidebarProps {
     googleApiKey?: string;
     onSetGoogleApiKey?: (key: string) => void;
     onOpenSettings?: () => void;
+    onClearHistory?: () => void;
 }
 
 const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
     messages, onClose, onSend, loading, aiState = 'idle', title = "Query Discussion", onRunSql,
     selectedModel = "qwen2.5-coder:latest", onModelChange,
-    googleApiKey = '', onSetGoogleApiKey, onOpenSettings
+    googleApiKey = '', onSetGoogleApiKey, onOpenSettings, onClearHistory
 }) => {
     const endRef = useRef<HTMLDivElement>(null);
     const [input, setInput] = useState('');
@@ -161,9 +162,9 @@ const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
 
                                 {(respTime || planTime || execTime || msg.ttft) && (
                                     <div style={{ fontSize: '10px', color: '#64748b', marginLeft: '24px' }}>
-                                        {/* Format: T: 86.83 ms (TTFT: 12ms, P: 8.42ms, E: 78.41ms) */}
+                                        {/* Format: T: 86.83 ms (P: 8.42ms, E: 78.41ms) */}
                                         {(msg as any).totalTime ? `T: ${(msg as any).totalTime}ms ` : ''}
-                                        ({msg.ttft ? `TTFT: ${msg.ttft}ms, ` : ''}{planTime ? `P: ${planTime}ms` : ''}{planTime && execTime ? ', ' : ''}{execTime ? `E: ${execTime}ms` : ''})
+                                        ({planTime ? `P: ${planTime}ms` : ''}{planTime && execTime ? ', ' : ''}{execTime ? `E: ${execTime}ms` : ''})
                                     </div>
                                 )}
                             </div>
@@ -222,6 +223,15 @@ const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
                             title="Global Settings (DB & AI)"
                         >
                             ⚙️
+                        </button>
+                    )}
+                    {onClearHistory && (
+                        <button
+                            onClick={onClearHistory}
+                            style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '14px' }}
+                            title="Clear History"
+                        >
+                            🗑️
                         </button>
                     )}
                     <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer' }}>✕</button>

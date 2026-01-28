@@ -50,6 +50,16 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
     *   **Node Details**: Drill down into specific operators to see Filters, Buffer Usage, and Output columns.
     *   **Diff View**: Compare the AI's suggested query changes against your original code side-by-side.
 
+    *   **Diff View**: Compare the AI's suggested query changes against your original code side-by-side.
+    
+## Gallery
+
+![Main Interface](screenshots/screenshot.png)
+*(Main Interface showing Visualizer and AI Assistant)*
+
+![New Query](screenshots/screenshot_new_query.png)
+*(Clean Startup with Empty Editor)*
+
 ## Architecture
 
 *   **Frontend**: React, Vite, React Flow

@@ -143,6 +143,12 @@ function App() {
     }
   }, [connectionInfo]);
 
+  const handleClearHistory = () => {
+    if (confirm("Clear AI History?")) {
+      setChatHistory([]);
+    }
+  };
+
   // Initial Connection Load
   useEffect(() => {
     let cancelled = false;
@@ -722,6 +728,8 @@ Please provide a detailed analysis in the following format:
           onModelChange={setActiveProvider}
           googleApiKey={googleApiKey}
           onSetGoogleApiKey={setGoogleApiKey}
+          onOpenSettings={() => setShowSettingsModal(true)}
+          onClearHistory={handleClearHistory}
         />
       </div>
 
