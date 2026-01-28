@@ -52,16 +52,28 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
 
     *   **Diff View**: Compare the AI's suggested query changes against your original code side-by-side.
     
-## Gallery
+## Visual Tour
 
+### 1. Interactive Analysis & Insights
 ![Visual Explain & Analysis](screenshots/screenshot_analyze_query.png)
-*(Interactive Visualizer with Node Analytics and AI Insights)*
+The core of pgRay is the **Interactive Node-Link Diagram**. 
+- **Time Analysis**: Nodes are color-coded by execution time (Red = Slow).
+- **Deep Metrics**: See Row Estimates vs Actuals, Buffer Usage, and Filter effectiveness at a glance.
+- **AI Sidebar**: The **Actionable Insights** panel (bottom) lists concrete optimization steps (e.g., `CREATE INDEX`) extracted by AI.
 
+### 2. Saved Queries & Parameter Management
 ![Saved Queries & Parameters](screenshots/screenshot_queries.png)
-*(Saved Queries Manager with Parameter Support)*
+Stop rewriting the same complex JOINs.
+- **Parameterization**: pgRay automatically detects variables (e.g., `:director_name`) and generates input forms for them.
+- **Smart Search**: Parameters linked to columns (via AI metadata) offer **Autocomplete Dropdowns** that search your actual database values.
+- **Organization**: Rename, Duplicate, or Delete queries with right-click context menus.
 
+### 3. Clean Workspace & AI Chat
 ![Clean Editor](screenshots/screenshot_new_query.png)
-*(Clean Startup with SQL Editor and AI Chat)*
+Start fresh with a focused environment.
+- **Dual AI Engine**: Choose between **Local AI (Ollama)** for privacy or **Google Gemini** for cloud-powered reasoning.
+- **Natural Language SQL**: Ask "Top 5 movies by revenue" and watch the SQL stream into the editor.
+- **Instant Feedback**: Execute queries immediately and see results in the grid view.
 
 ## Architecture
 
