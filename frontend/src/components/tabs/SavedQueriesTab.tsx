@@ -380,15 +380,11 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
         setAnalyzingSave(true);
         try {
             // Analyze for params
-            const res = await analyzeQuery(editSql);
+            // Pass editTitle as existing title to speed up analysis
+            const res = await analyzeQuery(editSql, editTitle);
             if (res && res.data) {
-                // res.data.params is [{name, original_value, ...}]
-                // We need to map this to the format SaveSessionModal expects
-                // The modal expects {name, original_value, active, ...}
-                // But wait, analyzeQuery returns parameterized SQL and extracted params.
-                // We mainly just want to verify/update params.
-                // Let's rely on the analysis result.
-                setSaveParams(res.data.params || []);
+                // res.data.parameters is the correct property from backend
+                setSaveParams(res.data.parameters || []);
                 setShowSaveModal(true);
             }
         } catch (e) {

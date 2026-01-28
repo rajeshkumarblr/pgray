@@ -35,10 +35,13 @@ const SaveSessionModal: React.FC<SaveSessionModalProps> = ({ isOpen, onClose, on
         let sql = originalSql;
         // Sort params by length (descending) to avoid replacing substrings of longer params first
         // although with word boundaries this is less of an issue, intricate strings might still matter.
-        const sortedParams = [...params].sort((a, b) => b.original_value.length - a.original_value.length);
+        // Robustness: ensure original_value is valid before accessing length
+        const sortedParams = [...params]
+            .filter(p => p.original_value !== null && p.original_value !== undefined)
+            .sort((a, b) => (b.original_value || '').length - (a.original_value || '').length);
 
         sortedParams.forEach(p => {
-            if (p.active) {
+            if (p.active && p.original_value) {
                 try {
                     // Escape special regex characters in original_value
                     const escapedValue = p.original_value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

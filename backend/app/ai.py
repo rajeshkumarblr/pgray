@@ -312,27 +312,62 @@ async def generate_title(prompt: str, model: str = "qwen2.5-coder") -> str:
         logger.error(f"Title generation failed: {e}")
         return "Untitled Session"
 
-async def analyze_parameterized_query(sql_query: str, model: str = "qwen2.5-coder") -> dict:
+async def analyze_parameterized_query(sql_query: str, model: str = "qwen2.5-coder", existing_title: str = None) -> dict:
     """
     Analyzes SQL to propose a Title and potential Parameters.
-    Returns:
-    {
-      "title": "...",
-      "parameters": [
-         { "name": "actor_name", "original_value": "'Tom Hanks'" },
-         ...
-      ]
-    }
+    Can accept an existing_title to skip generation.
     """
+    
+    logger.info(f"DEBUG: analyze_parameterized_query called with SQL: {sql_query}")
+
+    # 1. Regex Detection for existing parameters (e.g. :name)
+    # Basic regex to find :word. Avoids ::cast (postgres). 
+    # Look for : followed by word chars, ensuring not preceded by : (cast)
+    import re
+    # Negative lookbehind for :, match : then word.
+    # Also careful about quotes? 
+    # For now, simplistic regex: (?<!:):([a-zA-Z_][a-zA-Z0-9_]*)
+    regex_params = []
+    try:
+        matches = re.finditer(r'(?<!:):([a-zA-Z_][a-zA-Z0-9_]*)', sql_query)
+        seen = set()
+        for m in matches:
+            p_name = m.group(1)
+            if p_name not in seen:
+                # Basic check to ensure it's not inside a string literal? 
+                # This is hard without full parser. 
+                # But typically :param is distinct. 
+                # We will assume it's a param.
+                regex_params.append({
+                    "name": p_name,
+                    "original_value": f":{p_name}", # No-op replacement
+                    "table": None,
+                    "column": None,
+                    "active": True # Already active
+                })
+                seen.add(p_name)
+    except Exception as e:
+        logger.error(f"Regex param detection failed: {e}")
+
+    logger.info(f"DEBUG: Regex found params: {regex_params}")
+
+    # 2. AI Analysis for Literals (and Title if needed)
+    
+    # If we have title, we can simplify the prompt
+    title_instruction = "2. Suggest a short, descriptive Title (3-5 words)."
+    if existing_title:
+        title_instruction = "2. Title: Return null (we have one)."
+
     prompt = (
         "You are an expert SQL Assistant.\n"
         "1. Analyze the given SQL query.\n"
-        "2. Suggest a short, descriptive Title (3-5 words).\n"
-        "3. Identify ALL literal values (strings, numbers) in WHERE/HAVING clauses OR LIMIT/OFFSET clauses that could be parameters.\n"
-        "4. For each parameter, identifying the TABLE and COLUMN it is filtering (Use null if not applicable, e.g., for LIMIT).\n"
-        "5. **IMPORTANT**: Only extract a number as a parameter if it is a standalone value. Do NOT extract numbers that are part of a calculation (e.g. do not extract '1000' from 'revenue / 1000').\n"
-        "6. **IMPORTANT**: For LIMIT/OFFSET, naming should be 'limit_val' or 'offset_val'.\n"
-        "7. Output valid JSON.\n\n"
+        f"{title_instruction}\n"
+        "3. Identify ALL literal values (strings, numbers) in WHERE/HAVING clauses OR LIMIT/OFFSET clauses that could be NEW parameters.\n"
+        "4. ALSO analyze any EXISTING parameters (starting with :) found in the query.\n"
+        "5. For each parameter (new or existing), identify the TABLE and COLUMN it is filtering (Use null if not applicable).\n"
+        "6. **IMPORTANT**: Only extract a number as a parameter if it is a standalone value.\n"
+        "7. **IMPORTANT**: For LIMIT/OFFSET, naming should be 'limit_val' or 'offset_val'.\n"
+        "8. Output valid JSON.\n\n"
         f"Input SQL:\n```sql\n{sql_query}\n```\n\n"
         "Output Format:\n"
         "{\n"
@@ -343,12 +378,6 @@ async def analyze_parameterized_query(sql_query: str, model: str = "qwen2.5-code
         "      \"original_value\": \"'Tom Hanks'\", \n"
         "      \"table\": \"people\", \n"
         "      \"column\": \"name\" \n"
-        "    },\n"
-        "    { \n"
-        "      \"name\": \"limit_val\", \n"
-        "      \"original_value\": \"10\", \n"
-        "      \"table\": null, \n"
-        "      \"column\": null \n"
         "    }\n"
         "  ]\n"
         "}"
@@ -362,6 +391,8 @@ async def analyze_parameterized_query(sql_query: str, model: str = "qwen2.5-code
         "options": { "temperature": 0.1 }
     }
     
+    ai_result = { "title": existing_title or "Untitled Query", "parameters": [] }
+    
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(OLLAMA_URL, json=payload, timeout=30)
@@ -370,32 +401,64 @@ async def analyze_parameterized_query(sql_query: str, model: str = "qwen2.5-code
             content = data.get("response", "")
             
             try:
-                import json
-                import re
-                
                 # Try to extract JSON structure directly
-                # Finds the first { and the last }
                 json_match = re.search(r"(\{.*\})", content, re.DOTALL)
                 if json_match:
                     content = json_match.group(1).strip()
                 
-                result = json.loads(content)
-                # Ensure structure
-                if "title" not in result: result["title"] = "Untitled Query"
-                if "parameters" not in result: result["parameters"] = []
-                # Fix up parameters
-                fixed_params = []
-                for p in result["parameters"]:
-                    if isinstance(p, dict) and "name" in p and "original_value" in p:
-                        # Normalize keys if missing
-                        if "table" not in p: p["table"] = None
-                        if "column" not in p: p["column"] = None
-                        fixed_params.append(p)
-                result["parameters"] = fixed_params
-                return result
+                parsed = json.loads(content)
+                
+                # Use AI title if we don't have one
+                if not existing_title and "title" in parsed:
+                    ai_result["title"] = parsed["title"]
+                    
+                if "parameters" in parsed and isinstance(parsed["parameters"], list):
+                    # Filter bad AI params
+                    for p in parsed["parameters"]:
+                         if isinstance(p, dict) and "name" in p and "original_value" in p:
+                            if "table" not in p: p["table"] = None
+                            if "column" not in p: p["column"] = None
+                            ai_result["parameters"].append(p)
+                            
             except json.JSONDecodeError:
-                 return { "title": "Untitled Query", "parameters": [] }
+                 pass # Keep defaults
                  
     except Exception as e:
         logger.error(f"Analyze Query failed: {e}")
-        return { "title": "Error Analyzing", "parameters": [], "error": str(e) }
+        # Return what we found via regex at least!
+        
+    # 3. Merge Regex Params into AI Params
+    # Priority: Keep existing regex params (high confidence they are intended).
+    # AI might have found literals.
+    # Deduplicate by name?
+    
+    final_params = list(regex_params) # Start with explicit
+    # deduplicate by name AND original_value
+    existing_map = {p["name"]: p for p in final_params} # Map for easy update
+    existing_values = set(p["original_value"] for p in regex_params)
+    
+    for ai_p in ai_result["parameters"]:
+        # Skip if AI suggests satisfying an existing values literal entirely
+        if ai_p["original_value"] in existing_values:
+            continue
+            
+        # Skip heuristic ":limit"
+        if ai_p["original_value"].startswith(":") and not ai_p["original_value"].startswith("::"):
+             continue
+
+        if ai_p["name"] in existing_map:
+            # MERGE METADATA: If AI found table/col for an existing regex param, enrich it!
+            existing = existing_map[ai_p["name"]]
+            if not existing.get("table") and ai_p.get("table"):
+                existing["table"] = ai_p["table"]
+            if not existing.get("column") and ai_p.get("column"):
+                existing["column"] = ai_p["column"]
+        else:
+            final_params.append(ai_p)
+            
+    final_result = {
+        "title": ai_result["title"],
+        "parameters": final_params
+    }
+    
+    return final_result

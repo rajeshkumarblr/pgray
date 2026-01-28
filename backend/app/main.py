@@ -264,12 +264,13 @@ async def get_connection_config():
 class ParameterizeRequest(BaseModel):
     sql: str
     model: str = "qwen2.5-coder"
+    title: str = None # Optional existing title
 
 @app.post("/api/queries/analyze")
 async def analyze_query_endpoint(request: ParameterizeRequest):
     try:
         from app.ai import analyze_parameterized_query
-        result = await analyze_parameterized_query(request.sql, request.model)
+        result = await analyze_parameterized_query(request.sql, request.model, request.title)
         if "error" in result:
              raise HTTPException(status_code=500, detail=result["error"])
         return {"status": "success", "data": result}

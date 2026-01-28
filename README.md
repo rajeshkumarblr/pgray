@@ -37,6 +37,7 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
     *   **Context Menu**: Right-click saved queries to **Rename**, **Duplicate**, or **Delete** them instantly.
     *   **Enhanced Layout**: SQL Editor maximizes to fill the screen ("flex-grow") with long-line wrapping, while keeping controls pinned to the footer.
     *   **Searchable Dropdowns**: Parameters with table/column metadata show a searchable dropdown that filters potential values from the database in real-time.
+    *   **Fast Save**: Intelligent title skipping and robust regex parameter detection ensure saving is instant and accurate, even for complex queries.
 
 *   **Deep Analytics**:
     *   **Results Tab**: View actual query result rows immediately.

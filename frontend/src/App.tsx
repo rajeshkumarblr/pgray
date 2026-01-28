@@ -217,7 +217,8 @@ function App() {
     setIsSaveModalOpen(true);
 
     try {
-      const res = await analyzeQuery(sqlQuery);
+      const existingTitle = sessionTitle !== 'Untitled Session' ? sessionTitle : undefined;
+      const res = await analyzeQuery(sqlQuery, existingTitle);
       if (res && res.status === 'success' && res.data) {
         // 2. Update state asynchronously
         setSaveAnalysis(prev => ({
