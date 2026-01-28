@@ -75,6 +75,13 @@ Start fresh with a focused environment.
 - **Natural Language SQL**: Ask "Top 5 movies by revenue" and watch the SQL stream into the editor.
 - **Instant Feedback**: Execute queries immediately and see results in the grid view.
 
+### 4. Centralized Configuration
+![DB Settings](screenshots/screenshot_db_settings.png)
+![AI Settings](screenshots/screenshot_ai_settings.png)
+Manage everything from one place.
+- **Connection Manager**: Easily switch between databases or update credentials.
+- **AI Models**: Toggle between **Ollama (Local)** and **Gemini (Cloud)**, configure API keys, and set specific model versions (e.g., `gemini-1.5-flash`).
+
 ## Architecture
 
 *   **Frontend**: React, Vite, React Flow
