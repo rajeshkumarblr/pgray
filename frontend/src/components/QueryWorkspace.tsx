@@ -146,7 +146,9 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
 
     // Handle Tab Switching
     const handleExecuteWrapper = () => {
-        setActiveTab('editor');
+        if (activeTab !== 'queries') {
+            setActiveTab('editor');
+        }
         onExecute();
     };
 
