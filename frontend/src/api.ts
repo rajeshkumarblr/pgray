@@ -34,9 +34,13 @@ export const getPgSettings = async (connection: any) => {
     }
 };
 
-export const getSavedQueries = async () => {
+export const getSavedQueries = async (connection: any = null) => {
     try {
-        const response = await axios.get(`${API_BASE_URL}/api/saved_queries`);
+        const params: any = {};
+        if (connection) {
+            params.connection_json = JSON.stringify(connection);
+        }
+        const response = await axios.get(`${API_BASE_URL}/api/saved_queries`, { params });
         return response.data;
     } catch (error) {
         console.error("Error fetching saved queries:", error);
@@ -44,9 +48,10 @@ export const getSavedQueries = async () => {
     }
 };
 
-export const saveQuery = async (name: string, sql: string, history: any[] = []) => {
+export const saveQuery = async (name: string, sql: string, history: any[] = [], connection: any = null) => {
     try {
-        const response = await axios.post(`${API_BASE_URL}/api/saved_queries`, { name, sql, history });
+        // Legacy or Session save? Assuming session save logic mostly.
+        const response = await axios.post(`${API_BASE_URL}/api/saved_queries`, { name, sql, history, connection });
         return response.data;
     } catch (error) {
         console.error("Error saving query:", error);
@@ -54,9 +59,13 @@ export const saveQuery = async (name: string, sql: string, history: any[] = []) 
     }
 };
 
-export const getSavedQueryContent = async (name: string) => {
+export const getSavedQueryContent = async (name: string, connection: any = null) => {
     try {
-        const response = await axios.get(`${API_BASE_URL}/api/saved_queries/${name}`);
+        const params: any = {};
+        if (connection) {
+            params.connection_json = JSON.stringify(connection);
+        }
+        const response = await axios.get(`${API_BASE_URL}/api/saved_queries/${name}`, { params });
         return response.data.data;
     } catch (error) {
         console.error("Error fetching query content:", error);
@@ -105,15 +114,6 @@ export const getServerSettings = async (connectionInfo: any) => {
 };
 
 export const executeExplain = async (connectionInfo: any, query: string, analyze: boolean = true) => {
-    // Note: The backend endpoint might be different depending on implementation, 
-    // strictly speaking we called it 'executeExplain' in component but it maps to /explain/text or similar?
-    // Let's check backend. `explain.py` has `execute_explain`. 
-    // `main.py` typically maps it. 
-    // Looking at file viewer history, we didn't inspect `main.py` recently for explain endpoint specifically but `explainQuery` exists above.
-    // Wait, `explainQuery` exists at line 69! 
-    // `export const explainQuery = ...`
-    // The component is importing `executeExplain`. I should alias it or rename it.
-    // Let's add `executeExplain` as a wrapper or just export it.
     const response = await api.post('/explain', { connection: connectionInfo, query, analyze });
     return response.data;
 };
@@ -139,6 +139,7 @@ export const getConnectionConfig = async () => {
 };
 
 export const saveParameterizedQuery = async (sql: string) => {
+    // Legacy endpoint?
     const response = await api.post('/queries/save_parameterized', { sql });
     return response.data;
 };
@@ -148,8 +149,8 @@ export const analyzeQuery = async (sql: string, title?: string) => {
     return response.data;
 };
 
-export const saveQueryFinal = async (name: string, sql: string, params: any[], original_sql: string) => {
-    const response = await api.post('/queries/save', { name, sql, params, original_sql });
+export const saveQueryFinal = async (name: string, sql: string, params: any[], original_sql: string, connection: any = null) => {
+    const response = await api.post('/queries/save', { name, sql, params, original_sql, connection });
     return response.data;
 };
 
@@ -163,9 +164,13 @@ export const getDistinctValues = async (connection: any, table: string, column: 
     }
 };
 
-export const deleteQuery = async (id: string) => {
+export const deleteQuery = async (id: string, connection: any = null) => {
     try {
-        const response = await api.delete(`/queries/${id}`);
+        const params: any = {};
+        if (connection) {
+            params.connection_json = JSON.stringify(connection);
+        }
+        const response = await api.delete(`/queries/${id}`, { params });
         return response.data;
     } catch (error) {
         console.error("Error deleting query:", error);

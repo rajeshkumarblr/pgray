@@ -116,10 +116,16 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
     const [savedQueries, setSavedQueries] = useState<string[]>([]);
 
     useEffect(() => {
-        getSavedQueries().then(data => {
-            if (data && data.queries) setSavedQueries(data.queries);
-        }).catch(err => console.error("Failed to fetch saved queries", err));
-    }, []);
+        if (connectionInfo) {
+            getSavedQueries(connectionInfo).then(data => {
+                if (data && data.queries) setSavedQueries(data.queries);
+                else setSavedQueries([]);
+            }).catch(err => {
+                console.error("Failed to fetch saved queries", err);
+                setSavedQueries([]);
+            });
+        }
+    }, [connectionInfo, queriesRefreshTrigger]); // Added queriesRefreshTrigger to reload toolbar list too
 
     // Automatically switch tabs based on actions
     useEffect(() => {

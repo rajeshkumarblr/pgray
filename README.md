@@ -66,6 +66,7 @@ The core of pgRay is the **Interactive Node-Link Diagram**.
 ### 2. Saved Queries & Parameter Management
 ![Saved Queries & Parameters](screenshots/screenshot_queries.png)
 Stop rewriting the same complex JOINs.
+- **Database-Specific Storage**: Queries are saved per-connection and per-database, ensuring your development and production queries never mix.
 - **Parameterization**: pgRay automatically detects variables (e.g., `:director_name`) and generates input forms for them.
 - **Smart Search**: Parameters linked to columns (via AI metadata) offer **Autocomplete Dropdowns** that search your actual database values.
 - **Organization**: Rename, Duplicate, or Delete queries with right-click context menus.

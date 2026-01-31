@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getAIModels } from '../api';
+import { getAIModels, connectDb } from '../api';
 
 interface ConnectionInfo {
     host: string;
@@ -45,6 +45,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     const [database, setDatabase] = useState('postgres');
     const [schema, setSchema] = useState('public');
 
+    // UI State
+    const [isConnecting, setIsConnecting] = useState(false);
+    const [connectError, setConnectError] = useState<string | null>(null);
+
     // AI State
     // AI State
     // AI State
@@ -58,12 +62,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     useEffect(() => {
         if (isOpen) {
             if (connectionInfo) {
-                setHost(connectionInfo.host);
-                setPort(connectionInfo.port);
-                setUsername(connectionInfo.username);
-                setPassword(connectionInfo.password); // Note: might be empty if we don't persist it in memory? App.tsx connectionInfo should have it.
-                setDatabase(connectionInfo.database);
-                setSchema(connectionInfo.schema);
+                setHost(connectionInfo.host || 'localhost');
+                setPort(connectionInfo.port || 5432);
+                setUsername(connectionInfo.username || 'postgres');
+                setPassword(connectionInfo.password || '');
+                setDatabase(connectionInfo.database || 'postgres');
+                setSchema(connectionInfo.schema || 'public');
             } else {
                 // Load defaults
                 try {
@@ -93,11 +97,34 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
     if (!isOpen) return null;
 
-    const handleDbSubmit = (e: React.FormEvent) => {
+    const handleDbSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        // Save defaults
-        localStorage.setItem('pgray_connection_defaults', JSON.stringify({ host, port, username, database, schema }));
-        onConnect({ host, port, username, password, database, schema });
+        setConnectError(null);
+        setIsConnecting(true);
+
+        const newConn = { host, port, username, password, database, schema };
+
+        try {
+            // Verify connection first
+            await connectDb(newConn);
+
+            // If successful, save defaults and complete
+            localStorage.setItem('pgray_connection_defaults', JSON.stringify({ host, port, username, database, schema }));
+            onConnect(newConn);
+        } catch (err: any) {
+            console.error("Connection failed", err);
+            let msg = err.response?.data?.detail || err.message || "Connection failed";
+            // Handle Pydantic array errors (422)
+            if (Array.isArray(msg)) {
+                msg = msg.map((e: any) => `${e.loc?.join('.')} ${e.msg}`).join(', ');
+            }
+            if (typeof msg === 'object') {
+                msg = JSON.stringify(msg);
+            }
+            setConnectError(String(msg));
+        } finally {
+            setIsConnecting(false);
+        }
     };
 
     const handleAiSubmit = (e: React.FormEvent) => {
@@ -170,10 +197,21 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                                 <input type="text" value={schema} onChange={e => setSchema(e.target.value)} style={inputStyle} required />
                             </div>
 
+                            {connectError && (
+                                <div style={{
+                                    padding: '10px', background: '#450a0a', border: '1px solid #ef4444',
+                                    color: '#fca5a5', borderRadius: '4px', fontSize: '13px', marginBottom: '15px'
+                                }}>
+                                    ❌ {connectError}
+                                </div>
+                            )}
+
                             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
                                 {/* Only show Close if we have a connection, otherwise prompt is blocking? No, allow cancel/close */}
-                                <button type="button" onClick={onClose} style={{ padding: '8px 16px', background: 'transparent', border: '1px solid #475569', color: '#cbd5e1', borderRadius: '4px', cursor: 'pointer' }}>Cancel</button>
-                                <button type="submit" style={{ padding: '8px 16px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 600 }}>Connect & Save</button>
+                                <button type="button" onClick={onClose} disabled={isConnecting} style={{ padding: '8px 16px', background: 'transparent', border: '1px solid #475569', color: '#cbd5e1', borderRadius: '4px', cursor: 'pointer', opacity: isConnecting ? 0.5 : 1 }}>Cancel</button>
+                                <button type="submit" disabled={isConnecting} style={{ padding: '8px 16px', background: isConnecting ? '#334155' : '#2563eb', color: 'white', border: 'none', borderRadius: '4px', cursor: isConnecting ? 'wait' : 'pointer', fontWeight: 600 }}>
+                                    {isConnecting ? 'Connecting...' : 'Connect & Save'}
+                                </button>
                             </div>
                         </form>
                     ) : (

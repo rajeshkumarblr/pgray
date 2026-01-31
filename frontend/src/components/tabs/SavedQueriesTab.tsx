@@ -224,7 +224,7 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
 
     useEffect(() => {
         loadQueries();
-    }, [refreshTrigger]);
+    }, [refreshTrigger, connectionInfo]);
 
     // Close context menu on global click
     useEffect(() => {
@@ -235,12 +235,15 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
 
     const loadQueries = async () => {
         try {
-            const res = await getSavedQueries();
+            const res = await getSavedQueries(connectionInfo);
             if (res && res.parameterized) {
                 setQueries(res.parameterized);
+            } else {
+                setQueries([]);
             }
         } catch (e) {
             console.error("Failed to load queries", e);
+            setQueries([]);
         }
     };
 
@@ -249,7 +252,7 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
         if (!confirm("Are you sure you want to delete this query?")) return;
 
         try {
-            await deleteQuery(id);
+            await deleteQuery(id, connectionInfo);
             // Refresh list
             if (selectedQuery?.id === id) setSelectedQuery(null);
             loadQueries();
@@ -262,7 +265,7 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
         e.stopPropagation();
         const newName = `${query.name} (Copy)`;
         try {
-            await saveQueryFinal(newName, query.sql, query.params, query.original_sql);
+            await saveQueryFinal(newName, query.sql, query.params, query.original_sql, connectionInfo);
             loadQueries();
         } catch (e) {
             alert("Failed to duplicate query");
@@ -338,9 +341,9 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
 
         try {
             // Save as new name
-            await saveQueryFinal(newName, targetQuery.sql, targetQuery.params, targetQuery.original_sql);
+            await saveQueryFinal(newName, targetQuery.sql, targetQuery.params, targetQuery.original_sql, connectionInfo);
             // Delete old
-            await deleteQuery(targetQuery.id);
+            await deleteQuery(targetQuery.id, connectionInfo);
 
             setShowRenameModal(false);
             loadQueries();
@@ -402,7 +405,8 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
                 title, // Allow title edit? Modal allows it.
                 finalSql,
                 activeParams,
-                finalSql // Original SQL is same as final for template
+                finalSql, // Original SQL is same as final for template
+                connectionInfo
             );
             setShowSaveModal(false);
             setIsEditing(false);

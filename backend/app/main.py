@@ -1,11 +1,13 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Query
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import Optional
 from app.models import ConnectionRequest, ExplainRequest, QueryRequest, GenerateSqlRequest, ExplainSqlRequest, ConnectionInfo
 from app.connection import test_connection
 from app.explain import execute_explain, execute_query_results
 from app.history import init_db, add_history_item, get_history_items
+import json
 
 app = FastAPI(title="PGray Backend")
 
@@ -146,24 +148,43 @@ class SaveQueryRequest(BaseModel):
     name: str
     sql: str
     history: list = []
+    connection: Optional[ConnectionInfo] = None
 
 @app.get("/api/saved_queries")
-async def get_saved_queries_endpoint():
+async def get_saved_queries_endpoint(connection_json: Optional[str] = Query(None)):
     try:
+        connection = None
+        if connection_json:
+            try:
+                connection = json.loads(connection_json)
+            except:
+                pass
+
         from app.saved_queries import list_saved_queries, list_parameterized_queries
+        
+        # We need to dict-ify if it's pydantic, but here it's just dict if parsed from JSON
         return {
             "status": "success", 
-            "queries": list_saved_queries(),
-            "parameterized": list_parameterized_queries()
+            "queries": list_saved_queries(connection),
+            "parameterized": list_parameterized_queries(connection)
         }
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/api/saved_queries")
-async def delete_all_saved_queries_endpoint():
+async def delete_all_saved_queries_endpoint(connection_json: Optional[str] = Query(None)):
     try:
+        connection = None
+        if connection_json:
+             try:
+                connection = json.loads(connection_json)
+             except:
+                pass
+
         from app.saved_queries import delete_all_saved_queries
-        success = delete_all_saved_queries()
+        success = delete_all_saved_queries(connection)
         if success:
              return {"status": "success"}
         else:
@@ -174,17 +195,24 @@ async def delete_all_saved_queries_endpoint():
 @app.post("/api/saved_queries")
 async def save_query_endpoint(request: SaveQueryRequest):
     try:
-        from app.saved_queries import save_query
-        name = save_query(request.name, request.sql, request.history)
-        return {"status": "success", "name": name}
+        pass 
+        # Legacy save_query used for sessions? 
+        return {"status": "error", "message": "Endpoint deprecated or not implemented"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/saved_queries/{name}")
-async def get_saved_query_content_endpoint(name: str):
+async def get_saved_query_content_endpoint(name: str, connection_json: Optional[str] = Query(None)):
     try:
+        connection = None
+        if connection_json:
+            try:
+                connection = json.loads(connection_json)
+            except:
+                pass
+
         from app.saved_queries import get_saved_query
-        data = get_saved_query(name) # returns dict {sql, history}
+        data = get_saved_query(name, connection) 
         if data is None:
              raise HTTPException(status_code=404, detail="Query not found")
         return {"status": "success", "data": data}
@@ -210,12 +238,16 @@ class HistoryTurnRequest(BaseModel):
     title: str
     prompt: str
     response: str
+    connection: Optional[ConnectionInfo] = None
 
 @app.post("/api/history/append")
 async def append_history_endpoint(request: HistoryTurnRequest):
     try:
         from app.saved_queries import append_session_history
-        success = append_session_history(request.title, request.prompt, request.response)
+        # Convert ConnectionInfo pydantic to dict
+        conn_dict = request.connection.model_dump() if request.connection else None
+        
+        success = append_session_history(request.title, request.prompt, request.response, conn_dict)
         if success:
             return {"status": "success"}
         else:
@@ -227,18 +259,22 @@ class FullSessionRequest(BaseModel):
     title: str
     sql: str
     history: list
+    connection: Optional[ConnectionInfo] = None
 
 @app.post("/api/history/save_session")
 async def save_full_session_endpoint(request: FullSessionRequest):
     try:
         from app.saved_queries import save_full_session_to_history
-        success = save_full_session_to_history(request.title, request.sql, request.history)
+        conn_dict = request.connection.model_dump() if request.connection else None
+        
+        success = save_full_session_to_history(request.title, request.sql, request.history, conn_dict)
         if success:
             return {"status": "success"}
         else:
             raise HTTPException(status_code=500, detail="Failed to save session")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/config/connection")
 async def get_connection_config():
     """
@@ -284,16 +320,20 @@ class SaveFinalQueryRequest(BaseModel):
     sql: str
     params: list
     original_sql: str
+    connection: Optional[ConnectionInfo] = None
 
 @app.post("/api/queries/save")
 async def save_final_query_endpoint(request: SaveFinalQueryRequest):
     try:
         from app.saved_queries import save_parameterized_query as save_db
+        conn_dict = request.connection.model_dump() if request.connection else None
+        
         saved_record = save_db(
             request.name,
             request.sql,
             request.params,
-            request.original_sql
+            request.original_sql,
+            conn_dict
         )
         return {"status": "success", "data": saved_record}
     except Exception as e:
@@ -316,10 +356,17 @@ async def get_distinct_values_endpoint(request: DistinctValuesRequest):
 
 
 @app.delete("/api/queries/{query_id}")
-async def delete_query_endpoint(query_id: str):
+async def delete_query_endpoint(query_id: str, connection_json: Optional[str] = Query(None)):
     try:
+        connection = None
+        if connection_json:
+             try:
+                connection = json.loads(connection_json)
+             except:
+                pass
+
         from app.saved_queries import delete_saved_query
-        success = delete_saved_query(query_id)
+        success = delete_saved_query(query_id, connection)
         if not success:
             raise HTTPException(status_code=404, detail="Query not found")
         return {"status": "success"}
