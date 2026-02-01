@@ -19,8 +19,6 @@ function App() {
 
   // Results State (Lifted)
   const [executionResult, setExecutionResult] = useState<any>(null);
-
-  // Tuning & Explanation State
   const [execError, setExecError] = useState<string | null>(null);
   const [isExecuting, setIsExecuting] = useState(false);
 
@@ -99,7 +97,7 @@ function App() {
 
   // Resize State
   const [sidebarWidth, setSidebarWidth] = useState(400);
-  const [activeCenterTab, setActiveCenterTab] = useState<'editor' | 'tune' | 'server' | 'schema'>('editor');
+  const [activeCenterTab, setActiveCenterTab] = useState<'editor' | 'tune' | 'server' | 'queries'>('editor');
   const isResizingSidebar = useRef(false);
 
   const startSidebarResize = (e: React.MouseEvent) => {
@@ -175,21 +173,15 @@ function App() {
               })
               .catch(err => {
                 console.error("Startup execution failed", err);
-                // Silent fail on startup is okay, maybe they changed DBs
               })
               .finally(() => {
                 if (!cancelled) setIsExecuting(false);
               });
           }
         } else {
-          // Try loading from localStorage defaults if backend config missing
           try {
             const defs = JSON.parse(localStorage.getItem('pgray_connection_defaults') || '{}');
-            if (defs.host && defs.database && defs.username) {
-              // Ideally we need password. It's not saved. 
-              // So we just show modal with pre-filled values (handled by Modal itself).
-              // But maybe user *wants* to connect?
-              // Just leave modal open.
+            if (defs.host || defs.database) {
               setShowSettingsModal(true);
             } else {
               setShowSettingsModal(true);
@@ -223,8 +215,6 @@ function App() {
   };
 
   const handleNewSession = async () => {
-    // Auto-save disabled as per user request
-    // Just clear state
     setSqlQuery('');
     setChatHistory([]);
     setSessionTitle('Untitled Session');
@@ -245,7 +235,6 @@ function App() {
   const handleStartSave = async () => {
     if (!sqlQuery.trim()) return;
 
-    // 1. Open Modal Immediately with Loading State
     setSaveAnalysis({
       title: '',
       params: [],
@@ -258,7 +247,6 @@ function App() {
       const existingTitle = sessionTitle !== 'Untitled Session' ? sessionTitle : undefined;
       const res = await analyzeQuery(sqlQuery, existingTitle);
       if (res && res.status === 'success' && res.data) {
-        // 2. Update state asynchronously
         setSaveAnalysis(prev => ({
           ...prev,
           title: sessionTitle !== 'Untitled Session' ? sessionTitle : res.data.title,
@@ -266,7 +254,6 @@ function App() {
           loading: false
         }));
       } else {
-        // Stop loading even if invalid
         setSaveAnalysis(prev => ({ ...prev, loading: false }));
       }
     } catch (e) {
@@ -280,12 +267,10 @@ function App() {
       const res = await saveQueryFinal(title, sql, params, saveAnalysis.originalSql);
       if (res.status === 'success') {
         setSessionTitle(title);
-        // Alert is annoying, maybe toast?
-        // alert(`Saved as: ${title}`);
         setToast({ message: `Saved as: ${title}`, type: 'success' });
         setIsSaveModalOpen(false);
         setQueriesRefreshTrigger(prev => prev + 1);
-        setActiveCenterTab('queries'); // Explicitly go to queries
+        setActiveCenterTab('queries');
       }
     } catch (e) {
       console.error("Save failed", e);
@@ -296,7 +281,6 @@ function App() {
   const handleAnalyzeParamQuery = (sql: string) => {
     setSqlQuery(sql);
     setActiveCenterTab('tune');
-    // The useEffect in QueryTuneTab or App.tsx ...
   };
 
   const handleExecute = async (sqlOverride?: string) => {
@@ -334,12 +318,10 @@ function App() {
         if (res.data.text) setExplainText(res.data.text);
         else setExplainText(JSON.stringify(res.data.json, null, 2));
 
-        // -- CAPTURE METRICS --
         const plan = Array.isArray(rawPlan) ? rawPlan[0] : rawPlan;
         const pTime = plan['Planning Time'] || 0;
         const eTime = (plan['Execution Time'] || plan['Total Runtime']) || 0;
 
-        // If this is the FIRST successful run or explicit reset, set baseline
         if (!baselineMetrics) {
           setBaselineMetrics({ planning: pTime, execution: eTime });
         }
@@ -422,11 +404,10 @@ function App() {
     setChatHistory(prev => [...prev, { role: 'user', content: displayMsg || userMsg }]);
     setAiLoading(true);
     setAiStatus('thinking');
-    // Only set DiffBase if we are generating a NEW query (not analysis) to allow diffing against old one
+
     if (!isAnalysis) {
       setDiffBaseQuery(sqlQuery);
     }
-
 
     try {
       const promptToSend = displayMsg ? userMsg : `Existing SQL:\n\`\`\`sql\n${sqlQuery}\n\`\`\`\n\nUser Request: ${userMsg}`;
@@ -441,7 +422,6 @@ function App() {
           history: chatHistory,
           model: activeProvider === 'local' ? localModel : geminiModel,
           connection: connectionInfo,
-          // If analysis, pass plan/query context is handled by prompt info usually, but let's be safe
           sql_query: isAnalysis ? sqlQuery : undefined,
           apiKey: googleApiKey,
           ollamaUrl: activeProvider === 'local' ? ollamaUrl : undefined
@@ -452,57 +432,81 @@ function App() {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let done = false;
-      let streamBuffer = "";
-      let slowWarningTimer: any; // Use simple typing to avoid NodeJS.Timeout error vs number
+
+      let rawBuffer = "";   // Buffer for raw JSON chunks
+      let textBuffer = "";  // Buffer for Clean Text (for SQL extraction)
+      let slowWarningTimer: any;
       let firstTokenTime = 0;
 
-      // Warning for slow start (Model Loading)
       slowWarningTimer = setTimeout(() => {
-        if (streamBuffer.length === 0) {
-          setToast({ message: "AI is warming up (loading model)...", type: 'info' });
+        if (textBuffer.length === 0) {
+          setToast({ message: "AI is warming up...", type: 'info' });
         }
-      }, 5000); // 5 seconds
+      }, 5000);
 
-      setChatHistory(prev => [...prev, { role: 'assistant', content: '...', status: 'pending', hidden: true }]);
+      // Start assistant message
+      setChatHistory(prev => [...prev, { role: 'assistant', content: '', status: 'pending', hidden: false }]);
 
       while (!done) {
         const { value, done: doneReading } = await reader.read();
         done = doneReading;
         if (value) {
           const chunk = decoder.decode(value, { stream: true });
-          streamBuffer += chunk;
-          if (streamBuffer.length > 10 && aiStatus === 'thinking') setAiStatus('generating');
+          rawBuffer += chunk;
 
-          let ttftVal: string | undefined = undefined;
-          if (firstTokenTime === 0) {
-            firstTokenTime = performance.now();
-            ttftVal = (firstTokenTime - startTime).toFixed(2);
-          }
+          // Split by newline to get complete JSON objects
+          const lines = rawBuffer.split('\n');
+          rawBuffer = lines.pop() || ""; // Keep the last incomplete fragment
 
-          setChatHistory(prev => {
-            const newHist = [...prev];
-            const last = newHist[newHist.length - 1];
-            if (last.role === 'assistant') {
-              last.content = streamBuffer;
-              if (ttftVal) last.ttft = ttftVal;
-            }
-            return newHist;
-          });
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const json = JSON.parse(line);
 
-          // Real-time Editor Fill (Only for SQL Generation)
-          if (!isAnalysis) {
-            const sqlMarker = "```sql";
-            const markerIndex = streamBuffer.indexOf(sqlMarker);
-            if (markerIndex !== -1) {
-              // Extract everything after ```sql
-              let extracted = streamBuffer.substring(markerIndex + sqlMarker.length);
-              // Check if there is a closing ```
-              const closingIndex = extracted.indexOf("```");
-              if (closingIndex !== -1) {
-                extracted = extracted.substring(0, closingIndex);
+              if (json.error) {
+                throw new Error(json.error);
               }
-              // Update Editor
-              setSqlQuery(extracted.trimStart());
+
+              // Extract text content from JSON
+              const token = json.response || "";
+
+              if (textBuffer.length === 0 && token) setAiStatus('generating');
+
+              let ttftVal: string | undefined = undefined;
+              if (firstTokenTime === 0 && token) {
+                firstTokenTime = performance.now();
+                ttftVal = (firstTokenTime - startTime).toFixed(2);
+              }
+
+              textBuffer += token; // Accumulate CLEAN text
+
+              setChatHistory(prev => {
+                const newHist = [...prev];
+                const last = newHist[newHist.length - 1];
+                if (last.role === 'assistant') {
+                  last.content = (last.content || "") + token;
+                  if (ttftVal) last.ttft = ttftVal;
+                  if (json.total_duration) last.respTime = json.total_duration;
+                }
+                return newHist;
+              });
+
+              // Real-time Editor Fill (Using CLEAN textBuffer)
+              if (!isAnalysis) {
+                const sqlMarker = "```sql";
+                const markerIndex = textBuffer.indexOf(sqlMarker);
+                if (markerIndex !== -1) {
+                  let extracted = textBuffer.substring(markerIndex + sqlMarker.length);
+                  const closingIndex = extracted.indexOf("```");
+                  if (closingIndex !== -1) {
+                    extracted = extracted.substring(0, closingIndex);
+                  }
+                  setSqlQuery(extracted.trimStart());
+                }
+              }
+
+            } catch (e) {
+              console.error("JSON Parse Error", e);
             }
           }
         }
@@ -511,7 +515,7 @@ function App() {
       setAiLoading(false);
       setAiStatus('idle');
       clearTimeout(slowWarningTimer);
-      // Finalize history status
+
       setChatHistory(prev => {
         const newHist = [...prev];
         const last = newHist[newHist.length - 1];
@@ -519,16 +523,15 @@ function App() {
         return newHist;
       });
 
-      // Auto-Execute if Generation
-      if (!isAnalysis && streamBuffer) {
+      // Auto-Execute check (Using CLEAN textBuffer)
+      if (!isAnalysis && textBuffer) {
         const sqlMarker = "```sql";
-        const markerIndex = streamBuffer.indexOf(sqlMarker);
+        const markerIndex = textBuffer.indexOf(sqlMarker);
         if (markerIndex !== -1) {
-          let extracted = streamBuffer.substring(markerIndex + sqlMarker.length);
+          let extracted = textBuffer.substring(markerIndex + sqlMarker.length);
           const closingIndex = extracted.indexOf("```");
           if (closingIndex !== -1) {
             extracted = extracted.substring(0, closingIndex).trim();
-            // Execute
             if (extracted && connectionInfo) {
               setIsExecuting(true);
               setExecError(null);
@@ -537,7 +540,6 @@ function App() {
                 const res = await executeQuery(connectionInfo, extracted, 50);
                 setExecutionResult(res.data);
               } catch (err: any) {
-                console.error("Auto Execution failed", err);
                 setExecError(err.response?.data?.detail || err.message || "Query execution failed");
               } finally {
                 setIsExecuting(false);
@@ -566,13 +568,11 @@ function App() {
   };
 
   const handleAnalyzeNode = async (node: Node) => {
-    // Open Sidebar
     if (sidebarWidth < 50) setSidebarWidth(400);
 
     const nodeLabel = node.data.label;
     const nodeDetails = JSON.stringify(node.data.details, null, 2);
 
-    // Construct Prompt with Full Context
     const prompt = `I am analyzing a specific node in the query plan: "${nodeLabel}".
     
 Current SQL:
@@ -602,22 +602,18 @@ Please provide a detailed analysis in the following format:
      \`\`\`
 `;
 
-    // Standard Chat Stream
     handleAIStream(prompt, "Analyze Query and Plan", true);
   };
 
-  // Parsing Insights from AI Stream (Hook into existing handleAIStream logic)
   useEffect(() => {
     if (chatHistory.length === 0) return;
     const lastMsg = chatHistory[chatHistory.length - 1];
     if (lastMsg.role === 'assistant' && lastMsg.status !== 'error') {
-      // Regex to find SQL blocks
       const sqlBlocks = [];
       const regex = /```sql\s*([\s\S]*?)```/g;
       let match;
       while ((match = regex.exec(lastMsg.content)) !== null) {
         const sql = match[1].trim();
-        // Valid insight if it's DDL or specific optimization
         if (/^(CREATE|DROP|ALTER|VACUUM|ANALYZE|CLUSTER|REINDEX)/i.test(sql)) {
           sqlBlocks.push({
             id: Math.random().toString(36).substr(2, 9),
@@ -626,9 +622,6 @@ Please provide a detailed analysis in the following format:
           });
         }
       }
-      // Only update if we found something new to avoid flickering? 
-      // Actually, let's just set it if we're done or periodically.
-      // For now, simple set.
       if (sqlBlocks.length > 0) {
         setActionableInsights(sqlBlocks);
       }
@@ -684,11 +677,6 @@ Please provide a detailed analysis in the following format:
           showDiff={showDiff}
           setShowDiff={setShowDiff}
 
-          // No op replacement to just update timestamp if needed? No.
-          // I will actually add a 'fitView' trigger to QueryWorkspace if possible?
-          // Let's rely on QueryTuneTab auto-fitting?
-          // QueryTuneTab doesn't auto-fit on prop change currently.
-          // I should add useEffect in QueryTuneTab to fitView when nodes change.
           onCopy={() => navigator.clipboard.writeText(sqlQuery)}
           onReset={() => { setSqlQuery(''); setExecutionResult(null); }}
           onAnalyzeNode={handleAnalyzeNode}

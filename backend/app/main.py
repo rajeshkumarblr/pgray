@@ -394,6 +394,7 @@ async def warmup_endpoint(request: WarmupRequest, background_tasks: BackgroundTa
         return {"status": "success"}
     except Exception as e:
         # Don't fail the request, just log
+        pass
 
 class SaveLayoutRequest(BaseModel):
     layout: dict

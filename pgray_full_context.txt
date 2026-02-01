@@ -20,6 +20,7 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
     *   **Node Metrics**: Instant visibility of Rows (Est/Act), Time, and Loops directly on the node.
     *   **Context Menu**: Right-click any node to **Analyze** it with AI or view details.
     *   **Auto-Fit**: Automatically centers and zooms the graph for the best view.
+    *   **ER Diagram**: Interactive Entity-Relationship diagram with **drag-and-drop** layout and **persistent saving**.
 
 *   **Local-First AI Assistant**:
     *   **Context-Aware**: Understands your database schema and query history.
@@ -45,8 +46,8 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
     *   **Auto-Naming**: AI automatically generates descriptive titles (e.g., "Movies by Actor") upon saving.
     *   **Parameterized Storage**: Saved queries are automatically parameterized (e.g., `WHERE name = :name` or `LIMIT :limit_val`) for reuse.
     *   **History**: Access previously saved sessions and resume work instantly.
-    *   **Queries Tab**: Dedicated tab to explore, fill parameters (e.g., `:actor_name`), and Execute saved queries without losing context.
-    *   **Visual Query Management**: Edit, Duplicate, or Delete saved queries directly from a consolidated toolbar.
+    *   **Queries Tab**: Dedicated tab to explore, fill parameters (e.g., `:actor_name`), and Execute saved queries without switching context to the Editor.
+    *   **Visual Query Management**: Edit, Duplicate, or Delete saved queries directly from a **dedicated sidebar** with Context Menu support.
     *   **Context Menu**: Right-click saved queries to **Rename**, **Duplicate**, or **Delete** them instantly.
     *   **Enhanced Layout**: SQL Editor maximizes to fill the screen ("flex-grow") with long-line wrapping, while keeping controls pinned to the footer.
     *   **Searchable Dropdowns**: Parameters with table/column metadata show a searchable dropdown that filters potential values from the database in real-time.
@@ -74,6 +75,7 @@ The core of pgRay is the **Interactive Node-Link Diagram**.
 ### 2. Saved Queries & Parameter Management
 ![Saved Queries & Parameters](screenshots/screenshot_queries.png)
 Stop rewriting the same complex JOINs.
+- **Database-Specific Storage**: Queries are saved per-connection and per-database, ensuring your development and production queries never mix.
 - **Parameterization**: pgRay automatically detects variables (e.g., `:director_name`) and generates input forms for them.
 - **Smart Search**: Parameters linked to columns (via AI metadata) offer **Autocomplete Dropdowns** that search your actual database values.
 - **Organization**: Rename, Duplicate, or Delete queries with right-click context menus.
@@ -230,57 +232,6 @@ services:
 volumes:
   backend_data:
 
-
-
-============================================================
-FILE PATH: ./pkg.sh
-============================================================
-#!/bin/bash
-
-set -euo pipefail
-
-# Generate a filename with a timestamp (e.g., pgray_source_20231027_1200.zip)
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-PKG_DIR="pkg"
-OUTPUT_FILE="pgray_source_${TIMESTAMP}.zip"
-OUTPUT_PATH="${PKG_DIR}/${OUTPUT_FILE}"
-LATEST_LINK="${PKG_DIR}/pgray.zip"
-
-mkdir -p "${PKG_DIR}"
-
-echo "📦 Packaging source code into ${OUTPUT_PATH}..."
-
-# Build an explicit file list so we only include source (for LLM context)
-FILES=()
-
-# Backend: all Python sources
-while IFS= read -r -d '' f; do FILES+=("$f"); done < <(find backend -type f -name '*.py' -print0)
-
-# Frontend: source tree
-if [[ -d frontend/src ]]; then
-  while IFS= read -r -d '' f; do FILES+=("$f"); done < <(find frontend/src -type f -print0)
-fi
-
-# Frontend: small, helpful entry/config files (keep minimal)
-for f in frontend/index.html frontend/vite.config.ts frontend/package.json frontend/tsconfig.json frontend/tsconfig.node.json; do
-  [[ -f "$f" ]] && FILES+=("$f")
-done
-
-if [[ ${#FILES[@]} -eq 0 ]]; then
-  echo "No source files found to package." >&2
-  exit 1
-fi
-
-# Create zip from stdin file list
-printf "%s\n" "${FILES[@]}" | zip -q -@ "$OUTPUT_FILE"
-
-mv -f "$OUTPUT_FILE" "$OUTPUT_PATH"
-
-# Update symlink to point to the latest archive (relative link)
-ln -sfn "$OUTPUT_FILE" "$LATEST_LINK"
-
-echo "✅ Done!"
-ls -lh "$OUTPUT_PATH" "$LATEST_LINK"
 
 
 ============================================================
@@ -996,7 +947,24 @@ export const api = axios.create({
     headers: {
         'Content-Type': 'application/json',
     },
+    timeout: 30000, // 30s timeout
 });
+
+export interface ParamDef {
+    name: string;
+    original_value: string;
+    table?: string | null;
+    column?: string | null;
+}
+
+export interface ParameterizedQuery {
+    id: string;
+    name: string;
+    sql: string;
+    params: (string | ParamDef)[];
+    original_sql: string;
+    created_at?: string;
+}
 
 export const getAIModels = async () => {
     try {
@@ -1021,9 +989,13 @@ export const getPgSettings = async (connection: any) => {
     }
 };
 
-export const getSavedQueries = async () => {
+export const getSavedQueries = async (connection: any = null) => {
     try {
-        const response = await axios.get(`${API_BASE_URL}/api/saved_queries`);
+        const params: any = {};
+        if (connection) {
+            params.connection_json = JSON.stringify(connection);
+        }
+        const response = await axios.get(`${API_BASE_URL}/api/saved_queries`, { params });
         return response.data;
     } catch (error) {
         console.error("Error fetching saved queries:", error);
@@ -1031,9 +1003,10 @@ export const getSavedQueries = async () => {
     }
 };
 
-export const saveQuery = async (name: string, sql: string, history: any[] = []) => {
+export const saveQuery = async (name: string, sql: string, history: any[] = [], connection: any = null) => {
     try {
-        const response = await axios.post(`${API_BASE_URL}/api/saved_queries`, { name, sql, history });
+        // Legacy or Session save? Assuming session save logic mostly.
+        const response = await axios.post(`${API_BASE_URL}/api/saved_queries`, { name, sql, history, connection });
         return response.data;
     } catch (error) {
         console.error("Error saving query:", error);
@@ -1041,9 +1014,13 @@ export const saveQuery = async (name: string, sql: string, history: any[] = []) 
     }
 };
 
-export const getSavedQueryContent = async (name: string) => {
+export const getSavedQueryContent = async (name: string, connection: any = null) => {
     try {
-        const response = await axios.get(`${API_BASE_URL}/api/saved_queries/${name}`);
+        const params: any = {};
+        if (connection) {
+            params.connection_json = JSON.stringify(connection);
+        }
+        const response = await axios.get(`${API_BASE_URL}/api/saved_queries/${name}`, { params });
         return response.data.data;
     } catch (error) {
         console.error("Error fetching query content:", error);
@@ -1092,15 +1069,6 @@ export const getServerSettings = async (connectionInfo: any) => {
 };
 
 export const executeExplain = async (connectionInfo: any, query: string, analyze: boolean = true) => {
-    // Note: The backend endpoint might be different depending on implementation, 
-    // strictly speaking we called it 'executeExplain' in component but it maps to /explain/text or similar?
-    // Let's check backend. `explain.py` has `execute_explain`. 
-    // `main.py` typically maps it. 
-    // Looking at file viewer history, we didn't inspect `main.py` recently for explain endpoint specifically but `explainQuery` exists above.
-    // Wait, `explainQuery` exists at line 69! 
-    // `export const explainQuery = ...`
-    // The component is importing `executeExplain`. I should alias it or rename it.
-    // Let's add `executeExplain` as a wrapper or just export it.
     const response = await api.post('/explain', { connection: connectionInfo, query, analyze });
     return response.data;
 };
@@ -1126,6 +1094,7 @@ export const getConnectionConfig = async () => {
 };
 
 export const saveParameterizedQuery = async (sql: string) => {
+    // Legacy endpoint?
     const response = await api.post('/queries/save_parameterized', { sql });
     return response.data;
 };
@@ -1135,8 +1104,8 @@ export const analyzeQuery = async (sql: string, title?: string) => {
     return response.data;
 };
 
-export const saveQueryFinal = async (name: string, sql: string, params: any[], original_sql: string) => {
-    const response = await api.post('/queries/save', { name, sql, params, original_sql });
+export const saveQueryFinal = async (name: string, sql: string, params: any[], original_sql: string, connection: any = null) => {
+    const response = await api.post('/queries/save', { name, sql, params, original_sql, connection });
     return response.data;
 };
 
@@ -1150,9 +1119,13 @@ export const getDistinctValues = async (connection: any, table: string, column: 
     }
 };
 
-export const deleteQuery = async (id: string) => {
+export const deleteQuery = async (id: string, connection: any = null) => {
     try {
-        const response = await api.delete(`/queries/${id}`);
+        const params: any = {};
+        if (connection) {
+            params.connection_json = JSON.stringify(connection);
+        }
+        const response = await api.delete(`/queries/${id}`, { params });
         return response.data;
     } catch (error) {
         console.error("Error deleting query:", error);
@@ -1166,6 +1139,30 @@ export const warmupModel = async (model: string) => {
         await api.post('/warmup', { model });
     } catch (e) {
         console.warn("Warmup failed (ignored)", e);
+    }
+};
+
+export const saveERLayout = async (layout: any, connection: any = null) => {
+    try {
+        const response = await api.post('/er_layout', { layout, connection });
+        return response.data;
+    } catch (error) {
+        console.error("Error saving ER layout:", error);
+        throw error;
+    }
+};
+
+export const getERLayout = async (connection: any = null) => {
+    try {
+        const params: any = {};
+        if (connection) {
+            params.connection_json = JSON.stringify(connection);
+        }
+        const response = await api.get('/er_layout', { params });
+        return response.data.layout;
+    } catch (error) {
+        console.error("Error fetching ER layout:", error);
+        return null; // Return null if fail
     }
 };
 
@@ -1349,21 +1346,15 @@ function App() {
               })
               .catch(err => {
                 console.error("Startup execution failed", err);
-                // Silent fail on startup is okay, maybe they changed DBs
               })
               .finally(() => {
                 if (!cancelled) setIsExecuting(false);
               });
           }
         } else {
-          // Try loading from localStorage defaults if backend config missing
           try {
             const defs = JSON.parse(localStorage.getItem('pgray_connection_defaults') || '{}');
-            if (defs.host && defs.database && defs.username) {
-              // Ideally we need password. It's not saved. 
-              // So we just show modal with pre-filled values (handled by Modal itself).
-              // But maybe user *wants* to connect?
-              // Just leave modal open.
+            if (defs.host || defs.database) {
               setShowSettingsModal(true);
             } else {
               setShowSettingsModal(true);
@@ -1397,8 +1388,6 @@ function App() {
   };
 
   const handleNewSession = async () => {
-    // Auto-save disabled as per user request
-    // Just clear state
     setSqlQuery('');
     setChatHistory([]);
     setSessionTitle('Untitled Session');
@@ -1419,7 +1408,6 @@ function App() {
   const handleStartSave = async () => {
     if (!sqlQuery.trim()) return;
 
-    // 1. Open Modal Immediately with Loading State
     setSaveAnalysis({
       title: '',
       params: [],
@@ -1432,7 +1420,6 @@ function App() {
       const existingTitle = sessionTitle !== 'Untitled Session' ? sessionTitle : undefined;
       const res = await analyzeQuery(sqlQuery, existingTitle);
       if (res && res.status === 'success' && res.data) {
-        // 2. Update state asynchronously
         setSaveAnalysis(prev => ({
           ...prev,
           title: sessionTitle !== 'Untitled Session' ? sessionTitle : res.data.title,
@@ -1440,7 +1427,6 @@ function App() {
           loading: false
         }));
       } else {
-        // Stop loading even if invalid
         setSaveAnalysis(prev => ({ ...prev, loading: false }));
       }
     } catch (e) {
@@ -1454,12 +1440,10 @@ function App() {
       const res = await saveQueryFinal(title, sql, params, saveAnalysis.originalSql);
       if (res.status === 'success') {
         setSessionTitle(title);
-        // Alert is annoying, maybe toast?
-        // alert(`Saved as: ${title}`);
         setToast({ message: `Saved as: ${title}`, type: 'success' });
         setIsSaveModalOpen(false);
         setQueriesRefreshTrigger(prev => prev + 1);
-        setActiveCenterTab('queries'); // Explicitly go to queries
+        setActiveCenterTab('queries');
       }
     } catch (e) {
       console.error("Save failed", e);
@@ -1470,7 +1454,6 @@ function App() {
   const handleAnalyzeParamQuery = (sql: string) => {
     setSqlQuery(sql);
     setActiveCenterTab('tune');
-    // The useEffect in QueryTuneTab or App.tsx ...
   };
 
   const handleExecute = async (sqlOverride?: string) => {
@@ -1508,12 +1491,10 @@ function App() {
         if (res.data.text) setExplainText(res.data.text);
         else setExplainText(JSON.stringify(res.data.json, null, 2));
 
-        // -- CAPTURE METRICS --
         const plan = Array.isArray(rawPlan) ? rawPlan[0] : rawPlan;
         const pTime = plan['Planning Time'] || 0;
         const eTime = (plan['Execution Time'] || plan['Total Runtime']) || 0;
 
-        // If this is the FIRST successful run or explicit reset, set baseline
         if (!baselineMetrics) {
           setBaselineMetrics({ planning: pTime, execution: eTime });
         }
@@ -1596,11 +1577,10 @@ function App() {
     setChatHistory(prev => [...prev, { role: 'user', content: displayMsg || userMsg }]);
     setAiLoading(true);
     setAiStatus('thinking');
-    // Only set DiffBase if we are generating a NEW query (not analysis) to allow diffing against old one
+
     if (!isAnalysis) {
       setDiffBaseQuery(sqlQuery);
     }
-
 
     try {
       const promptToSend = displayMsg ? userMsg : `Existing SQL:\n\`\`\`sql\n${sqlQuery}\n\`\`\`\n\nUser Request: ${userMsg}`;
@@ -1615,7 +1595,6 @@ function App() {
           history: chatHistory,
           model: activeProvider === 'local' ? localModel : geminiModel,
           connection: connectionInfo,
-          // If analysis, pass plan/query context is handled by prompt info usually, but let's be safe
           sql_query: isAnalysis ? sqlQuery : undefined,
           apiKey: googleApiKey,
           ollamaUrl: activeProvider === 'local' ? ollamaUrl : undefined
@@ -1626,57 +1605,81 @@ function App() {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let done = false;
-      let streamBuffer = "";
-      let slowWarningTimer: any; // Use simple typing to avoid NodeJS.Timeout error vs number
+
+      let rawBuffer = "";   // Buffer for raw JSON chunks
+      let textBuffer = "";  // Buffer for Clean Text (for SQL extraction)
+      let slowWarningTimer: any;
       let firstTokenTime = 0;
 
-      // Warning for slow start (Model Loading)
       slowWarningTimer = setTimeout(() => {
-        if (streamBuffer.length === 0) {
-          setToast({ message: "AI is warming up (loading model)...", type: 'info' });
+        if (textBuffer.length === 0) {
+          setToast({ message: "AI is warming up...", type: 'info' });
         }
-      }, 5000); // 5 seconds
+      }, 5000);
 
-      setChatHistory(prev => [...prev, { role: 'assistant', content: '...', status: 'pending', hidden: true }]);
+      // Start assistant message
+      setChatHistory(prev => [...prev, { role: 'assistant', content: '', status: 'pending', hidden: false }]);
 
       while (!done) {
         const { value, done: doneReading } = await reader.read();
         done = doneReading;
         if (value) {
           const chunk = decoder.decode(value, { stream: true });
-          streamBuffer += chunk;
-          if (streamBuffer.length > 10 && aiStatus === 'thinking') setAiStatus('generating');
+          rawBuffer += chunk;
 
-          let ttftVal: string | undefined = undefined;
-          if (firstTokenTime === 0) {
-            firstTokenTime = performance.now();
-            ttftVal = (firstTokenTime - startTime).toFixed(2);
-          }
+          // Split by newline to get complete JSON objects
+          const lines = rawBuffer.split('\n');
+          rawBuffer = lines.pop() || ""; // Keep the last incomplete fragment
 
-          setChatHistory(prev => {
-            const newHist = [...prev];
-            const last = newHist[newHist.length - 1];
-            if (last.role === 'assistant') {
-              last.content = streamBuffer;
-              if (ttftVal) last.ttft = ttftVal;
-            }
-            return newHist;
-          });
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const json = JSON.parse(line);
 
-          // Real-time Editor Fill (Only for SQL Generation)
-          if (!isAnalysis) {
-            const sqlMarker = "```sql";
-            const markerIndex = streamBuffer.indexOf(sqlMarker);
-            if (markerIndex !== -1) {
-              // Extract everything after ```sql
-              let extracted = streamBuffer.substring(markerIndex + sqlMarker.length);
-              // Check if there is a closing ```
-              const closingIndex = extracted.indexOf("```");
-              if (closingIndex !== -1) {
-                extracted = extracted.substring(0, closingIndex);
+              if (json.error) {
+                throw new Error(json.error);
               }
-              // Update Editor
-              setSqlQuery(extracted.trimStart());
+
+              // Extract text content from JSON
+              const token = json.response || "";
+
+              if (textBuffer.length === 0 && token) setAiStatus('generating');
+
+              let ttftVal: string | undefined = undefined;
+              if (firstTokenTime === 0 && token) {
+                firstTokenTime = performance.now();
+                ttftVal = (firstTokenTime - startTime).toFixed(2);
+              }
+
+              textBuffer += token; // Accumulate CLEAN text
+
+              setChatHistory(prev => {
+                const newHist = [...prev];
+                const last = newHist[newHist.length - 1];
+                if (last.role === 'assistant') {
+                  last.content = (last.content || "") + token;
+                  if (ttftVal) last.ttft = ttftVal;
+                  if (json.total_duration) last.respTime = json.total_duration;
+                }
+                return newHist;
+              });
+
+              // Real-time Editor Fill (Using CLEAN textBuffer)
+              if (!isAnalysis) {
+                const sqlMarker = "```sql";
+                const markerIndex = textBuffer.indexOf(sqlMarker);
+                if (markerIndex !== -1) {
+                  let extracted = textBuffer.substring(markerIndex + sqlMarker.length);
+                  const closingIndex = extracted.indexOf("```");
+                  if (closingIndex !== -1) {
+                    extracted = extracted.substring(0, closingIndex);
+                  }
+                  setSqlQuery(extracted.trimStart());
+                }
+              }
+
+            } catch (e) {
+              console.error("JSON Parse Error", e);
             }
           }
         }
@@ -1685,7 +1688,7 @@ function App() {
       setAiLoading(false);
       setAiStatus('idle');
       clearTimeout(slowWarningTimer);
-      // Finalize history status
+
       setChatHistory(prev => {
         const newHist = [...prev];
         const last = newHist[newHist.length - 1];
@@ -1693,16 +1696,15 @@ function App() {
         return newHist;
       });
 
-      // Auto-Execute if Generation
-      if (!isAnalysis && streamBuffer) {
+      // Auto-Execute check (Using CLEAN textBuffer)
+      if (!isAnalysis && textBuffer) {
         const sqlMarker = "```sql";
-        const markerIndex = streamBuffer.indexOf(sqlMarker);
+        const markerIndex = textBuffer.indexOf(sqlMarker);
         if (markerIndex !== -1) {
-          let extracted = streamBuffer.substring(markerIndex + sqlMarker.length);
+          let extracted = textBuffer.substring(markerIndex + sqlMarker.length);
           const closingIndex = extracted.indexOf("```");
           if (closingIndex !== -1) {
             extracted = extracted.substring(0, closingIndex).trim();
-            // Execute
             if (extracted && connectionInfo) {
               setIsExecuting(true);
               setExecError(null);
@@ -1711,7 +1713,6 @@ function App() {
                 const res = await executeQuery(connectionInfo, extracted, 50);
                 setExecutionResult(res.data);
               } catch (err: any) {
-                console.error("Auto Execution failed", err);
                 setExecError(err.response?.data?.detail || err.message || "Query execution failed");
               } finally {
                 setIsExecuting(false);
@@ -1740,13 +1741,11 @@ function App() {
   };
 
   const handleAnalyzeNode = async (node: Node) => {
-    // Open Sidebar
     if (sidebarWidth < 50) setSidebarWidth(400);
 
     const nodeLabel = node.data.label;
     const nodeDetails = JSON.stringify(node.data.details, null, 2);
 
-    // Construct Prompt with Full Context
     const prompt = `I am analyzing a specific node in the query plan: "${nodeLabel}".
     
 Current SQL:
@@ -1776,22 +1775,18 @@ Please provide a detailed analysis in the following format:
      \`\`\`
 `;
 
-    // Standard Chat Stream
     handleAIStream(prompt, "Analyze Query and Plan", true);
   };
 
-  // Parsing Insights from AI Stream (Hook into existing handleAIStream logic)
   useEffect(() => {
     if (chatHistory.length === 0) return;
     const lastMsg = chatHistory[chatHistory.length - 1];
     if (lastMsg.role === 'assistant' && lastMsg.status !== 'error') {
-      // Regex to find SQL blocks
       const sqlBlocks = [];
       const regex = /```sql\s*([\s\S]*?)```/g;
       let match;
       while ((match = regex.exec(lastMsg.content)) !== null) {
         const sql = match[1].trim();
-        // Valid insight if it's DDL or specific optimization
         if (/^(CREATE|DROP|ALTER|VACUUM|ANALYZE|CLUSTER|REINDEX)/i.test(sql)) {
           sqlBlocks.push({
             id: Math.random().toString(36).substr(2, 9),
@@ -1800,9 +1795,6 @@ Please provide a detailed analysis in the following format:
           });
         }
       }
-      // Only update if we found something new to avoid flickering? 
-      // Actually, let's just set it if we're done or periodically.
-      // For now, simple set.
       if (sqlBlocks.length > 0) {
         setActionableInsights(sqlBlocks);
       }
@@ -1858,11 +1850,6 @@ Please provide a detailed analysis in the following format:
           showDiff={showDiff}
           setShowDiff={setShowDiff}
 
-          // No op replacement to just update timestamp if needed? No.
-          // I will actually add a 'fitView' trigger to QueryWorkspace if possible?
-          // Let's rely on QueryTuneTab auto-fitting?
-          // QueryTuneTab doesn't auto-fit on prop change currently.
-          // I should add useEffect in QueryTuneTab to fitView when nodes change.
           onCopy={() => navigator.clipboard.writeText(sqlQuery)}
           onReset={() => { setSqlQuery(''); setExecutionResult(null); }}
           onAnalyzeNode={handleAnalyzeNode}
@@ -1955,7 +1942,6 @@ Please provide a detailed analysis in the following format:
 }
 
 export default App;
-
 
 
 ============================================================
@@ -2678,7 +2664,7 @@ export default SaveSessionModal;
 FILE PATH: ./frontend/src/components/SettingsModal.tsx
 ============================================================
 import React, { useState, useEffect } from 'react';
-import { getAIModels } from '../api';
+import { getAIModels, connectDb } from '../api';
 
 interface ConnectionInfo {
     host: string;
@@ -2724,6 +2710,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     const [database, setDatabase] = useState('postgres');
     const [schema, setSchema] = useState('public');
 
+    // UI State
+    const [isConnecting, setIsConnecting] = useState(false);
+    const [connectError, setConnectError] = useState<string | null>(null);
+
     // AI State
     // AI State
     // AI State
@@ -2737,12 +2727,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     useEffect(() => {
         if (isOpen) {
             if (connectionInfo) {
-                setHost(connectionInfo.host);
-                setPort(connectionInfo.port);
-                setUsername(connectionInfo.username);
-                setPassword(connectionInfo.password); // Note: might be empty if we don't persist it in memory? App.tsx connectionInfo should have it.
-                setDatabase(connectionInfo.database);
-                setSchema(connectionInfo.schema);
+                setHost(connectionInfo.host || 'localhost');
+                setPort(connectionInfo.port || 5432);
+                setUsername(connectionInfo.username || 'postgres');
+                setPassword(connectionInfo.password || '');
+                setDatabase(connectionInfo.database || 'postgres');
+                setSchema(connectionInfo.schema || 'public');
             } else {
                 // Load defaults
                 try {
@@ -2772,11 +2762,34 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
     if (!isOpen) return null;
 
-    const handleDbSubmit = (e: React.FormEvent) => {
+    const handleDbSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        // Save defaults
-        localStorage.setItem('pgray_connection_defaults', JSON.stringify({ host, port, username, database, schema }));
-        onConnect({ host, port, username, password, database, schema });
+        setConnectError(null);
+        setIsConnecting(true);
+
+        const newConn = { host, port, username, password, database, schema };
+
+        try {
+            // Verify connection first
+            await connectDb(newConn);
+
+            // If successful, save defaults and complete
+            localStorage.setItem('pgray_connection_defaults', JSON.stringify({ host, port, username, database, schema }));
+            onConnect(newConn);
+        } catch (err: any) {
+            console.error("Connection failed", err);
+            let msg = err.response?.data?.detail || err.message || "Connection failed";
+            // Handle Pydantic array errors (422)
+            if (Array.isArray(msg)) {
+                msg = msg.map((e: any) => `${e.loc?.join('.')} ${e.msg}`).join(', ');
+            }
+            if (typeof msg === 'object') {
+                msg = JSON.stringify(msg);
+            }
+            setConnectError(String(msg));
+        } finally {
+            setIsConnecting(false);
+        }
     };
 
     const handleAiSubmit = (e: React.FormEvent) => {
@@ -2849,10 +2862,21 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                                 <input type="text" value={schema} onChange={e => setSchema(e.target.value)} style={inputStyle} required />
                             </div>
 
+                            {connectError && (
+                                <div style={{
+                                    padding: '10px', background: '#450a0a', border: '1px solid #ef4444',
+                                    color: '#fca5a5', borderRadius: '4px', fontSize: '13px', marginBottom: '15px'
+                                }}>
+                                    ❌ {connectError}
+                                </div>
+                            )}
+
                             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
                                 {/* Only show Close if we have a connection, otherwise prompt is blocking? No, allow cancel/close */}
-                                <button type="button" onClick={onClose} style={{ padding: '8px 16px', background: 'transparent', border: '1px solid #475569', color: '#cbd5e1', borderRadius: '4px', cursor: 'pointer' }}>Cancel</button>
-                                <button type="submit" style={{ padding: '8px 16px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 600 }}>Connect & Save</button>
+                                <button type="button" onClick={onClose} disabled={isConnecting} style={{ padding: '8px 16px', background: 'transparent', border: '1px solid #475569', color: '#cbd5e1', borderRadius: '4px', cursor: 'pointer', opacity: isConnecting ? 0.5 : 1 }}>Cancel</button>
+                                <button type="submit" disabled={isConnecting} style={{ padding: '8px 16px', background: isConnecting ? '#334155' : '#2563eb', color: 'white', border: 'none', borderRadius: '4px', cursor: isConnecting ? 'wait' : 'pointer', fontWeight: 600 }}>
+                                    {isConnecting ? 'Connecting...' : 'Connect & Save'}
+                                </button>
                             </div>
                         </form>
                     ) : (
@@ -3868,20 +3892,22 @@ export default SimpleEditor;
 ============================================================
 FILE PATH: ./frontend/src/components/QueryWorkspace.tsx
 ============================================================
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Node } from 'reactflow';
 import SchemaBrowser from './workspace/SchemaBrowser';
+import SavedQueriesSidebar from './workspace/SavedQueriesSidebar';
 import WorkspaceToolbar from './workspace/WorkspaceToolbar';
 import BottomPane from './workspace/BottomPane';
 import SimpleEditor from './SimpleEditor';
 import DiffView from './DiffView';
 import QueryTuneTab from './tabs/QueryTuneTab';
 import ServerTuneTab from './tabs/ServerTuneTab';
-import SavedQueriesTab from './tabs/SavedQueriesTab';
-import PlanNode from './PlanNode'; // Import Custom Node
-import { getSavedQueries } from '../api';
+import QueryParametersPanel from './workspace/QueryParametersPanel';
+import PlanNode from './PlanNode';
+import { getSavedQueries, ParameterizedQuery, ParamDef } from '../api';
+import ERDiagram from './ERDiagram';
 
-const nodeTypes = { planNode: PlanNode }; // Define Node Types
+const nodeTypes = { planNode: PlanNode };
 
 interface QueryWorkspaceProps {
     connectionInfo: any;
@@ -3903,7 +3929,6 @@ interface QueryWorkspaceProps {
     explainText: string;
     loadingExplain: boolean;
     explainError: string;
-    // Tune Specific
     selectedNode: any;
     setSelectedNode: (node: any) => void;
     nodes: any[];
@@ -3911,26 +3936,20 @@ interface QueryWorkspaceProps {
     onNodesChange: any;
     onNodeClick: any;
     onPaneClick: any;
-
-    // Diff
     diffBaseQuery: string;
     showDiff: boolean;
     setShowDiff: (b: boolean) => void;
-
-    // Misc
     onCopy: () => void;
     onReset: () => void;
     onAnalyzeNode: (node: Node) => void;
-
-    // Insights
     insights: any[];
     onRunInsight: (id: string, sql: string) => void;
     insightResults: any;
     onCompare: () => void;
     baselineMetrics: { planning: number, execution: number } | null;
     queriesRefreshTrigger: number;
-    activeTab: 'editor' | 'tune' | 'server' | 'queries';
-    setActiveTab: (tab: 'editor' | 'tune' | 'server' | 'queries') => void;
+    activeTab: 'editor' | 'tune' | 'server' | 'schema' | 'er';
+    setActiveTab: (tab: 'editor' | 'tune' | 'server' | 'schema' | 'er') => void;
     onAnalyzeParamQuery: (sql: string) => void;
     onEdit: (sql: string, name: string) => void;
     onOpenSettings?: () => void;
@@ -3950,107 +3969,130 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
     activeTab, setActiveTab, onAnalyzeParamQuery, onEdit,
     onOpenSettings
 }) => {
-    // Layout State
-    // activeTab is now props
-    const [tuneTabMode, setTuneTabMode] = useState<'plan' | 'text'>('plan'); // New State
-    const [bottomExpanded, setBottomExpanded] = useState(true);
-    const [bottomHeight, setBottomHeight] = useState(() => Math.max(150, window.innerHeight * 0.2)); // 20% default
+
+    // --- Local State ---
+    const [savedQueries, setSavedQueries] = useState<ParameterizedQuery[]>([]);
     const [activeBottomTab, setActiveBottomTab] = useState<'results' | 'details' | 'insights'>('results');
+    const [bottomExpanded, setBottomExpanded] = useState(true);
+    const [bottomHeight, setBottomHeight] = useState(300);
+    const [tuneTabMode, setTuneTabMode] = useState<'visual' | 'text' | 'compare'>('visual');
+    const [paramValues, setParamValues] = useState<Record<string, string>>({});
 
-    // Resizing Bottom Pane
-    const isResizingBottom = useRef(false);
+    // --- Lifted Selection State for Schema/ER ---
+    const [selectedTables, setSelectedTables] = useState<Set<string>>(new Set());
 
-    const startBottomResize = (e: React.MouseEvent) => {
-        isResizingBottom.current = true;
-        e.preventDefault();
-        document.addEventListener('mousemove', handleBottomResize);
-        document.addEventListener('mouseup', stopBottomResize);
+    // Auto-select all when schema loads
+    useEffect(() => {
+        if (schema && selectedTables.size === 0) {
+            setSelectedTables(new Set(Object.keys(schema)));
+        }
+    }, [schema]);
+
+    // Derived filtered schema for ER
+    const filteredSchema = React.useMemo(() => {
+        if (!schema) return null;
+        const filtered: any = {};
+        selectedTables.forEach(t => {
+            if (schema[t]) filtered[t] = schema[t];
+        });
+        return filtered;
+    }, [schema, selectedTables]);
+
+    // --- Load Saved Queries ---
+    const [loadingSavedQueries, setLoadingSavedQueries] = useState(false);
+
+    const loadSavedQueries = useCallback(() => {
+        if (connectionInfo) {
+            setLoadingSavedQueries(true);
+            getSavedQueries(connectionInfo)
+                .then(res => {
+                    if (res && res.parameterized) {
+                        setSavedQueries(res.parameterized);
+                    } else {
+                        setSavedQueries([]);
+                    }
+                })
+                .catch(err => {
+                    console.error("Failed to load queries", err);
+                    setSavedQueries([]);
+                })
+                .finally(() => setLoadingSavedQueries(false));
+        }
+    }, [connectionInfo]);
+
+    useEffect(() => {
+        loadSavedQueries();
+    }, [loadSavedQueries, queriesRefreshTrigger]);
+
+    // --- Handlers ---
+
+    const handleSelectSavedQuery = (query: ParameterizedQuery) => {
+        setSqlQuery(query.sql);
+        setSessionTitle(query.name);
+        setActiveTab('editor'); // Switch to editor when selecting a query
     };
 
-    const handleBottomResize = (e: MouseEvent) => {
-        if (!isResizingBottom.current) return;
-        const newHeight = window.innerHeight - e.clientY;
-        if (newHeight > 50 && newHeight < window.innerHeight - 200) {
-            setBottomHeight(newHeight);
-        }
-    };
-
-    const stopBottomResize = () => {
-        isResizingBottom.current = false;
-        document.removeEventListener('mousemove', handleBottomResize);
-        document.removeEventListener('mouseup', stopBottomResize);
-    };
-
-
-    // Local Session State
-    const [savedQueries, setSavedQueries] = useState<string[]>([]);
-
-    useEffect(() => {
-        getSavedQueries().then(data => {
-            if (data && data.queries) setSavedQueries(data.queries);
-        }).catch(err => console.error("Failed to fetch saved queries", err));
-    }, []);
-
-    // Automatically switch tabs based on actions
-    useEffect(() => {
-        if (executionResult) {
-            setActiveBottomTab('results');
-            if (!bottomExpanded) setBottomExpanded(true);
-        }
-    }, [executionResult]);
-
-    useEffect(() => {
-        if (selectedNode) {
-            setActiveBottomTab('details');
-            if (!bottomExpanded) setBottomExpanded(true);
-        }
-    }, [selectedNode]);
-
-    // Auto-open Insights if we get new ones
-    useEffect(() => {
-        if (insights && insights.length > 0) {
-            setActiveBottomTab('insights');
-            if (!bottomExpanded) setBottomExpanded(true);
-        }
-    }, [insights]);
-
-    // Handle Tab Switching
     const handleExecuteWrapper = () => {
-        setActiveTab('editor');
-        onExecute();
-    };
-
-    const handleEditorWrapper = () => {
-        setActiveTab('editor');
+        // Support parameters if needed, or just regular execute
+        // For now, simple execute
+        onExecute(sqlQuery);
+        // Ensure bottom pane is open to show results
         setActiveBottomTab('results');
+        setBottomExpanded(true);
     };
 
     const handleTuneWrapper = () => {
         setActiveTab('tune');
-        setActiveBottomTab('details');
-        // Auto-trigger if missing
-        if (!explainResult || (explainResult && Array.isArray(explainResult) && explainResult.length === 0)) {
-            onTune();
-        }
+        onTune();
     };
 
-    const tabStyle = (tab: string) => ({
-        padding: '8px 20px',
+    const handleEditorWrapper = () => {
+        setActiveTab('editor');
+    };
+
+    const startBottomResize = (e: React.MouseEvent) => {
+        e.preventDefault();
+        const startY = e.clientY;
+        const startHeight = bottomHeight;
+
+        const onMouseMove = (moveEvent: MouseEvent) => {
+            const newHeight = startHeight - (moveEvent.clientY - startY);
+            if (newHeight >= 100 && newHeight <= 800) {
+                setBottomHeight(newHeight);
+            }
+        };
+
+        const onMouseUp = () => {
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+        };
+
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+    };
+
+    const tabStyle = (tabName: string) => ({
+        padding: '8px 16px',
         cursor: 'pointer',
-        fontSize: '13px',
-        fontWeight: activeTab === tab ? 600 : 500,
-        color: activeTab === tab ? '#e2e8f0' : '#94a3b8',
-        borderBottom: activeTab === tab ? '2px solid #3b82f6' : '2px solid transparent',
-        background: activeTab === tab ? '#1e293b' : 'transparent',
+        color: activeTab === tabName ? '#60a5fa' : '#94a3b8',
+        borderBottom: activeTab === tabName ? '2px solid #60a5fa' : '2px solid transparent',
+        fontWeight: activeTab === tabName ? ('bold' as const) : ('normal' as const)
     });
+
+    const activeQueryMetadata = React.useMemo(() => {
+        return savedQueries.find(q => q.name === sessionTitle);
+    }, [savedQueries, sessionTitle]);
+
 
     return (
         <div style={{ display: 'flex', height: '100%', width: '100%', overflow: 'hidden' }}>
-            {/* Left: Schema Browser */}
-            <SchemaBrowser
-                schema={schema}
-                loadingSchema={loadingSchema}
+            {/* ... Sidebar ... */}
+            <SavedQueriesSidebar
                 connectionInfo={connectionInfo}
+                onSelectQuery={handleSelectSavedQuery}
+                queries={savedQueries}
+                loading={loadingSavedQueries}
+                onReload={loadSavedQueries}
             />
 
             {/* Main Center Column */}
@@ -4058,12 +4100,6 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
 
                 {/* 1. Toolbar */}
                 <WorkspaceToolbar
-                    sessionTitle={sessionTitle}
-                    setSessionTitle={setSessionTitle}
-                    savedQueries={savedQueries}
-                    onLoadSession={onLoadSession}
-                    onNewSession={onNewSession}
-                    onSaveSession={onSaveSession}
                     onExecute={handleExecuteWrapper}
                     isExecuting={isExecuting}
                     onTune={handleTuneWrapper}
@@ -4072,39 +4108,57 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                     onCopy={onCopy}
                     onReset={onReset}
                     onOpenSettings={onOpenSettings}
+                    onLoadSession={onLoadSession}
+                    onNewSession={onNewSession}
+                    onSaveSession={onSaveSession}
+                    sessionTitle={sessionTitle}
+                    setSessionTitle={setSessionTitle}
                 />
 
-                {/* 2. Tabs Row (Below Toolbar) */}
+                {/* 2. Tabs Row */}
                 <div style={{ display: 'flex', background: '#334155', borderBottom: '1px solid #475569', paddingLeft: '10px' }}>
                     <div onClick={handleEditorWrapper} style={tabStyle('editor')}>Editor</div>
-                    <div onClick={() => setActiveTab('queries')} style={tabStyle('queries')}>Queries</div>
                     <div onClick={handleTuneWrapper} style={tabStyle('tune')}>Analyze</div>
+                    <div onClick={() => setActiveTab('schema')} style={tabStyle('schema')}>Schema</div>
+                    <div onClick={() => setActiveTab('er')} style={tabStyle('er')}>ER Diagram</div>
                     <div onClick={() => setActiveTab('server')} style={tabStyle('server')}>Server</div>
                 </div>
 
                 {/* 3. Center Content */}
-                <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#1e293b' }}>
+                <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#1e293b', display: 'flex', flexDirection: 'column' }}>
 
                     {/* Editor Tab */}
                     <div style={{
                         display: activeTab === 'editor' ? 'flex' : 'none',
                         height: '100%', flexDirection: 'column'
                     }}>
-                        {showDiff ? (
-                            <DiffView
-                                oldCode={diffBaseQuery}
-                                newCode={sqlQuery}
-                                onClose={() => setShowDiff(false)}
+                        <div style={{ flex: 1, overflow: 'hidden' }}>
+                            {showDiff ? (
+                                <DiffView
+                                    oldCode={diffBaseQuery}
+                                    newCode={sqlQuery}
+                                    onClose={() => setShowDiff(false)}
+                                />
+                            ) : (
+                                <SimpleEditor
+                                    value={sqlQuery}
+                                    onChange={setSqlQuery}
+                                    language="sql"
+                                    placeholder="SELECT * FROM ..."
+                                    style={{ flex: 1 }}
+                                />
+                            )}
+                        </div>
+
+                        <div style={{ flexShrink: 0 }}>
+                            <QueryParametersPanel
+                                sql={sqlQuery}
+                                paramValues={paramValues}
+                                onChange={setParamValues}
+                                connectionInfo={connectionInfo}
+                                metaParams={activeQueryMetadata?.params as any}
                             />
-                        ) : (
-                            <SimpleEditor
-                                value={sqlQuery}
-                                onChange={setSqlQuery}
-                                language="sql"
-                                placeholder="SELECT * FROM ..."
-                                style={{ flex: 1 }}
-                            />
-                        )}
+                        </div>
                     </div>
 
                     {/* Tune Tab */}
@@ -4141,29 +4195,36 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                         <ServerTuneTab connectionInfo={connectionInfo} />
                     </div>
 
-                    {/* Queries Tab */}
+                    {/* Schema Tab */}
                     <div style={{
-                        display: activeTab === 'queries' ? 'block' : 'none',
+                        display: activeTab === 'schema' ? 'block' : 'none',
                         height: '100%'
                     }}>
-                        <SavedQueriesTab
-                            onExecute={(sql: string) => {
-                                setSqlQuery(sql);
-                                onExecute(sql);
-                            }}
-                            onAnalyze={(sql: string) => {
-                                onAnalyzeParamQuery(sql);
-                            }}
-                            onEdit={onEdit}
-                            refreshTrigger={queriesRefreshTrigger}
+                        <SchemaBrowser
+                            schema={schema}
+                            loadingSchema={loadingSchema}
                             connectionInfo={connectionInfo}
-                            setSqlQuery={setSqlQuery}
+                            selectedTables={selectedTables}
+                            setSelectedTables={setSelectedTables}
+                            onShowER={() => setActiveTab('er')}
                         />
+                    </div>
+
+                    {/* ER Diagram Tab */}
+                    <div style={{
+                        display: activeTab === 'er' ? 'block' : 'none',
+                        height: '100%'
+                    }}>
+                        {filteredSchema && (
+                            <ERDiagram
+                                schema={filteredSchema}
+                                connectionInfo={connectionInfo}
+                            />
+                        )}
                     </div>
                 </div>
 
                 {/* 4. Resizable Bottom Pane */}
-                {/* Resizer Handle */}
                 {bottomExpanded && (
                     <div
                         onMouseDown={startBottomResize}
@@ -4206,8 +4267,7 @@ export default QueryWorkspace;
 ============================================================
 FILE PATH: ./frontend/src/components/ERDiagram.tsx
 ============================================================
-
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import ReactFlow, {
     Background,
     Controls,
@@ -4220,352 +4280,442 @@ import ReactFlow, {
     ConnectionLineType,
     MarkerType,
     OnNodesChange,
-    applyNodeChanges
+    applyNodeChanges,
+    Handle,
+    NodeProps
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { executeQuery } from '../api';
+import { executeQuery, saveERLayout, getERLayout } from '../api';
 
 interface ERDiagramProps {
     schema: any;
     connectionInfo: any;
-    onClose: () => void;
+    onClose?: () => void;
 }
 
-const nodeWidth = 180;
-const nodeHeight = 50;
+// --- Custom Table Node ---
+const TableNode = ({ data, selected }: NodeProps) => {
+    const [expanded, setExpanded] = useState(false);
 
-// Tighter Layout Step
-const R_STEP = 300;
+    // Columns: { name, type, isPk, isFk }
+    const columns = data.columns || [];
 
-const getRadialLayout = (nodes: Node[], edges: Edge[]) => {
+    // Filter columns based on expanded state
+    const visibleColumns = expanded
+        ? columns
+        : columns.filter((c: any) => c.isPk || c.isFk);
+
+    const hasHidden = !expanded && columns.length > visibleColumns.length;
+
+    return (
+        <div style={{
+            background: '#1e293b',
+            border: selected ? '2px solid #3b82f6' : '1px solid #475569',
+            borderRadius: '6px',
+            minWidth: '200px',
+            color: '#e2e8f0',
+            fontSize: '12px',
+            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.5)'
+        }}>
+            {/* Header */}
+            <div style={{
+                padding: '8px',
+                borderBottom: '1px solid #334155',
+                background: '#0f172a',
+                borderRadius: '6px 6px 0 0',
+                fontWeight: 'bold',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+            }}>
+                <span style={{ color: '#60a5fa' }}>{data.label}</span>
+                {hasHidden && (
+                    <button
+                        onClick={(e) => { e.stopPropagation(); setExpanded(true); }}
+                        style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '10px' }}
+                    >
+                        Show All
+                    </button>
+                )}
+                {expanded && columns.length > visibleColumns.length && ( // Only show collapse if we are actually filtering
+                    <button
+                        onClick={(e) => { e.stopPropagation(); setExpanded(false); }}
+                        style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '10px' }}
+                    >
+                        Compact
+                    </button>
+                )}
+            </div>
+
+            {/* Columns */}
+            <div style={{ padding: '4px 0' }}>
+                {visibleColumns.map((col: any) => (
+                    <div key={col.name} style={{
+                        position: 'relative',
+                        padding: '4px 8px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        background: col.isPk ? '#3b82f622' : 'transparent'
+                    }}>
+                        {/* Target Handle (Incoming FK) - usually on PKs */}
+                        <Handle
+                            type="target"
+                            position={Position.Left}
+                            id={`${col.name}-target`}
+                            style={{ background: '#cbd5e1', width: '6px', height: '6px' }}
+                        />
+
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flex: 1 }}>
+                            {col.isPk && <span style={{ color: '#facc15', fontSize: '10px' }}>🔑</span>}
+                            {col.isFk && <span style={{ color: '#a5b4fc', fontSize: '10px' }}>🔗</span>}
+                            <span style={{
+                                fontWeight: col.isPk ? 'bold' : 'normal',
+                                color: col.isPk ? '#e2e8f0' : (col.isFk ? '#e2e8f0' : '#cbd5e1')
+                            }}>
+                                {col.name}
+                            </span>
+                        </div>
+                        <span style={{ fontSize: '10px', color: '#64748b', marginLeft: '10px' }}>{col.type}</span>
+
+                        {/* Source Handle (Outgoing FK) - usually on FKs */}
+                        <Handle
+                            type="source"
+                            position={Position.Right}
+                            id={`${col.name}-source`}
+                            style={{ background: '#cbd5e1', width: '6px', height: '6px' }}
+                        />
+                    </div>
+                ))}
+                {hasHidden && (
+                    <div
+                        onClick={(e) => { e.stopPropagation(); setExpanded(true); }}
+                        style={{ padding: '4px 8px', color: '#64748b', fontSize: '10px', fontStyle: 'italic', cursor: 'pointer', textAlign: 'center' }}
+                    >
+                        ... {columns.length - visibleColumns.length} more columns
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+const nodeTypes = {
+    table: TableNode
+};
+
+// --- STAR / RADIAL LAYOUT ---
+const getStarLayout = (nodes: Node[], edges: Edge[]) => {
     if (nodes.length === 0) return { nodes, edges };
 
-    // 1. Calculate and find center
-    const inDegree: Record<string, number> = {};
+    // 1. Calculate degrees to find center
+    const degree: Record<string, number> = {};
     const adj: Record<string, string[]> = {};
 
     nodes.forEach(n => {
-        inDegree[n.id] = 0;
+        degree[n.id] = 0;
         adj[n.id] = [];
     });
 
     edges.forEach(e => {
-        inDegree[e.target] = (inDegree[e.target] || 0) + 1;
+        degree[e.source] = (degree[e.source] || 0) + 1;
+        degree[e.target] = (degree[e.target] || 0) + 1;
         adj[e.source].push(e.target);
         adj[e.target].push(e.source);
     });
 
+    // Find node with max degree
     let centerNodeId = nodes[0].id;
     let maxDegree = -1;
     nodes.forEach(n => {
-        const d = inDegree[n.id] + (adj[n.id].length * 0.1);
-        if (d > maxDegree) {
-            maxDegree = d;
+        if ((degree[n.id] || 0) > maxDegree) {
+            maxDegree = degree[n.id];
             centerNodeId = n.id;
         }
     });
 
-    // 2. BFS Layering
+    // 2. BFS for layering + Parent tracking
     const layers: Record<number, string[]> = {};
     const visited = new Set<string>();
-    const queue: { id: string, dist: number }[] = [{ id: centerNodeId, dist: 0 }];
+    const parents: Record<string, string> = {}; // Track parent for angle sorting
+
+    // BFS Queue: { id, dist, parent }
+    const queue: { id: string, dist: number, parent: string | null }[] = [{ id: centerNodeId, dist: 0, parent: null }];
     visited.add(centerNodeId);
 
     while (queue.length > 0) {
-        const { id, dist } = queue.shift()!;
+        const { id, dist, parent } = queue.shift()!;
         if (!layers[dist]) layers[dist] = [];
         layers[dist].push(id);
+        if (parent) parents[id] = parent;
 
         adj[id].forEach(neighbor => {
             if (!visited.has(neighbor)) {
                 visited.add(neighbor);
-                queue.push({ id: neighbor, dist: dist + 1 });
+                queue.push({ id: neighbor, dist: dist + 1, parent: id });
             }
         });
     }
 
-    const maxDist = Math.max(...Object.keys(layers).map(Number));
+    // Handle orphans
+    const maxLayer = Math.max(...Object.keys(layers).map(Number));
+    const orphanLayer = maxLayer + 1;
     nodes.forEach(n => {
         if (!visited.has(n.id)) {
-            const farLayer = maxDist + 1;
-            if (!layers[farLayer]) layers[farLayer] = [];
-            layers[farLayer].push(n.id);
+            if (!layers[orphanLayer]) layers[orphanLayer] = [];
+            layers[orphanLayer].push(n.id);
         }
     });
 
-    // 3. Coordinate Assignment
-    const placedNodes = new Map<string, { x: number, y: number }>();
-    placedNodes.set(centerNodeId, { x: 0, y: 0 });
+    // 3. Position assignment with Parent-Aware sorting
+    const R_STEP = 250; // Tighter radius (was 350)
+    const placedNodes = new Map<string, { x: number, y: number, angle: number }>();
+    placedNodes.set(centerNodeId, { x: 0, y: 0, angle: 0 });
 
-    Object.keys(layers).map(Number).sort((a, b) => a - b).forEach(layerIdx => {
-        const layerNodes = layers[layerIdx];
+    const layerIndices = Object.keys(layers).map(Number).sort((a, b) => a - b);
+
+    layerIndices.forEach(layerIdx => {
         if (layerIdx === 0) return;
 
+        let layerNodes = layers[layerIdx];
         const radius = layerIdx * R_STEP;
+
+        // Sort nodes by parent's angle to keep subtrees closer
+        if (layerIdx > 1) {
+            layerNodes.sort((a, b) => {
+                const parentA = parents[a];
+                const parentB = parents[b];
+                const angleA = placedNodes.get(parentA)?.angle || 0;
+                const angleB = placedNodes.get(parentB)?.angle || 0;
+                return angleA - angleB;
+            });
+        }
+
         const count = layerNodes.length;
+        const angleStep = (2 * Math.PI) / count;
 
         layerNodes.forEach((nodeId, i) => {
-            const angle = (2 * Math.PI * i) / count + (layerIdx % 2 * 0.5);
-            const x = radius * Math.cos(angle);
-            const y = radius * Math.sin(angle);
-            placedNodes.set(nodeId, { x, y });
+            const angle = i * angleStep;
+            placedNodes.set(nodeId, {
+                x: radius * Math.cos(angle),
+                y: radius * Math.sin(angle),
+                angle: angle
+            });
         });
     });
 
+    // Apply positions
     nodes.forEach(node => {
         const pos = placedNodes.get(node.id) || { x: 0, y: 0 };
         node.position = {
-            x: pos.x - nodeWidth / 2,
-            y: pos.y - nodeHeight / 2
+            x: pos.x - 100, // Center offset
+            y: pos.y - 25
         };
-        node.targetPosition = Position.Top;
-        node.sourcePosition = Position.Bottom;
+        node.targetPosition = Position.Left;
+        node.sourcePosition = Position.Right;
     });
 
     return { nodes, edges };
 };
 
-const ERDiagram: React.FC<ERDiagramProps> = ({ schema, connectionInfo, onClose }) => {
+interface ERDiagramProps {
+    schema: any;
+    connectionInfo: any;
+}
 
-    // --- Persistence Logic ---
-    const STORAGE_KEY = 'pgray_er_layout';
+const ERDiagram: React.FC<ERDiagramProps> = ({ schema, connectionInfo }) => {
 
-    // -- Hover Tooltip State --
+    const STORAGE_KEY = `pgray_er_layout_${connectionInfo?.database || 'default'}`;
+
+    // --- Hover Tooltip State ---
     const [hoveredNode, setHoveredNode] = useState<string | null>(null);
     const [tooltipData, setTooltipData] = useState<any>(null);
     const [tooltipPos, setTooltipPos] = useState<{ x: number, y: number } | null>(null);
-    // Use refs for timers to avoid closures issues
     const hoverTimerRef = React.useRef<NodeJS.Timeout | null>(null);
 
-    const onNodeMouseEnter = useCallback((event: React.MouseEvent, node: Node) => {
-        if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
-        const mouseX = event.clientX + 10;
-        const mouseY = event.clientY + 10;
-
-        hoverTimerRef.current = setTimeout(async () => {
-            setHoveredNode(node.id);
-            setTooltipPos({ x: mouseX, y: mouseY });
-            setTooltipData(null);
-
-            try {
-                const res = await executeQuery(connectionInfo, `SELECT * FROM ${node.id} LIMIT 5`, 5);
-                if (res.status === 'success') {
-                    setTooltipData(res.data);
-                } else {
-                    setTooltipData({ error: 'Failed to fetch preview' });
-                }
-            } catch (err: any) {
-                setTooltipData({ error: err.message || 'Preview Failed' });
-            }
-        }, 1000); // 1 Second response for diagram
-    }, [connectionInfo]);
-
-    const onNodeMouseLeave = useCallback(() => {
-        if (hoverTimerRef.current) {
-            clearTimeout(hoverTimerRef.current);
-            hoverTimerRef.current = null;
-        }
-        setHoveredNode(null);
-        setTooltipData(null);
-    }, []);
-
-    // --- Graph Initialization ---
+    // --- Graph State ---
     const { nodes: initialNodes, edges: initialEdges } = useMemo(() => {
+        if (!schema) return { nodes: [], edges: [] };
+
         const nodes: Node[] = [];
         const edges: Edge[] = [];
 
-        if (!schema) return { nodes, edges };
-
         Object.keys(schema).forEach(tableName => {
             const tableData = schema[tableName];
-            const columns = Array.isArray(tableData) ? tableData : tableData.columns;
+            // Normalize columns
+            const rawColumns = Array.isArray(tableData) ? tableData : tableData.columns;
             const fks = Array.isArray(tableData) ? [] : tableData.fks || [];
+
+            // Mark PK/FK in columns
+            const columns = rawColumns.map((c: any) => ({
+                ...c,
+                isPk: c.name === 'id' || c.name.endsWith('_id') && !c.name.includes('_'), // Heuristic if no explicit PK loaded
+                // Actually, tableData.pk usually isn't passed here. 
+                // We rely on name or if it is a source of an FK?
+                // Let's rely on standard 'id' or explicit PK if available.
+                // NOTE: SchemaBrowser loads columns. We might need to enrich this upstream.
+                // For now, let's assume 'id' is PK, and any column in fks list is FK.
+                isFk: fks.some((fk: any) => fk.column === c.name)
+            }));
+
+            // Fix PK detection if 'id' exists
+            columns.forEach((c: any) => {
+                if (c.name === 'id') c.isPk = true;
+            });
 
             nodes.push({
                 id: tableName,
+                type: 'table',
                 data: { label: tableName, columns: columns },
                 position: { x: 0, y: 0 },
-                style: {
-                    border: '1px solid #475569',
-                    borderRadius: '8px',
-                    background: '#1e293b',
-                    color: '#e2e8f0',
-                    padding: '8px',
-                    fontSize: '12px',
-                    minWidth: '150px',
-                    cursor: 'grab'
-                },
-                type: 'default'
             });
 
-            const label = (
-                <div style={{ textAlign: 'left' }}>
-                    <div style={{ borderBottom: '1px solid #64748b', paddingBottom: '4px', marginBottom: '4px', fontWeight: 'bold', color: '#60a5fa' }}>{tableName}</div>
-                    {columns.map((col: any) => (
-                        <div key={col.name} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px' }}>
-                            <span style={{ color: col.name === 'id' ? '#facc15' : '#cbd5e1' }}>{col.name}</span>
-                            <span style={{ color: '#64748b', marginLeft: '8px' }}>{col.type}</span>
-                        </div>
-                    ))}
-                </div>
-            );
-            nodes[nodes.length - 1].data.label = label;
-
-
             fks.forEach((fk: any) => {
+                // Edge from FK column (Source) to PK column (Target)
+                // Source: Table with FK. SourceHandle: fk.column-source
+                // Target: Referenced Table. TargetHandle: fk.foreign_column (usually id)-target
+
+                // We need to know the foreign column. Usually 'id' if not specified? 
+                // Postgres constraint info usually provides pkey.
+                // Assuming 'id' for target if unknown.
+                const targetCol = 'id';
+
                 edges.push({
                     id: `${tableName}-${fk.column}-${fk.foreign_table}`,
                     source: tableName,
                     target: fk.foreign_table,
-                    animated: true,
-                    style: { stroke: '#64748b' },
-                    label: fk.column,
-                    labelStyle: { fill: '#94a3b8', fontSize: 10 },
+                    sourceHandle: `${fk.column}-source`,
+                    targetHandle: `${targetCol}-target`,
+                    animated: false,
+                    style: { stroke: '#64748b', strokeWidth: 1.5 },
                     type: ConnectionLineType.SmoothStep,
                     markerEnd: { type: MarkerType.ArrowClosed, color: '#64748b' },
                 });
             });
         });
 
-        // Load Persistence
-        const savedLayoutStr = localStorage.getItem(STORAGE_KEY);
-        let layouted = getRadialLayout(nodes, edges);
+        // 1. Try Load Persistence from API (Async)
+        // We can't do async inside useMemo easily for layout setup.
+        // Instead, we will effect-load it.
+        // But for initial render, we can use localStorage as cache or just wait.
+        // Let's rely on an effect to load positions and apply them.
 
-        if (savedLayoutStr) {
-            try {
-                const savedPositions: Record<string, { x: number, y: number }> = JSON.parse(savedLayoutStr);
-                // Apply saved positions
-                let restoredCount = 0;
-                layouted.nodes.forEach(n => {
-                    if (savedPositions[n.id]) {
-                        n.position = savedPositions[n.id];
-                        restoredCount++;
-                    }
-                });
-                console.log(`Restored layout for ${restoredCount} nodes.`);
-            } catch (e) {
-                console.error("Failed to load saved layout", e);
-            }
-        }
+        // Use Star Layout as default
+        return getStarLayout(nodes, edges);
 
-        return layouted;
     }, [schema]);
 
     const [nodes, setNodes] = useNodesState(initialNodes);
-    const [edges, , onEdgesChange] = useEdgesState(initialEdges);
+    const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+    const [layoutLoaded, setLayoutLoaded] = useState(false);
+
+    // Load layout from Backend
+    useEffect(() => {
+        const loadLayout = async () => {
+            if (!connectionInfo) return;
+            try {
+                // Try API first
+                const layout = await getERLayout(connectionInfo);
+                if (layout) {
+                    setNodes((nds) => nds.map(n => {
+                        if (layout[n.id]) {
+                            return { ...n, position: layout[n.id] };
+                        }
+                        return n;
+                    }));
+                    setLayoutLoaded(true);
+                    return;
+                }
+
+                // Fallback to local storage if API failed or empty (migration)
+                const savedLayoutStr = localStorage.getItem(STORAGE_KEY);
+                if (savedLayoutStr) {
+                    const savedPositions = JSON.parse(savedLayoutStr);
+                    setNodes((nds) => nds.map(n => {
+                        if (savedPositions[n.id]) {
+                            return { ...n, position: savedPositions[n.id] };
+                        }
+                        return n;
+                    }));
+                }
+            } catch (e) {
+                console.error("Error loading layout", e);
+            }
+        };
+        loadLayout();
+    }, [connectionInfo, setNodes, STORAGE_KEY]);
+
 
     const onNodesChange: OnNodesChange = useCallback(
         (changes) => {
-            setNodes((nds) => {
-                const nextNodes = applyNodeChanges(changes, nds);
-                // Simple persistence: save on every change/drag? 
-                // Debounce might be better, but for now lets strict save on 'position' change type or dragging.
-                // Check if any change has 'position'
-                const hasPosChange = changes.some(c => c.type === 'position' && c.dragging);
-                if (hasPosChange) {
-                    const positions: Record<string, { x: number, y: number }> = {};
-                    nextNodes.forEach(n => positions[n.id] = n.position);
-                    localStorage.setItem(STORAGE_KEY, JSON.stringify(positions));
-                }
-                return nextNodes;
-            });
+            setNodes((nds) => applyNodeChanges(changes, nds));
+            // We don't auto-save to backend on every drag to avoid spam.
+            // We can perhaps auto-save to localStorage as temporary cache if we wanted,
+            // but user asked for explicit save button. 
+            // Let's keep localStorage as a "draft" state?
+            // Actually user said "I want a save button... so next time... they can be arranged".
+            // So implicit auto-save might be confusing if they want to discard?
+            // "Auto-Saved" label was there before. 
+            // Let's implement explicit save for backend, and maybe keep localStorage as backup.
         },
         [setNodes]
     );
 
+    const handleSaveLayout = async () => {
+        if (!connectionInfo) return;
+        const positions: Record<string, { x: number, y: number }> = {};
+        nodes.forEach(n => positions[n.id] = n.position);
+
+        // Save to Backend
+        await saveERLayout(positions, connectionInfo);
+
+        // Also save to localStorage for offline/faster load
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(positions));
+
+        alert("Layout saved!");
+    };
+
     const handleResetLayout = () => {
-        localStorage.removeItem(STORAGE_KEY);
-        // Force re-layout by re-calculating (or just reload page? simpler to re-create nodes effectively)
-        // We can just recalculate positions from scratch and setNodes.
-        const layouted = getRadialLayout(nodes, edges);
-        setNodes([...layouted.nodes]);
+        if (confirm("Reset layout to default star arrangement?")) {
+            localStorage.removeItem(STORAGE_KEY);
+            // Recalculate layout
+            const { nodes: newNodes, edges: newEdges } = getStarLayout(nodes, edges);
+            setNodes([...newNodes]);
+            setEdges([...newEdges]);
+        }
     };
 
     return (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10000, background: '#0f172a' }}>
-            <div style={{ position: 'absolute', top: '10px', right: '10px', zIndex: 10001, display: 'flex', gap: '10px' }}>
-                <div style={{ background: '#1e293b', padding: '5px 10px', borderRadius: '4px', fontSize: '12px', color: '#94a3b8' }}>
-                    Drag to Arrange (Auto-Saved)
-                </div>
+        <div style={{ height: '100%', width: '100%', background: '#0f172a', position: 'relative' }}>
+            {/* Toolbar */}
+            <div style={{ position: 'absolute', top: '10px', right: '10px', zIndex: 10, display: 'flex', gap: '10px' }}>
+                <button
+                    onClick={handleSaveLayout}
+                    style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+                >
+                    Save Layout
+                </button>
                 <button
                     onClick={handleResetLayout}
-                    style={{
-                        background: '#334155', color: '#cbd5e1', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold'
-                    }}
-                    title="Reset to Auto Layout"
+                    style={{ background: '#334155', color: '#cbd5e1', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer' }}
                 >
                     Reset Layout
                 </button>
-                <button
-                    onClick={onClose}
-                    style={{
-                        background: '#ef4444', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold'
-                    }}
-                >
-                    ✕ Close
-                </button>
             </div>
 
-            <div style={{ width: '100%', height: '100%' }}>
-                <ReactFlow
-                    nodes={nodes}
-                    edges={edges}
-                    onNodesChange={onNodesChange}
-                    onEdgesChange={onEdgesChange}
-                    onNodeMouseEnter={onNodeMouseEnter}
-                    onNodeMouseLeave={onNodeMouseLeave}
-                    fitView
-                    minZoom={0.1}
-                >
-                    <Background color="#334155" gap={16} />
-                    <Controls style={{ background: '#1e293b', border: '1px solid #475569', fill: '#cbd5e1' }} />
-                    <MiniMap style={{ background: '#1e293b', border: '1px solid #475569' }} nodeColor={() => '#3b82f6'} />
-                </ReactFlow>
-
-                {/* Diagram Tooltip */}
-                {hoveredNode && tooltipPos && (
-                    <div style={{
-                        position: 'fixed',
-                        top: tooltipPos.y,
-                        left: tooltipPos.x,
-                        background: '#0f172a',
-                        border: '1px solid #475569',
-                        borderRadius: '6px',
-                        padding: '8px',
-                        zIndex: 10002,
-                        boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.5)',
-                        maxWidth: '300px',
-                        maxHeight: '200px',
-                        overflow: 'auto',
-                        pointerEvents: 'none' // Prevent flicker logic for now, or allow?
-                    }}>
-                        <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#facc15', marginBottom: '4px' }}>
-                            Preview: {hoveredNode}
-                        </div>
-                        {!tooltipData ? (
-                            <div style={{ fontSize: '10px', color: '#94a3b8' }}>Loading...</div>
-                        ) : tooltipData.error ? (
-                            <div style={{ fontSize: '10px', color: '#ef4444' }}>{tooltipData.error}</div>
-                        ) : (
-                            <div style={{ overflowX: 'auto' }}>
-                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '10px' }}>
-                                    <tbody>
-                                        {tooltipData.rows.map((row: any[], i: number) => (
-                                            <tr key={i} style={{ borderBottom: '1px solid #1e293b' }}>
-                                                {row.map((cell: any, j: number) => (
-                                                    <td key={j} style={{ padding: '2px 4px', color: '#94a3b8', maxWidth: '80px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
-                                                        {String(cell)}
-                                                    </td>
-                                                ))}
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        )}
-                    </div>
-                )}
-            </div>
+            <ReactFlow
+                nodes={nodes}
+                edges={edges}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                nodeTypes={nodeTypes}
+                fitView
+                minZoom={0.1}
+            >
+                <Background color="#1e293b" gap={16} />
+                <Controls style={{ background: '#1e293b', border: '1px solid #475569', fill: '#cbd5e1' }} />
+                <MiniMap style={{ background: '#1e293b', border: '1px solid #475569' }} nodeColor="#3b82f6" />
+            </ReactFlow>
         </div>
     );
 };
@@ -5300,8 +5450,8 @@ import ReactFlow, { Background, Controls, Node, Edge } from 'reactflow';
 import 'reactflow/dist/style.css';
 
 interface QueryTuneTabProps {
-    activeTab: 'plan' | 'text';
-    setActiveTab: (tab: 'plan' | 'text') => void;
+    activeTab: 'visual' | 'text' | 'compare';
+    setActiveTab: (tab: 'visual' | 'text' | 'compare') => void;
 
     nodes: Node[];
     edges: Edge[];
@@ -5384,8 +5534,9 @@ const QueryTuneTab: React.FC<QueryTuneTabProps> = ({
             {/* Header / Tabs */}
             <div style={{ display: 'flex', background: '#0f172a', borderBottom: '1px solid #475569', alignItems: 'center' }}>
 
-                <div onClick={() => setActiveTab('plan')} style={{ padding: '8px 20px', cursor: 'pointer', color: activeTab === 'plan' ? '#e2e8f0' : '#64748b', borderBottom: activeTab === 'plan' ? '2px solid #3b82f6' : 'none', fontWeight: activeTab === 'plan' ? 600 : 500, fontSize: '13px' }}>Visual Plan</div>
+                <div onClick={() => setActiveTab('visual')} style={{ padding: '8px 20px', cursor: 'pointer', color: activeTab === 'visual' ? '#e2e8f0' : '#64748b', borderBottom: activeTab === 'visual' ? '2px solid #3b82f6' : 'none', fontWeight: activeTab === 'visual' ? 600 : 500, fontSize: '13px' }}>Visual Plan</div>
                 <div onClick={() => setActiveTab('text')} style={{ padding: '8px 20px', cursor: 'pointer', color: activeTab === 'text' ? '#e2e8f0' : '#64748b', borderBottom: activeTab === 'text' ? '2px solid #3b82f6' : 'none', fontWeight: activeTab === 'text' ? 600 : 500, fontSize: '13px' }}>Text Plan</div>
+                <div onClick={() => setActiveTab('compare')} style={{ padding: '8px 20px', cursor: 'pointer', color: activeTab === 'compare' ? '#e2e8f0' : '#64748b', borderBottom: activeTab === 'compare' ? '2px solid #3b82f6' : 'none', fontWeight: activeTab === 'compare' ? 600 : 500, fontSize: '13px' }}>Compare</div>
 
                 {/* Metrics Display */}
                 <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '15px', paddingRight: '20px', fontSize: '12px', color: '#94a3b8' }}>
@@ -5444,7 +5595,7 @@ const QueryTuneTab: React.FC<QueryTuneTabProps> = ({
 
             {/* Content */}
             <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-                {activeTab === 'plan' ? (
+                {activeTab === 'visual' ? (
                     <>
                         <div ref={flowWrapperRef} style={{ height: '100%', width: '100%' }}>
                             <ReactFlow
@@ -6738,7 +6889,7 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
 
     useEffect(() => {
         loadQueries();
-    }, [refreshTrigger]);
+    }, [refreshTrigger, connectionInfo]);
 
     // Close context menu on global click
     useEffect(() => {
@@ -6749,12 +6900,15 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
 
     const loadQueries = async () => {
         try {
-            const res = await getSavedQueries();
+            const res = await getSavedQueries(connectionInfo);
             if (res && res.parameterized) {
                 setQueries(res.parameterized);
+            } else {
+                setQueries([]);
             }
         } catch (e) {
             console.error("Failed to load queries", e);
+            setQueries([]);
         }
     };
 
@@ -6763,7 +6917,7 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
         if (!confirm("Are you sure you want to delete this query?")) return;
 
         try {
-            await deleteQuery(id);
+            await deleteQuery(id, connectionInfo);
             // Refresh list
             if (selectedQuery?.id === id) setSelectedQuery(null);
             loadQueries();
@@ -6776,7 +6930,7 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
         e.stopPropagation();
         const newName = `${query.name} (Copy)`;
         try {
-            await saveQueryFinal(newName, query.sql, query.params, query.original_sql);
+            await saveQueryFinal(newName, query.sql, query.params, query.original_sql, connectionInfo);
             loadQueries();
         } catch (e) {
             alert("Failed to duplicate query");
@@ -6852,9 +7006,9 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
 
         try {
             // Save as new name
-            await saveQueryFinal(newName, targetQuery.sql, targetQuery.params, targetQuery.original_sql);
+            await saveQueryFinal(newName, targetQuery.sql, targetQuery.params, targetQuery.original_sql, connectionInfo);
             // Delete old
-            await deleteQuery(targetQuery.id);
+            await deleteQuery(targetQuery.id, connectionInfo);
 
             setShowRenameModal(false);
             loadQueries();
@@ -6916,7 +7070,8 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
                 title, // Allow title edit? Modal allows it.
                 finalSql,
                 activeParams,
-                finalSql // Original SQL is same as final for template
+                finalSql, // Original SQL is same as final for template
+                connectionInfo
             );
             setShowSaveModal(false);
             setIsEditing(false);
@@ -7593,6 +7748,210 @@ export default InsightsTab;
 
 
 ============================================================
+FILE PATH: ./frontend/src/components/workspace/QueryParametersPanel.tsx
+============================================================
+import React, { useState, useEffect, useRef } from 'react';
+import { getDistinctValues, ParameterizedQuery } from '../../api';
+
+interface QueryParametersPanelProps {
+    sql: string;
+    paramValues: { [key: string]: string };
+    onChange: (values: { [key: string]: string }) => void;
+    connectionInfo: any;
+    metaParams?: any[]; // From saved query metadata
+}
+
+// Reuse SearchableSelect logic (Inline for now to avoid refactor scope creep)
+interface SearchableSelectProps {
+    value: string;
+    onChange: (val: string) => void;
+    onSearch: (term: string) => void;
+    options: string[];
+    loading: boolean;
+    placeholder?: string;
+}
+
+const SearchableSelect: React.FC<SearchableSelectProps> = ({ value, onChange, onSearch, options, loading, placeholder }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [inputValue, setInputValue] = useState(value);
+    const wrapperRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => { setInputValue(value); }, [value]);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, [wrapperRef]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        const timer = setTimeout(() => { onSearch(inputValue); }, 300);
+        return () => clearTimeout(timer);
+    }, [inputValue, isOpen]);
+
+    const handleSelect = (opt: string) => {
+        onChange(opt);
+        setInputValue(opt);
+        setIsOpen(false);
+    };
+
+    return (
+        <div ref={wrapperRef} style={{ position: 'relative', width: '100%' }}>
+            <div style={{ position: 'relative' }}>
+                <input
+                    type="text"
+                    value={inputValue}
+                    onChange={(e) => {
+                        setInputValue(e.target.value);
+                        onChange(e.target.value);
+                        setIsOpen(true);
+                    }}
+                    onFocus={() => { setIsOpen(true); onSearch(inputValue); }}
+                    placeholder={placeholder}
+                    style={{
+                        width: '100%', background: '#0f172a', border: '1px solid #475569',
+                        color: 'white', padding: '6px 10px', borderRadius: '4px', outline: 'none', fontSize: '13px'
+                    }}
+                />
+                {loading && <div style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', fontSize: '10px' }}>⏳</div>}
+            </div>
+            {isOpen && (
+                <div style={{
+                    position: 'absolute', top: '100%', left: 0, right: 0,
+                    background: '#1e293b', border: '1px solid #475569', borderRadius: '0 0 4px 4px',
+                    maxHeight: '150px', overflowY: 'auto', zIndex: 50, boxShadow: '0 4px 6px -1px rgba(0,0,0,0.5)'
+                }}>
+                    {options.length > 0 ? (
+                        options.map((opt, idx) => (
+                            <div key={idx} onClick={() => handleSelect(opt)}
+                                style={{ padding: '6px 10px', cursor: 'pointer', borderBottom: '1px solid #334155', fontSize: '12px' }}
+                                onMouseEnter={(e) => e.currentTarget.style.background = '#334155'}
+                                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                            >
+                                {opt}
+                            </div>
+                        ))
+                    ) : (
+                        <div style={{ padding: '8px', color: '#64748b', fontSize: '11px' }}>{loading ? 'Searching...' : 'No results found'}</div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
+
+const QueryParametersPanel: React.FC<QueryParametersPanelProps> = ({ sql, paramValues, onChange, connectionInfo, metaParams }) => {
+    const [params, setParams] = useState<string[]>([]);
+    const [options, setOptions] = useState<{ [key: string]: string[] }>({});
+    const [loading, setLoading] = useState<{ [key: string]: boolean }>({});
+
+    // Detect params from SQL
+    useEffect(() => {
+        if (!sql) {
+            setParams([]);
+            return;
+        }
+        // Regex to find :paramName
+        const matches = sql.match(/:[a-zA-Z0-9_]+/g);
+        if (matches) {
+            const unique = Array.from(new Set(matches.map(m => m.substring(1))));
+            setParams(unique);
+        } else {
+            setParams([]);
+        }
+    }, [sql]);
+
+    const fetchOptions = async (pName: string, table: string, column: string, search: string = '') => {
+        try {
+            setLoading(prev => ({ ...prev, [pName]: true }));
+            const res = await getDistinctValues(connectionInfo, table, column, search);
+            if (res && res.values) {
+                setOptions(prev => ({ ...prev, [pName]: res.values.map(String) }));
+            }
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setLoading(prev => ({ ...prev, [pName]: false }));
+        }
+    };
+
+    // Initialize options for rich params
+    useEffect(() => {
+        if (!metaParams || !connectionInfo) return;
+        metaParams.forEach(p => {
+            const pName = typeof p === 'string' ? p : p.name;
+            if (typeof p !== 'string' && p.table && p.column && params.includes(pName)) {
+                // Initial fetch (optional, or wait for focus?)
+                // Let's not fetch automatically to save traffic unless needed?
+                // User might just type.
+                // But typically dropdowns are expected to populate.
+                // Let's do nothing here, rely on onSearch/onFocus in Select.
+            }
+        });
+    }, [metaParams, params, connectionInfo]);
+
+    if (params.length === 0) return null;
+
+    return (
+        <div style={{
+            background: '#1e293b', borderTop: '1px solid #334155',
+            padding: '10px 15px', display: 'flex', flexDirection: 'column', gap: '10px'
+        }}>
+            <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600 }}>
+                Query Parameters
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '10px' }}>
+                {params.map(pName => {
+                    // Check if we have metadata for this param
+                    const meta = metaParams?.find(mp => (typeof mp === 'string' ? mp : mp.name) === pName);
+                    const isRich = meta && typeof meta !== 'string' && meta.table && meta.column;
+
+                    return (
+                        <div key={pName} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <label style={{ color: '#facc15', fontFamily: 'monospace', fontWeight: 'bold', fontSize: '13px', minWidth: '80px' }}>
+                                :{pName}
+                            </label>
+                            <div style={{ flex: 1 }}>
+                                {isRich ? (
+                                    <SearchableSelect
+                                        value={paramValues[pName] || ''}
+                                        onChange={(val) => onChange({ ...paramValues, [pName]: val })}
+                                        onSearch={(term) => fetchOptions(pName, meta.table, meta.column, term)}
+                                        options={options[pName] || []}
+                                        loading={loading[pName]}
+                                        placeholder="Select val..."
+                                    />
+                                ) : (
+                                    <input
+                                        type="text"
+                                        placeholder="Value"
+                                        value={paramValues[pName] || ''}
+                                        onChange={(e) => onChange({ ...paramValues, [pName]: e.target.value })}
+                                        style={{
+                                            width: '100%', background: '#0f172a', border: '1px solid #475569',
+                                            color: 'white', padding: '6px 10px', borderRadius: '4px', outline: 'none', fontSize: '13px'
+                                        }}
+                                    />
+                                )}
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+};
+
+export default QueryParametersPanel;
+
+
+
+============================================================
 FILE PATH: ./frontend/src/components/workspace/SchemaBrowser.tsx
 ============================================================
 import React, { useState, useRef } from 'react';
@@ -7603,13 +7962,42 @@ interface SchemaBrowserProps {
     schema: any;
     loadingSchema: boolean;
     connectionInfo: any;
+    selectedTables: Set<string>;
+    setSelectedTables: (tables: Set<string>) => void;
+    onShowER: () => void;
 }
 
-const SchemaBrowser: React.FC<SchemaBrowserProps> = ({ schema, loadingSchema, connectionInfo }) => {
+const SchemaBrowser: React.FC<SchemaBrowserProps> = ({
+    schema, loadingSchema, connectionInfo,
+    selectedTables, setSelectedTables, onShowER
+}) => {
     const [expandedTables, setExpandedTables] = useState<Record<string, boolean>>({});
-    const [showER, setShowER] = useState(false);
 
-    // Hover Preview Logic
+    const toggleSelection = (table: string) => {
+        const newSet = new Set(selectedTables);
+        if (newSet.has(table)) {
+            newSet.delete(table);
+        } else {
+            newSet.add(table);
+        }
+        setSelectedTables(newSet);
+    };
+
+    const toggleSelectAll = () => {
+        if (!schema) return;
+        const allTables = Object.keys(schema);
+        if (selectedTables.size === allTables.length) {
+            setSelectedTables(new Set());
+        } else {
+            setSelectedTables(new Set(allTables));
+        }
+    };
+
+    // Derived filtered schema is now calculated in QueryWorkspace, so we don't strictly need it here unless needed for something else.
+    // It's not used here anymore since ER display is lifted.
+
+
+    // Hover Preview Logic (unchanged)
     const [hoveredTable, setHoveredTable] = useState<string | null>(null);
     const [previewData, setPreviewData] = useState<any>(null);
     const [previewPos, setPreviewPos] = useState<{ x: number, y: number } | null>(null);
@@ -7619,6 +8007,8 @@ const SchemaBrowser: React.FC<SchemaBrowserProps> = ({ schema, loadingSchema, co
     const toggleTable = (table: string) => {
         setExpandedTables(prev => ({ ...prev, [table]: !prev[table] }));
     };
+
+    // ... (mouse handlers unchanged)
 
     const handleTableMouseEnter = (e: React.MouseEvent, table: string) => {
         if (closeTimerRef.current) {
@@ -7651,52 +8041,39 @@ const SchemaBrowser: React.FC<SchemaBrowserProps> = ({ schema, loadingSchema, co
         }, 2000);
     };
 
-    const handleTableMouseLeave = () => {
-        if (hoverTimerRef.current) {
-            clearTimeout(hoverTimerRef.current);
-            hoverTimerRef.current = null;
-        }
-        closeTimerRef.current = setTimeout(() => {
-            setHoveredTable(null);
-            setPreviewData(null);
-        }, 300);
-    };
-
-    const handleTooltipMouseEnter = () => {
-        if (closeTimerRef.current) {
-            clearTimeout(closeTimerRef.current);
-            closeTimerRef.current = null;
-        }
-    };
-
-    const handleTooltipMouseLeave = () => {
-        closeTimerRef.current = setTimeout(() => {
-            setHoveredTable(null);
-            setPreviewData(null);
-        }, 300);
-    };
+    // ... other handlers ...
 
     return (
-        <div style={{ width: '250px', borderRight: '1px solid #334155', background: '#0f172a', padding: '10px', overflowY: 'auto' }}>
+        <div style={{ height: '100%', overflowY: 'auto', padding: '10px', background: '#0f172a' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                <h3 style={{ fontSize: '12px', fontWeight: 'bold', color: '#94a3b8', margin: 0 }}>SCHEMA BROWSER</h3>
-                <button
-                    onClick={() => setShowER(true)}
-                    style={{
-                        background: 'transparent', border: '1px solid #475569', color: '#cbd5e1',
-                        padding: '2px 6px', borderRadius: '3px', cursor: 'pointer', fontSize: '10px'
-                    }}
-                    title="View ER Relationship Diagram"
-                >
-                    🔗 ER
-                </button>
+                <h3 style={{ fontSize: '14px', fontWeight: 'bold', color: '#94a3b8', margin: 0 }}>SCHEMA BROWSER</h3>
+
+                <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                        onClick={toggleSelectAll}
+                        style={{
+                            background: 'transparent', border: 'none', color: '#64748b',
+                            cursor: 'pointer', fontSize: '11px', textDecoration: 'underline'
+                        }}
+                    >
+                        {schema && selectedTables.size === Object.keys(schema).length ? 'Unselect All' : 'Select All'}
+                    </button>
+                    <button
+                        onClick={onShowER}
+                        style={{
+                            background: 'transparent', border: '1px solid #475569', color: '#cbd5e1',
+                            padding: '2px 6px', borderRadius: '3px', cursor: 'pointer', fontSize: '10px'
+                        }}
+                        title="View ER Relationship Diagram for Selected Tables"
+                    >
+                        🔗 ER Diagram
+                    </button>
+                </div>
             </div>
 
             {loadingSchema && <span style={{ fontSize: '11px', color: '#64748b' }}>Loading...</span>}
 
-            {showER && schema && (
-                <ERDiagram schema={schema} connectionInfo={connectionInfo} onClose={() => setShowER(false)} />
-            )}
+            {/* removed embedded ERDiagram */}
 
             {schema && (
                 <div style={{ fontSize: '13px' }}>
@@ -7704,15 +8081,14 @@ const SchemaBrowser: React.FC<SchemaBrowserProps> = ({ schema, loadingSchema, co
                         const tableData = schema[table];
                         const columns = Array.isArray(tableData) ? tableData : tableData.columns;
                         const isExpanded = expandedTables[table];
+                        const isSelected = selectedTables.has(table);
 
                         return (
                             <div key={table} style={{ marginBottom: '4px' }}>
                                 <div
-                                    onClick={() => toggleTable(table)}
                                     onMouseEnter={(e) => handleTableMouseEnter(e, table)}
                                     onMouseLeave={handleTableMouseLeave}
                                     style={{
-                                        cursor: 'pointer',
                                         display: 'flex',
                                         alignItems: 'center',
                                         padding: '4px 6px',
@@ -7722,11 +8098,23 @@ const SchemaBrowser: React.FC<SchemaBrowserProps> = ({ schema, loadingSchema, co
                                         position: 'relative'
                                     }}
                                 >
-                                    <span style={{ marginRight: '6px', fontSize: '10px', transform: isExpanded ? 'rotate(90deg)' : 'none' }}>▶</span>
-                                    <span style={{ fontWeight: 600 }}>{table}</span>
+                                    <input
+                                        type="checkbox"
+                                        checked={isSelected}
+                                        onChange={() => toggleSelection(table)}
+                                        style={{ marginRight: '8px', cursor: 'pointer' }}
+                                    />
+
+                                    <div
+                                        onClick={() => toggleTable(table)}
+                                        style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', flex: 1 }}
+                                    >
+                                        <span style={{ marginRight: '6px', fontSize: '10px', transform: isExpanded ? 'rotate(90deg)' : 'none' }}>▶</span>
+                                        <span style={{ fontWeight: 600 }}>{table}</span>
+                                    </div>
                                 </div>
                                 {isExpanded && (
-                                    <div style={{ paddingLeft: '14px', marginTop: '2px', borderLeft: '1px solid #334155', marginLeft: '9px' }}>
+                                    <div style={{ paddingLeft: '34px', marginTop: '2px', marginLeft: '0px' }}>
                                         {columns && columns.length > 0 && (
                                             <div style={{ marginBottom: '8px' }}>
                                                 <div style={{ fontSize: '10px', color: '#475569', fontWeight: 'bold', textTransform: 'uppercase' }}>Columns</div>
@@ -7814,10 +8202,6 @@ import React from 'react';
 interface WorkspaceToolbarProps {
     sessionTitle: string;
     setSessionTitle: (t: string) => void;
-    // savedQueries managed internally by Workspace now? No, we moved it to Workspace but didn't update Toolbar to remove it?
-    // Wait, QueryWorkspace passed savedQueries to Toolbar in Step 186/198.
-    // So Toolbar DOES receive it.
-    savedQueries: string[];
     onLoadSession: (name: string) => void;
     onNewSession: () => void;
     onSaveSession: () => Promise<void>;
@@ -8004,6 +8388,247 @@ const WorkspaceToolbar: React.FC<WorkspaceToolbarProps> = ({
 };
 
 export default WorkspaceToolbar;
+
+
+
+============================================================
+FILE PATH: ./frontend/src/components/workspace/SavedQueriesSidebar.tsx
+============================================================
+import React, { useState, useEffect } from 'react';
+import { deleteQuery, saveQueryFinal, ParameterizedQuery } from '../../api';
+
+interface SavedQueriesSidebarProps {
+    connectionInfo: any;
+    onSelectQuery: (query: ParameterizedQuery) => void;
+    queries: ParameterizedQuery[];
+    loading: boolean;
+    onReload: () => void;
+}
+
+const SavedQueriesSidebar: React.FC<SavedQueriesSidebarProps> = ({ connectionInfo, onSelectQuery, queries, loading, onReload }) => {
+    // Queries are now passed in props
+    // const [queries, setQueries] = useState<ParameterizedQuery[]>([]);
+    // const [loading, setLoading] = useState(false);
+
+    // Context Menu State
+    const [contextMenu, setContextMenu] = useState<{ x: number, y: number, queryId: string } | null>(null);
+    const [renameTargetId, setRenameTargetId] = useState<string | null>(null);
+    const [showRenameModal, setShowRenameModal] = useState(false);
+    const [renameOldName, setRenameOldName] = useState('');
+
+    // Internal fetch removed
+    /*
+    useEffect(() => {
+        loadQueries();
+    }, [refreshTrigger, connectionInfo]);
+    */
+
+    // Close context menu on global click
+    useEffect(() => {
+        const handleClick = () => setContextMenu(null);
+        document.addEventListener('click', handleClick);
+        return () => document.removeEventListener('click', handleClick);
+    }, []);
+
+    /*
+    const loadQueries = async () => {
+       // Removed
+    };
+    */
+
+    const handleContextMenu = (e: React.MouseEvent, q: ParameterizedQuery) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setContextMenu({ x: e.clientX, y: e.clientY, queryId: q.id });
+    };
+
+    const handleDelete = async () => {
+        if (!contextMenu) return;
+        if (!confirm("Are you sure you want to delete this query?")) return;
+
+        try {
+            await deleteQuery(contextMenu.queryId, connectionInfo);
+            onReload();
+        } catch (e) {
+            alert("Failed to delete query");
+        }
+        setContextMenu(null);
+    };
+
+    const handleDuplicate = async () => {
+        if (!contextMenu) return;
+        const q = queries.find(query => query.id === contextMenu.queryId);
+        if (!q) return;
+
+        const newName = `${q.name} (Copy)`;
+        try {
+            await saveQueryFinal(newName, q.sql, q.params, q.original_sql, connectionInfo);
+            onReload();
+        } catch (e) {
+            alert("Failed to duplicate query");
+        }
+        setContextMenu(null);
+    };
+
+    const handleRenameStart = () => {
+        if (!contextMenu) return;
+        const q = queries.find(query => query.id === contextMenu.queryId);
+        if (!q) return;
+
+        setRenameTargetId(q.id);
+        setRenameOldName(q.name);
+        setShowRenameModal(true);
+        setContextMenu(null);
+    };
+
+    const handleRenameConfirm = async (newName: string) => {
+        if (!newName || !newName.trim()) return;
+        if (newName === renameOldName) {
+            setShowRenameModal(false);
+            return;
+        }
+
+        const targetQuery = queries.find(q => q.id === renameTargetId);
+        if (!targetQuery) return;
+
+        try {
+            // Save as new name
+            await saveQueryFinal(newName, targetQuery.sql, targetQuery.params, targetQuery.original_sql, connectionInfo);
+            // Delete old
+            await deleteQuery(targetQuery.id, connectionInfo);
+
+            setShowRenameModal(false);
+            onReload();
+        } catch (e) {
+            alert("Failed to rename query");
+            console.error(e);
+        }
+    };
+
+    return (
+        <div style={{
+            width: '250px',
+            borderRight: '1px solid #334155',
+            background: '#0f172a',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden'
+        }}>
+            <div style={{
+                padding: '10px',
+                borderBottom: '1px solid #334155',
+                fontSize: '12px',
+                fontWeight: 'bold',
+                color: '#94a3b8',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+            }}>
+                <span>SAVED QUERIES</span>
+                <button
+                    onClick={onReload}
+                    style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#64748b' }}
+                >
+                    ↻
+                </button>
+            </div>
+
+            <div style={{ flex: 1, overflowY: 'auto', padding: '5px' }}>
+                {loading && <div style={{ padding: '10px', color: '#64748b', fontSize: '12px' }}>Loading...</div>}
+
+                {!loading && queries?.length === 0 && (
+                    <div style={{ padding: '10px', color: '#64748b', fontSize: '11px', textAlign: 'center' }}>
+                        No saved queries found.
+                    </div>
+                )}
+
+                {queries.map(q => (
+                    <div
+                        key={q.id}
+                        onClick={() => onSelectQuery(q)}
+                        onContextMenu={(e) => handleContextMenu(e, q)}
+                        style={{
+                            padding: '8px',
+                            cursor: 'pointer',
+                            borderRadius: '4px',
+                            marginBottom: '2px',
+                            fontSize: '13px',
+                            color: '#e2e8f0',
+                            transition: 'background 0.2s',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = '#1e293b'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                        title={q.name}
+                    >
+                        {q.name}
+                    </div>
+                ))}
+            </div>
+
+            {/* Context Menu */}
+            {contextMenu && (
+                <div style={{
+                    position: 'fixed',
+                    top: contextMenu.y,
+                    left: contextMenu.x,
+                    background: '#1e293b',
+                    border: '1px solid #475569',
+                    borderRadius: '4px',
+                    padding: '4px 0',
+                    zIndex: 9999,
+                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.5)'
+                }} onClick={(e) => e.stopPropagation()}>
+                    <div className="ctx-item" onClick={handleDuplicate} style={{ padding: '6px 12px', fontSize: '12px', color: '#e2e8f0', cursor: 'pointer' }}>Duplicate</div>
+                    <div className="ctx-item" onClick={handleRenameStart} style={{ padding: '6px 12px', fontSize: '12px', color: '#e2e8f0', cursor: 'pointer' }}>Rename</div>
+                    <div className="ctx-item" onClick={handleDelete} style={{ padding: '6px 12px', fontSize: '12px', color: '#ef4444', cursor: 'pointer', borderTop: '1px solid #334155' }}>Delete</div>
+                </div>
+            )}
+
+            <style>{`
+                .ctx-item:hover { background: #334155; }
+            `}</style>
+
+            {/* Rename Modal */}
+            {showRenameModal && (
+                <RenameModal
+                    initialName={renameOldName}
+                    onConfirm={handleRenameConfirm}
+                    onCancel={() => setShowRenameModal(false)}
+                />
+            )}
+        </div>
+    );
+};
+
+// Simple inline modal for rename
+const RenameModal = ({ initialName, onConfirm, onCancel }: any) => {
+    const [name, setName] = useState(initialName);
+    return (
+        <div style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000
+        }} onClick={onCancel}>
+            <div style={{ background: '#1e293b', padding: '20px', borderRadius: '8px', width: '300px', border: '1px solid #475569' }} onClick={e => e.stopPropagation()}>
+                <h3 style={{ color: '#e2e8f0', marginTop: 0 }}>Rename Query</h3>
+                <input
+                    value={name}
+                    onChange={e => setName(e.target.value)}
+                    autoFocus
+                    style={{ width: '100%', padding: '8px', background: '#0f172a', border: '1px solid #334155', color: '#fff', borderRadius: '4px', marginBottom: '15px' }}
+                />
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                    <button onClick={onCancel} style={{ padding: '6px 12px', background: 'transparent', color: '#94a3b8', border: '1px solid #475569', borderRadius: '4px', cursor: 'pointer' }}>Cancel</button>
+                    <button onClick={() => onConfirm(name)} style={{ padding: '6px 12px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Save</button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+export default SavedQueriesSidebar;
 
 
 
@@ -9217,6 +9842,475 @@ ANALYZE;
 2026-01-29 11:07:05,005 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
 2026-01-29 16:45:39,545 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
 2026-01-29 16:45:39,599 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-30 13:31:41,235 - root - INFO - Server logging initialized successfully.
+2026-01-30 13:55:13,167 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-30 13:55:13,265 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-30 15:00:44,794 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-30 15:00:44,854 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-30 15:01:19,474 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 404 Not Found"
+2026-01-30 15:01:44,433 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 200 OK"
+2026-01-30 15:01:44,438 - app.ai - INFO - Create SQL Stream TTFT: 11.1821s
+2026-01-30 15:01:46,019 - app.ai - INFO - ✅ Generated Stream:
+```sql
+SELECT id, name, runtime, budget, revenue
+FROM movies
+WHERE date BETWEEN '2025-01-01' AND '2025-12-31'
+ORDER BY vote_average DESC NULLS LAST
+LIMIT 5;
+```
+2026-01-30 15:02:04,095 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 404 Not Found"
+2026-01-30 15:02:10,918 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 200 OK"
+2026-01-30 15:02:10,919 - app.ai - INFO - Create SQL Stream TTFT: 0.6135s
+2026-01-30 15:02:13,404 - app.ai - INFO - ✅ Generated Stream:
+```sql
+SELECT id, name, runtime, budget, revenue
+FROM movies
+WHERE date BETWEEN '2025-01-01' AND '2025-12-31'
+AND id IN (
+    SELECT movie_id
+    FROM casts_view
+    JOIN jobs ON casts_view.job_id = jobs.id
+    WHERE job_name = 'Actor'
+)
+ORDER BY vote_average DESC NULLS LAST
+LIMIT 5;
+```
+2026-01-30 15:39:49,389 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-30 15:39:49,431 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-30 15:40:01,475 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 404 Not Found"
+2026-01-30 15:40:17,130 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 200 OK"
+2026-01-30 15:40:17,131 - app.ai - INFO - Create SQL Stream TTFT: 0.7110s
+2026-01-30 15:40:18,656 - app.ai - INFO - ✅ Generated Stream:
+```sql
+SELECT m.id, m.name, m.vote_average, m.votes_count
+FROM movies m
+WHERE EXTRACT(YEAR FROM m.date) = 2025
+ORDER BY m.vote_average DESC NULLS LAST,
+         m.votes_count DESC NULLS LAST;
+```
+2026-01-30 15:40:41,022 - app.ai - INFO - DEBUG: analyze_parameterized_query called with SQL: SELECT m.id, m.name, m.vote_average, m.votes_count
+FROM movies m
+WHERE EXTRACT(YEAR FROM m.date) = 2025
+ORDER BY m.vote_average DESC NULLS LAST,
+         m.votes_count DESC NULLS LAST;
+
+2026-01-30 15:40:41,028 - app.ai - INFO - DEBUG: Regex found params: []
+2026-01-30 15:40:44,429 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 200 OK"
+2026-01-30 15:44:34,670 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 200 OK"
+2026-01-30 15:44:34,672 - app.ai - INFO - Create SQL Stream TTFT: 2.2533s
+2026-01-30 15:44:35,178 - app.ai - INFO - ✅ Generated Stream:
+```sql
+CREATE INDEX idx_jobs_name ON jobs (name);
+ANALYZE;
+```
+2026-01-30 15:51:24,299 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 200 OK"
+2026-01-30 15:51:24,301 - app.ai - INFO - Create SQL Stream TTFT: 2.3579s
+2026-01-30 15:51:24,799 - app.ai - INFO - ✅ Generated Stream:
+```sql
+CREATE INDEX idx_jobs_name ON jobs (name);
+ANALYZE;
+```
+2026-01-30 17:41:51,019 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 404 Not Found"
+2026-01-30 17:42:24,111 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 200 OK"
+2026-01-30 17:42:24,114 - app.ai - INFO - Create SQL Stream TTFT: 9.5612s
+2026-01-30 17:42:27,427 - app.ai - INFO - ✅ Generated Stream:
+```sql
+SELECT DISTINCT m.id, m.name
+FROM movies m
+JOIN casts c1 ON m.id = c1.movie_id AND c1.person_id = (SELECT id FROM people WHERE name = 'Tom Hanks')
+JOIN casts c2 ON m.id = c2.movie_id AND c2.person_id = (SELECT id FROM people WHERE name = 'Meg Ryan')
+WHERE c1.job_id = (SELECT id FROM jobs WHERE name = 'Actor') AND c2.job_id = (SELECT id FROM jobs WHERE name = 'Actor');
+```
+2026-01-30 17:42:43,627 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 404 Not Found"
+2026-01-30 17:42:49,850 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 200 OK"
+2026-01-30 17:42:49,850 - app.ai - INFO - Create SQL Stream TTFT: 0.6378s
+2026-01-30 17:42:52,897 - app.ai - INFO - ✅ Generated Stream:
+```sql
+SELECT DISTINCT m.id, m.name, m.revenue
+FROM movies m
+JOIN casts c1 ON m.id = c1.movie_id AND c1.person_id = (SELECT id FROM people WHERE name = 'Tom Hanks')
+JOIN casts c2 ON m.id = c2.movie_id AND c2.person_id = (SELECT id FROM people WHERE name = 'Meg Ryan')
+WHERE c1.job_id = (SELECT id FROM jobs WHERE name = 'Actor') AND c2.job_id = (SELECT id FROM jobs WHERE name = 'Actor');
+```
+2026-01-30 17:42:57,223 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 404 Not Found"
+2026-01-30 17:43:11,054 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-30 17:43:11,086 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-30 17:44:27,801 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 200 OK"
+2026-01-30 17:44:27,801 - app.ai - INFO - Create SQL Stream TTFT: 0.5830s
+2026-01-30 17:44:31,301 - app.ai - INFO - ✅ Generated Stream:
+```sql
+SELECT DISTINCT m.id, m.name, (m.revenue / 1000000) AS revenue_in_millions
+FROM movies m
+JOIN casts c1 ON m.id = c1.movie_id AND c1.person_id = (SELECT id FROM people WHERE name = 'Tom Hanks')
+JOIN casts c2 ON m.id = c2.movie_id AND c2.person_id = (SELECT id FROM people WHERE name = 'Meg Ryan')
+WHERE c1.job_id = (SELECT id FROM jobs WHERE name = 'Actor') AND c2.job_id = (SELECT id FROM jobs WHERE name = 'Actor');
+```
+2026-01-30 17:44:54,044 - app.ai - INFO - DEBUG: analyze_parameterized_query called with SQL: SELECT DISTINCT m.id, m.name, (m.revenue / 1000000) AS revenue_in_millions
+FROM movies m
+JOIN casts c1 ON m.id = c1.movie_id AND c1.person_id = (SELECT id FROM people WHERE name = 'Tom Hanks')
+JOIN casts c2 ON m.id = c2.movie_id AND c2.person_id = (SELECT id FROM people WHERE name = 'Meg Ryan')
+WHERE c1.job_id = (SELECT id FROM jobs WHERE name = 'Actor') AND c2.job_id = (SELECT id FROM jobs WHERE name = 'Actor');
+
+2026-01-30 17:44:54,045 - app.ai - INFO - DEBUG: Regex found params: []
+2026-01-30 17:44:58,886 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 200 OK"
+2026-01-30 17:47:31,378 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-30 17:47:31,405 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-30 17:47:46,538 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-30 17:47:46,566 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-30 17:47:49,282 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-30 17:47:49,313 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-30 17:48:19,895 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-30 17:48:19,921 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-30 17:52:11,017 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-30 17:52:11,058 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-30 17:55:56,075 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-30 17:55:56,109 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-30 18:04:27,316 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-30 18:04:27,343 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-30 18:17:56,652 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 404 Not Found"
+2026-01-30 18:18:07,259 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 200 OK"
+2026-01-30 18:18:07,260 - app.ai - INFO - Create SQL Stream TTFT: 0.8853s
+2026-01-30 18:18:08,767 - app.ai - INFO - ✅ Generated Stream:
+```sql
+SELECT 
+    b.id AS book_id,
+    b.title AS book_title,
+    up.page_number AS user_page_number,
+    up.last_updated AS last_updated
+FROM 
+    books b
+LEFT JOIN 
+    user_progress up ON b.id = up.book_id;
+```
+2026-01-30 18:22:06,784 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-30 18:22:06,814 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-30 18:22:12,066 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-30 18:22:12,091 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-31 04:07:26,682 - root - INFO - Server logging initialized successfully.
+2026-01-31 04:08:24,403 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-31 04:07:41,579 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-31 06:51:15,127 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-31 06:51:15,164 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-31 06:53:11,658 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-31 06:53:11,685 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-31 06:56:24,484 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-31 06:56:24,507 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-31 06:58:02,070 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 404 Not Found"
+2026-01-31 06:58:27,118 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 200 OK"
+2026-01-31 06:58:27,120 - app.ai - INFO - Create SQL Stream TTFT: 9.3055s
+2026-01-31 06:58:28,989 - app.ai - INFO - ✅ Generated Stream:
+```sql
+SELECT m.id, m.name
+FROM movies m
+JOIN movie_categories mc ON m.id = mc.movie_id
+JOIN categories c ON mc.category_id = c.id
+WHERE c.name = 'Crime' AND EXISTS (
+    SELECT 1
+    FROM casts_view cv
+    WHERE cv.movie_id = m.id AND cv.language = 'Tamil'
+);
+```
+2026-01-31 06:59:11,700 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 404 Not Found"
+2026-01-31 06:59:20,098 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 200 OK"
+2026-01-31 06:59:20,098 - app.ai - INFO - Create SQL Stream TTFT: 0.4419s
+2026-01-31 06:59:21,928 - app.ai - INFO - ✅ Generated Stream:
+```sql
+SELECT m.id, m.name
+FROM movies m
+JOIN movie_categories mc ON m.id = mc.movie_id
+JOIN categories c ON mc.category_id = c.id
+WHERE c.name = 'Crime' AND EXISTS (
+    SELECT 1
+    FROM casts_view cv
+    WHERE cv.movie_id = m.id AND cv.language = 'Tamil'
+);
+```
+2026-01-31 06:59:37,607 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 404 Not Found"
+2026-01-31 07:00:36,713 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 200 OK"
+2026-01-31 07:00:36,713 - app.ai - INFO - Create SQL Stream TTFT: 0.4761s
+2026-01-31 07:00:39,269 - app.ai - INFO - ✅ Generated Stream:
+```sql
+SELECT m.id, m.name
+FROM movies m
+JOIN movie_categories mc ON m.id = mc.movie_id
+JOIN categories c ON mc.category_id = c.id
+WHERE c.name = 'Crime' AND EXISTS (
+    SELECT 1
+    FROM casts cv
+    JOIN people p ON cv.person_id = p.id
+    JOIN jobs j ON cv.job_id = j.id
+    WHERE cv.movie_id = m.id AND p.language = 'Tamil' AND j.name = 'Actor'
+);
+```
+2026-01-31 07:00:40,175 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 404 Not Found"
+2026-01-31 07:01:04,873 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 200 OK"
+2026-01-31 07:01:04,873 - app.ai - INFO - Create SQL Stream TTFT: 0.5057s
+2026-01-31 07:01:07,431 - app.ai - INFO - ✅ Generated Stream:
+```sql
+SELECT m.id, m.name
+FROM movies m
+JOIN movie_categories mc ON m.id = mc.movie_id
+JOIN categories c ON mc.category_id = c.id
+WHERE c.name = 'Crime' AND EXISTS (
+    SELECT 1
+    FROM casts cv
+    JOIN people p ON cv.person_id = p.id
+    JOIN jobs j ON cv.job_id = j.id
+    WHERE cv.movie_id = m.id AND p.language = 'Tamil' AND j.name = 'Actor'
+);
+```
+2026-01-31 07:01:23,617 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 404 Not Found"
+2026-01-31 07:02:27,506 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 200 OK"
+2026-01-31 07:02:27,506 - app.ai - INFO - Create SQL Stream TTFT: 43.4525s
+2026-01-31 07:01:47,184 - app.ai - INFO - ✅ Generated Stream:
+```sql
+SELECT m.id, m.name
+FROM movies m
+JOIN movie_categories mc ON m.id = mc.movie_id
+JOIN categories c ON mc.category_id = c.id
+WHERE c.name = 'Crime' AND EXISTS (
+    SELECT 1
+    FROM casts cv
+    JOIN people p ON cv.person_id = p.id
+    JOIN jobs j ON cv.job_id = j.id
+    WHERE cv.movie_id = m.id AND p.language = 'Tamil' AND j.name = 'Actor'
+);
+```
+2026-01-31 07:04:15,491 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 404 Not Found"
+2026-01-31 07:04:36,999 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 200 OK"
+2026-01-31 07:04:36,999 - app.ai - INFO - Create SQL Stream TTFT: 0.5881s
+2026-01-31 07:04:37,411 - app.ai - INFO - ✅ Generated Stream:
+```sql
+SELECT * FROM movie_languages
+WHERE language = 'ta';
+```
+2026-01-31 07:04:52,119 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 404 Not Found"
+2026-01-31 07:04:58,575 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 200 OK"
+2026-01-31 07:04:58,575 - app.ai - INFO - Create SQL Stream TTFT: 0.5538s
+2026-01-31 07:04:59,832 - app.ai - INFO - ✅ Generated Stream:
+```sql
+SELECT m.id, m.name 
+FROM movies m
+JOIN movie_languages ml ON m.id = ml.movie_id
+JOIN categories c ON m.id = c.movie_id
+WHERE ml.language = 'ta' AND c.name = 'Crime';
+```
+2026-01-31 07:05:16,218 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 404 Not Found"
+2026-01-31 07:05:20,013 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 200 OK"
+2026-01-31 07:05:20,013 - app.ai - INFO - Create SQL Stream TTFT: 0.5976s
+2026-01-31 07:05:21,267 - app.ai - INFO - ✅ Generated Stream:
+```sql
+SELECT m.id, m.name 
+FROM movies m
+JOIN movie_languages ml ON m.id = ml.movie_id
+JOIN categories c ON m.id = c.movie_id
+WHERE ml.language = 'ta' AND c.name = 'Crime';
+```
+2026-01-31 07:06:34,292 - app.ai - INFO - DEBUG: Gemini URL: https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:streamGenerateContent?key=HIDDEN
+2026-01-31 07:06:37,403 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:streamGenerateContent?key=AIzaSyA8Bi0aJi8e1Nr841l_amjGmUPAHEHTomw "HTTP/1.1 200 OK"
+2026-01-31 07:08:06,877 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 404 Not Found"
+2026-01-31 07:08:28,867 - app.ai - INFO - DEBUG: Gemini URL: https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:streamGenerateContent?key=HIDDEN
+2026-01-31 07:08:31,397 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:streamGenerateContent?key=AIzaSyA8Bi0aJi8e1Nr841l_amjGmUPAHEHTomw "HTTP/1.1 200 OK"
+2026-01-31 07:09:21,551 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 404 Not Found"
+2026-01-31 07:09:31,018 - app.ai - INFO - DEBUG: Gemini URL: https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:streamGenerateContent?key=HIDDEN
+2026-01-31 07:09:33,923 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:streamGenerateContent?key=AIzaSyA8Bi0aJi8e1Nr841l_amjGmUPAHEHTomw "HTTP/1.1 200 OK"
+2026-01-31 07:10:23,533 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 404 Not Found"
+2026-01-31 07:09:48,600 - app.ai - INFO - DEBUG: Gemini URL: https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:streamGenerateContent?key=HIDDEN
+2026-01-31 07:09:53,362 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:streamGenerateContent?key=AIzaSyA8Bi0aJi8e1Nr841l_amjGmUPAHEHTomw "HTTP/1.1 200 OK"
+2026-01-31 07:12:42,173 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-31 07:12:42,198 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-31 07:13:23,505 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 404 Not Found"
+2026-01-31 07:14:05,714 - app.ai - INFO - DEBUG: Gemini URL: https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:streamGenerateContent?key=HIDDEN
+2026-01-31 07:14:10,841 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:streamGenerateContent?key=AIzaSyA8Bi0aJi8e1Nr841l_amjGmUPAHEHTomw "HTTP/1.1 200 OK"
+2026-01-31 07:14:34,641 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-31 07:14:34,665 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-31 07:14:59,565 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 404 Not Found"
+2026-01-31 07:15:31,762 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 200 OK"
+2026-01-31 07:15:31,762 - app.ai - INFO - Create SQL Stream TTFT: 0.4643s
+2026-01-31 07:15:33,664 - app.ai - INFO - ✅ Generated Stream:
+```sql
+SELECT m.id, m.name
+FROM movies m
+JOIN casts c ON m.id = c.movie_id
+JOIN people p ON c.person_id = p.id
+JOIN job_names jn ON c.job_id = jn.job_id
+WHERE p.name = 'Leonardo Di Caprio' AND jn.name = 'Actor'
+ORDER BY m.date DESC NULLS LAST;
+```
+2026-01-31 07:17:24,516 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 404 Not Found"
+2026-01-31 07:17:04,576 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 200 OK"
+2026-01-31 07:17:04,577 - app.ai - INFO - Create SQL Stream TTFT: 0.5849s
+2026-01-31 07:17:07,212 - app.ai - INFO - ✅ Generated Stream:
+```sql
+SELECT m.id, m.name
+FROM movies m
+JOIN casts c ON m.id = c.movie_id
+JOIN people p ON c.person_id = p.id
+JOIN job_names jn ON c.job_id = jn.job_id
+WHERE p.name = 'Leonardo DiCaprio' AND jn.name = 'Actor'
+AND EXISTS (
+    SELECT 1
+    FROM movie_languages ml
+    WHERE ml.movie_id = m.id AND ml.language = 'English'
+)
+ORDER BY m.date DESC NULLS LAST;
+```
+2026-01-31 07:19:15,127 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 404 Not Found"
+2026-01-31 07:19:23,526 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 200 OK"
+2026-01-31 07:19:23,526 - app.ai - INFO - Create SQL Stream TTFT: 0.5355s
+2026-01-31 07:19:26,183 - app.ai - INFO - ✅ Generated Stream:
+```sql
+SELECT DISTINCT m.id, m.name
+FROM movies m
+JOIN casts c ON m.id = c.movie_id
+JOIN people p ON c.person_id = p.id
+JOIN job_names jn ON c.job_id = jn.job_id
+WHERE p.name = 'Leonardo DiCaprio' AND jn.name = 'Actor'
+AND EXISTS (
+    SELECT 1
+    FROM movie_languages ml
+    WHERE ml.movie_id = m.id AND ml.language = 'en'
+)
+ORDER BY m.date DESC NULLS LAST;
+```
+2026-01-31 07:20:11,812 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 404 Not Found"
+2026-01-31 07:20:56,948 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 200 OK"
+2026-01-31 07:20:56,948 - app.ai - INFO - Create SQL Stream TTFT: 0.6206s
+2026-01-31 07:20:59,560 - app.ai - INFO - ✅ Generated Stream:
+```sql
+SELECT DISTINCT m.id, m.name, m.date
+FROM movies m
+JOIN casts c ON m.id = c.movie_id
+JOIN people p ON c.person_id = p.id
+JOIN job_names jn ON c.job_id = jn.job_id
+WHERE p.name = 'Leonardo DiCaprio' AND jn.name = 'Actor'
+AND EXISTS (
+    SELECT 1
+    FROM movie_languages ml
+    WHERE ml.movie_id = m.id AND ml.language = 'en'
+)
+ORDER BY m.date DESC NULLS LAST;
+```
+2026-01-31 07:21:24,676 - app.ai - INFO - DEBUG: analyze_parameterized_query called with SQL: SELECT DISTINCT m.id, m.name, m.date
+FROM movies m
+JOIN casts c ON m.id = c.movie_id
+JOIN people p ON c.person_id = p.id
+JOIN job_names jn ON c.job_id = jn.job_id
+WHERE p.name = 'Leonardo DiCaprio' AND jn.name = 'Actor'
+AND EXISTS (
+    SELECT 1
+    FROM movie_languages ml
+    WHERE ml.movie_id = m.id AND ml.language = 'en'
+)
+ORDER BY m.date DESC NULLS LAST;
+
+2026-01-31 07:21:24,677 - app.ai - INFO - DEBUG: Regex found params: []
+2026-01-31 07:21:29,480 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 200 OK"
+2026-01-31 07:22:56,595 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 200 OK"
+2026-01-31 07:22:56,604 - app.ai - INFO - Create SQL Stream TTFT: 2.2533s
+2026-01-31 07:22:57,056 - app.ai - INFO - ✅ Generated Stream:
+```sql
+CREATE INDEX idx_people_name ON people (name);
+ANALYZE;
+```
+2026-01-31 10:21:45,712 - root - INFO - Server logging initialized successfully.
+2026-01-31 10:22:42,030 - root - INFO - Server logging initialized successfully.
+2026-01-31 10:22:37,100 - root - INFO - Server logging initialized successfully.
+2026-01-31 10:27:23,451 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-31 10:27:23,478 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-31 10:28:35,233 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 404 Not Found"
+2026-01-31 10:28:57,566 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 200 OK"
+2026-01-31 10:28:57,567 - app.ai - INFO - Create SQL Stream TTFT: 18.1952s
+2026-01-31 10:28:57,959 - app.ai - INFO - ✅ Generated Stream:
+```sql
+SELECT * FROM books ORDER BY created_at DESC NULLS LAST;
+```
+2026-01-31 15:27:42,049 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-31 15:27:42,196 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-31 16:17:58,998 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-31 16:17:59,049 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-31 16:18:47,231 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-31 16:18:47,269 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-31 18:09:15,245 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 404 Not Found"
+2026-01-31 18:09:55,511 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-31 18:09:55,549 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-31 18:10:44,375 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 200 OK"
+2026-01-31 18:10:44,380 - app.ai - INFO - Create SQL Stream TTFT: 68.8638s
+2026-01-31 18:10:46,158 - app.ai - INFO - ✅ Generated Stream:
+```sql
+SELECT m.id, m.name, m.vote_average
+FROM movies m
+JOIN movie_countries mc ON m.id = mc.movie_id
+WHERE mc.country = 'USA' AND EXTRACT(YEAR FROM m.date) = 2025
+ORDER BY m.votes_count ASC NULLS LAST
+LIMIT 1;
+```
+2026-01-31 18:10:22,160 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 404 Not Found"
+2026-01-31 18:10:27,304 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 200 OK"
+2026-01-31 18:10:27,305 - app.ai - INFO - Create SQL Stream TTFT: 0.6046s
+2026-01-31 18:10:28,567 - app.ai - INFO - ✅ Generated Stream:
+```sql
+SELECT m.id, m.name, m.vote_average
+FROM movies m
+WHERE EXTRACT(YEAR FROM m.date) = 2025
+ORDER BY m.votes_count DESC NULLS LAST
+LIMIT 1;
+```
+2026-01-31 18:10:37,202 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 404 Not Found"
+2026-01-31 18:10:45,867 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 200 OK"
+2026-01-31 18:10:45,868 - app.ai - INFO - Create SQL Stream TTFT: 0.4812s
+2026-01-31 18:10:47,886 - app.ai - INFO - ✅ Generated Stream:
+```sql
+SELECT m.id, m.name, m.vote_average
+FROM movies m
+JOIN movie_keywords mk ON m.id = mk.movie_id
+JOIN categories c ON mk.category_id = c.id
+WHERE EXTRACT(YEAR FROM m.date) = 2025 AND c.name = 'Comedy'
+ORDER BY m.votes_count DESC NULLS LAST
+LIMIT 1;
+```
+2026-01-31 18:10:53,058 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 404 Not Found"
+2026-01-31 18:12:36,035 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 200 OK"
+2026-01-31 18:12:36,036 - app.ai - INFO - Create SQL Stream TTFT: 0.5053s
+2026-01-31 18:12:38,096 - app.ai - INFO - ✅ Generated Stream:
+```sql
+SELECT m.id, m.name, m.vote_average
+FROM movies m
+JOIN movie_keywords mk ON m.id = mk.movie_id
+JOIN categories c ON mk.category_id = c.id
+WHERE EXTRACT(YEAR FROM m.date) = 2025 AND c.name = 'Comedy'
+ORDER BY m.revenue DESC NULLS LAST
+LIMIT 1;
+```
+2026-01-31 18:13:00,367 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 404 Not Found"
+2026-01-31 18:13:05,224 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 200 OK"
+2026-01-31 18:13:05,224 - app.ai - INFO - Create SQL Stream TTFT: 0.5658s
+2026-01-31 18:13:48,624 - app.ai - INFO - ✅ Generated Stream:
+```sql
+SELECT m.id, m.name, m.vote_average
+FROM movies m
+WHERE EXTRACT(YEAR FROM m.date) = 2025
+ORDER BY m.revenue DESC NULLS LAST
+LIMIT 1;
+```
+2026-01-31 18:13:15,300 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 404 Not Found"
+2026-01-31 18:13:23,023 - httpx - INFO - HTTP Request: POST http://host.docker.internal:11434/api/generate "HTTP/1.1 200 OK"
+2026-01-31 18:13:23,023 - app.ai - INFO - Create SQL Stream TTFT: 0.4744s
+2026-01-31 18:13:24,688 - app.ai - INFO - ✅ Generated Stream:
+```sql
+SELECT m.id, m.name, m.vote_average
+FROM movies m
+JOIN movie_countries mc ON m.id = mc.movie_id
+WHERE EXTRACT(YEAR FROM m.date) = 2025 AND mc.country = 'USA'
+ORDER BY m.revenue DESC NULLS LAST
+LIMIT 1;
+```
+2026-01-31 18:23:36,354 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-01-31 18:23:36,382 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-02-01 09:23:38,639 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-02-01 09:23:38,859 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-02-01 09:31:00,078 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
+2026-02-01 09:31:00,114 - httpx - INFO - HTTP Request: GET http://host.docker.internal:11434/api/tags "HTTP/1.1 200 OK"
 
 
 
@@ -9387,63 +10481,6 @@ else:
         print(f"JSON Decode Error: {e}")
     except Exception as e:
         print(f"Error: {e}")
-
-
-
-============================================================
-FILE PATH: ./backend/server_8001.log
-============================================================
-nohup: ignoring input
-INFO:     Will watch for changes in these directories: ['/home/rajesh/pgray/backend']
-INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
-INFO:     Started reloader process [3291473] using StatReload
-Process SpawnProcess-1:
-Traceback (most recent call last):
-  File "/usr/lib/python3.12/multiprocessing/process.py", line 314, in _bootstrap
-    self.run()
-  File "/usr/lib/python3.12/multiprocessing/process.py", line 108, in run
-    self._target(*self._args, **self._kwargs)
-  File "/home/rajesh/.local/lib/python3.12/site-packages/uvicorn/_subprocess.py", line 80, in subprocess_started
-    target(sockets=sockets)
-  File "/home/rajesh/.local/lib/python3.12/site-packages/uvicorn/server.py", line 67, in run
-    return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/usr/lib/python3.12/asyncio/runners.py", line 194, in run
-    return runner.run(main)
-           ^^^^^^^^^^^^^^^^
-  File "/usr/lib/python3.12/asyncio/runners.py", line 118, in run
-    return self._loop.run_until_complete(task)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/usr/lib/python3.12/asyncio/base_events.py", line 687, in run_until_complete
-    return future.result()
-           ^^^^^^^^^^^^^^^
-  File "/home/rajesh/.local/lib/python3.12/site-packages/uvicorn/server.py", line 71, in serve
-    await self._serve(sockets)
-  File "/home/rajesh/.local/lib/python3.12/site-packages/uvicorn/server.py", line 78, in _serve
-    config.load()
-  File "/home/rajesh/.local/lib/python3.12/site-packages/uvicorn/config.py", line 439, in load
-    self.loaded_app = import_from_string(self.app)
-                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/rajesh/.local/lib/python3.12/site-packages/uvicorn/importer.py", line 22, in import_from_string
-    raise exc from None
-  File "/home/rajesh/.local/lib/python3.12/site-packages/uvicorn/importer.py", line 19, in import_from_string
-    module = importlib.import_module(module_str)
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/usr/lib/python3.12/importlib/__init__.py", line 90, in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
-  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
-  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
-  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
-  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
-  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
-  File "/home/rajesh/pgray/backend/app/main.py", line 6, in <module>
-    from app.connection import test_connection
-  File "/home/rajesh/pgray/backend/app/connection.py", line 1, in <module>
-    import psycopg2
-ModuleNotFoundError: No module named 'psycopg2'
-INFO:     Stopping reloader process [3291473]
 
 
 
@@ -10132,9 +11169,12 @@ def _set_search_path(conn, schema_name: str):
 def test_connection(info: ConnectionInfo) -> bool:
     try:
         # Construct DSN
-        dsn = f"host={info.host} port={info.port} dbname={info.database} user={info.username} password={info.password}"
+dsn = (
+            f"host={info.host} port={info.port} dbname={info.database} "
+            f"user={info.username} password={info.password} "
+            f"connect_timeout=3 gssencmode=disable"
+        )
         conn = psycopg2.connect(dsn)
-
         # Ensure unqualified table names resolve in the selected schema
         schema_name = getattr(info, 'schema_name', None) or getattr(info, 'schema', None) or 'public'
         _set_search_path(conn, schema_name)
@@ -10153,29 +11193,49 @@ FILE PATH: ./backend/app/saved_queries.py
 import os
 import glob
 import json
+import shutil
+import datetime
 
 SAVED_QUERIES_DIR = "saved_queries"
 
-import datetime
+def get_connection_dir(connection: dict = None):
+    """
+    Returns the directory path for a specific connection.
+    If connection is None, returns global SAVED_QUERIES_DIR.
+    Structure: saved_queries/<host>_<port>/<database>/
+    """
+    if not connection:
+        return SAVED_QUERIES_DIR
+    
+    host = connection.get("host", "localhost")
+    port = connection.get("port", 5432)
+    db = connection.get("database", "postgres")
+    
+    # Sanitize
+    host = host.replace(":", "_").replace("/", "_")
+    db = db.replace(":", "_").replace("/", "_")
+    
+    path = os.path.join(SAVED_QUERIES_DIR, f"{host}_{port}", db)
+    return path
 
-def list_saved_queries():
+def list_saved_queries(connection: dict = None):
     try:
-        print("DEBUG: Listing saved queries...")
-        if not os.path.exists(SAVED_QUERIES_DIR):
+        base_dir = get_connection_dir(connection)
+        print(f"DEBUG: Listing saved queries from {base_dir}...")
+        
+        if not os.path.exists(base_dir):
             print("DEBUG: Directory not found")
             return []
         
         # Load from session_history.json
-        history_path = os.path.join(SAVED_QUERIES_DIR, "session_history.json")
+        history_path = os.path.join(base_dir, "session_history.json")
         session_titles = []
         if os.path.exists(history_path):
              try:
                 with open(history_path, "r") as f:
                     data = json.load(f)
-                    print(f"DEBUG: Loaded data with keys: {data.keys()}")
                     # specific sort by time desc if available
                     sessions = data.get("sessions", [])
-                    print(f"DEBUG: Found {len(sessions)} sessions")
                     # sort by time descending
                     sessions.sort(key=lambda s: s.get("time", ""), reverse=True)
                     session_titles = [s.get("title") for s in sessions if s.get("title")]
@@ -10188,10 +11248,12 @@ def list_saved_queries():
         print(f"Error listing saved queries: {e}")
         return []
 
-def list_parameterized_queries():
-    """Lists queries from queries.json"""
+def list_parameterized_queries(connection: dict = None):
+    """Lists queries from queries.json for a specific connection"""
     try:
-        filepath = os.path.join(SAVED_QUERIES_DIR, "queries.json")
+        base_dir = get_connection_dir(connection)
+        filepath = os.path.join(base_dir, "queries.json")
+        
         if os.path.exists(filepath):
              with open(filepath, "r") as f:
                  data = json.load(f)
@@ -10201,22 +11263,20 @@ def list_parameterized_queries():
         print(f"Error listing parameterized queries: {e}")
         return []
 
-def get_saved_query(name: str):
+def get_saved_query(name: str, connection: dict = None):
     """Returns dict { sql, history, title } from session_history.json"""
     try:
-        print(f"DEBUG: Getting query for: {name}")
+        base_dir = get_connection_dir(connection)
+        print(f"DEBUG: Getting query {name} from {base_dir}")
+        
         # Check session_history.json
-        history_path = os.path.join(SAVED_QUERIES_DIR, "session_history.json")
+        history_path = os.path.join(base_dir, "session_history.json")
         if os.path.exists(history_path):
              try:
                 with open(history_path, "r") as f:
                     data = json.load(f)
                     for s in data.get("sessions", []):
                         if s.get("title") == name:
-                            # Map simplified 'queries' back to 'history' for frontend (best effort)
-                            # Frontend expects: [{role, content}, ...]
-                            # Saved schema: queries: [{prompt, sql}, ...]
-                            
                             frontend_history = []
                             last_sql = ""
                             
@@ -10225,17 +11285,10 @@ def get_saved_query(name: str):
                                     frontend_history.append({"role": "user", "content": q.get("prompt"), "status": "success"})
                                 if q.get("sql"):
                                     last_sql = q.get("sql")
-                                    # Wrap back in markdown for consistency with frontend expectation or raw?
-                                    # Frontend handles code blocks. Let's wrap it to be safe or raw string?
-                                    # Assistant output usually includes `Title: ...` but we stripped that.
-                                    # Let's just return the SQL in a markdown block as the assistant response
                                     frontend_history.append({"role": "assistant", "content": f"```sql\n{last_sql}\n```", "status": "success"})
                             
-                            # If we have stored 'history' legacy field, prefer that? 
-                            # User wanted simplified schema, so we stick to 'queries'.
-                            
                             return {
-                                "sql": last_sql, # Return the last query's SQL
+                                "sql": last_sql, 
                                 "history": frontend_history,
                                 "title": s.get("title")
                             }
@@ -10247,19 +11300,18 @@ def get_saved_query(name: str):
         print(f"Error reading query: {e}")
         raise e
 
-
-
-def append_session_history(title: str, prompt: str, response: str):
+def append_session_history(title: str, prompt: str, response: str, connection: dict = None):
     """
     Appends a prompt/response pair to the session_history.json file.
-    Uses Simplified Schema: queries [{prompt, sql}]
     """
     try:
-        print(f"DEBUG: Appending to session: {title}")
-        if not os.path.exists(SAVED_QUERIES_DIR):
-            os.makedirs(SAVED_QUERIES_DIR)
+        base_dir = get_connection_dir(connection)
+        print(f"DEBUG: Appending to session {title} in {base_dir}")
+        
+        if not os.path.exists(base_dir):
+            os.makedirs(base_dir)
             
-        filepath = os.path.join(SAVED_QUERIES_DIR, "session_history.json")
+        filepath = os.path.join(base_dir, "session_history.json")
         
         # Load existing history
         data = {"sessions": []}
@@ -10281,7 +11333,6 @@ def append_session_history(title: str, prompt: str, response: str):
         
         # Create new session if not found
         if not session:
-            import datetime
             session = {
                 "time": datetime.datetime.now().isoformat(),
                 "title": title,
@@ -10313,28 +11364,15 @@ def append_session_history(title: str, prompt: str, response: str):
         print(f"Error appending session history: {e}")
         return False
 
-def save_full_session_to_history(title: str, sql: str, history: list):
-    """
-    Upserts a full session state into session_history.json using Simplified Schema.
-    Schema:
-    {
-      "sessions": [
-        {
-          "time": "ISO...",
-          "title": "Title",
-          "queries": [
-             { "prompt": "...", "sql": "..." }
-          ]
-        }
-      ]
-    }
-    """
+def save_full_session_to_history(title: str, sql: str, history: list, connection: dict = None):
     try:
-        print(f"DEBUG: Saving session: {title}")
-        if not os.path.exists(SAVED_QUERIES_DIR):
-            os.makedirs(SAVED_QUERIES_DIR)
+        base_dir = get_connection_dir(connection)
+        print(f"DEBUG: Saving session {title} to {base_dir}")
+        
+        if not os.path.exists(base_dir):
+            os.makedirs(base_dir)
             
-        filepath = os.path.join(SAVED_QUERIES_DIR, "session_history.json")
+        filepath = os.path.join(base_dir, "session_history.json")
         
         data = {"sessions": []}
         if os.path.exists(filepath):
@@ -10344,10 +11382,9 @@ def save_full_session_to_history(title: str, sql: str, history: list):
                     if content:
                         data = json.loads(content)
             except json.JSONDecodeError as e:
-                print(f"DEBUG: Corrupt JSON, starting fresh. Error: {e}")
                 pass 
         
-        # Transform frontend 'history' (list of {role, content}) into simplified 'queries' list
+        # Transform frontend history
         simplified_queries = []
         current_pair = {}
         
@@ -10356,33 +11393,25 @@ def save_full_session_to_history(title: str, sql: str, history: list):
             content = msg.get("content", "")
             
             if role == "user":
-                if "prompt" in current_pair: # Flush previous if no sql
+                if "prompt" in current_pair: 
                     simplified_queries.append(current_pair)
                     current_pair = {}
                 current_pair["prompt"] = content
             elif role == "assistant":
-                # Extract SQL from markdown if present
                 import re
                 sql_match = re.search(r"```sql\s*(.*?)\s*```", content, re.DOTALL)
                 sql_code = sql_match.group(1).strip() if sql_match else content
-                # Strip Title line if any (paranoid check)
                 sql_code = re.sub(r"(^|\n)Title:.*?(\r\n|\n|$)", "", sql_code).strip()
                 
                 current_pair["sql"] = sql_code
                 if "prompt" not in current_pair:
-                    current_pair["prompt"] = "Query" # Fallback if no prompt found?
+                    current_pair["prompt"] = "Query"
                 simplified_queries.append(current_pair)
                 current_pair = {}
                 
-        # Flush last partial
         if "prompt" in current_pair:
              simplified_queries.append(current_pair)
 
-
-        # Upsert Logic:
-        # If title matches an existing session, UPDATE it.
-        # Else APPEND new.
-        
         existing_idx = -1
         for i, s in enumerate(data.get("sessions", [])):
             if s.get("title") == title:
@@ -10396,10 +11425,8 @@ def save_full_session_to_history(title: str, sql: str, history: list):
         }
         
         if existing_idx >= 0:
-            print(f"DEBUG: Updating existing session at index {existing_idx}")
             data["sessions"][existing_idx] = new_session_obj
         else:
-            print("DEBUG: Appending new session")
             data["sessions"].append(new_session_obj)
             
         with open(filepath, "w") as f:
@@ -10411,16 +11438,18 @@ def save_full_session_to_history(title: str, sql: str, history: list):
         print(f"Error saving full session: {e}")
         return False
 
-def save_parameterized_query(name: str, sql: str, params: list, original_sql: str):
+def save_parameterized_query(name: str, sql: str, params: list, original_sql: str, connection: dict = None):
     """
     Saves a parameterized query to queries.json
     """
     try:
-        print(f"DEBUG: Saving parameterized query: {name}")
-        if not os.path.exists(SAVED_QUERIES_DIR):
-            os.makedirs(SAVED_QUERIES_DIR)
+        base_dir = get_connection_dir(connection)
+        print(f"DEBUG: Saving parameterized query {name} to {base_dir}")
+        
+        if not os.path.exists(base_dir):
+            os.makedirs(base_dir)
             
-        filepath = os.path.join(SAVED_QUERIES_DIR, "queries.json")
+        filepath = os.path.join(base_dir, "queries.json")
         
         data = {"queries": []}
         if os.path.exists(filepath):
@@ -10452,24 +11481,26 @@ def save_parameterized_query(name: str, sql: str, params: list, original_sql: st
         print(f"Error saving parameterized query: {e}")
         raise e
 
-def delete_all_saved_queries():
+def delete_all_saved_queries(connection: dict = None):
     try:
-        if os.path.exists(SAVED_QUERIES_DIR):
-            import shutil
-            shutil.rmtree(SAVED_QUERIES_DIR)
-            os.makedirs(SAVED_QUERIES_DIR)
+        base_dir = get_connection_dir(connection)
+        if os.path.exists(base_dir):
+            shutil.rmtree(base_dir)
+            os.makedirs(base_dir)
         return True
     except Exception as e:
         print(f"Error deleting saved queries: {e}")
         return False
 
-def delete_saved_query(query_id: str):
+def delete_saved_query(query_id: str, connection: dict = None):
     """
     Deletes a specific parameterized query by ID.
     """
     try:
-        print(f"DEBUG: Deleting query with ID: {query_id}")
-        filepath = os.path.join(SAVED_QUERIES_DIR, "queries.json")
+        base_dir = get_connection_dir(connection)
+        print(f"DEBUG: Deleting query {query_id} from {base_dir}")
+        filepath = os.path.join(base_dir, "queries.json")
+        
         if not os.path.exists(filepath):
             return False
             
@@ -10905,14 +11936,16 @@ def get_history_items(limit: int = 50) -> List[dict]:
 ============================================================
 FILE PATH: ./backend/app/main.py
 ============================================================
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Query
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import Optional
 from app.models import ConnectionRequest, ExplainRequest, QueryRequest, GenerateSqlRequest, ExplainSqlRequest, ConnectionInfo
 from app.connection import test_connection
 from app.explain import execute_explain, execute_query_results
 from app.history import init_db, add_history_item, get_history_items
+import json
 
 app = FastAPI(title="PGray Backend")
 
@@ -11053,24 +12086,43 @@ class SaveQueryRequest(BaseModel):
     name: str
     sql: str
     history: list = []
+    connection: Optional[ConnectionInfo] = None
 
 @app.get("/api/saved_queries")
-async def get_saved_queries_endpoint():
+async def get_saved_queries_endpoint(connection_json: Optional[str] = Query(None)):
     try:
+        connection = None
+        if connection_json:
+            try:
+                connection = json.loads(connection_json)
+            except:
+                pass
+
         from app.saved_queries import list_saved_queries, list_parameterized_queries
+        
+        # We need to dict-ify if it's pydantic, but here it's just dict if parsed from JSON
         return {
             "status": "success", 
-            "queries": list_saved_queries(),
-            "parameterized": list_parameterized_queries()
+            "queries": list_saved_queries(connection),
+            "parameterized": list_parameterized_queries(connection)
         }
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/api/saved_queries")
-async def delete_all_saved_queries_endpoint():
+async def delete_all_saved_queries_endpoint(connection_json: Optional[str] = Query(None)):
     try:
+        connection = None
+        if connection_json:
+             try:
+                connection = json.loads(connection_json)
+             except:
+                pass
+
         from app.saved_queries import delete_all_saved_queries
-        success = delete_all_saved_queries()
+        success = delete_all_saved_queries(connection)
         if success:
              return {"status": "success"}
         else:
@@ -11081,17 +12133,24 @@ async def delete_all_saved_queries_endpoint():
 @app.post("/api/saved_queries")
 async def save_query_endpoint(request: SaveQueryRequest):
     try:
-        from app.saved_queries import save_query
-        name = save_query(request.name, request.sql, request.history)
-        return {"status": "success", "name": name}
+        pass 
+        # Legacy save_query used for sessions? 
+        return {"status": "error", "message": "Endpoint deprecated or not implemented"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/saved_queries/{name}")
-async def get_saved_query_content_endpoint(name: str):
+async def get_saved_query_content_endpoint(name: str, connection_json: Optional[str] = Query(None)):
     try:
+        connection = None
+        if connection_json:
+            try:
+                connection = json.loads(connection_json)
+            except:
+                pass
+
         from app.saved_queries import get_saved_query
-        data = get_saved_query(name) # returns dict {sql, history}
+        data = get_saved_query(name, connection) 
         if data is None:
              raise HTTPException(status_code=404, detail="Query not found")
         return {"status": "success", "data": data}
@@ -11117,12 +12176,16 @@ class HistoryTurnRequest(BaseModel):
     title: str
     prompt: str
     response: str
+    connection: Optional[ConnectionInfo] = None
 
 @app.post("/api/history/append")
 async def append_history_endpoint(request: HistoryTurnRequest):
     try:
         from app.saved_queries import append_session_history
-        success = append_session_history(request.title, request.prompt, request.response)
+        # Convert ConnectionInfo pydantic to dict
+        conn_dict = request.connection.model_dump() if request.connection else None
+        
+        success = append_session_history(request.title, request.prompt, request.response, conn_dict)
         if success:
             return {"status": "success"}
         else:
@@ -11134,18 +12197,22 @@ class FullSessionRequest(BaseModel):
     title: str
     sql: str
     history: list
+    connection: Optional[ConnectionInfo] = None
 
 @app.post("/api/history/save_session")
 async def save_full_session_endpoint(request: FullSessionRequest):
     try:
         from app.saved_queries import save_full_session_to_history
-        success = save_full_session_to_history(request.title, request.sql, request.history)
+        conn_dict = request.connection.model_dump() if request.connection else None
+        
+        success = save_full_session_to_history(request.title, request.sql, request.history, conn_dict)
         if success:
             return {"status": "success"}
         else:
             raise HTTPException(status_code=500, detail="Failed to save session")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/config/connection")
 async def get_connection_config():
     """
@@ -11191,16 +12258,20 @@ class SaveFinalQueryRequest(BaseModel):
     sql: str
     params: list
     original_sql: str
+    connection: Optional[ConnectionInfo] = None
 
 @app.post("/api/queries/save")
 async def save_final_query_endpoint(request: SaveFinalQueryRequest):
     try:
         from app.saved_queries import save_parameterized_query as save_db
+        conn_dict = request.connection.model_dump() if request.connection else None
+        
         saved_record = save_db(
             request.name,
             request.sql,
             request.params,
-            request.original_sql
+            request.original_sql,
+            conn_dict
         )
         return {"status": "success", "data": saved_record}
     except Exception as e:
@@ -11223,10 +12294,17 @@ async def get_distinct_values_endpoint(request: DistinctValuesRequest):
 
 
 @app.delete("/api/queries/{query_id}")
-async def delete_query_endpoint(query_id: str):
+async def delete_query_endpoint(query_id: str, connection_json: Optional[str] = Query(None)):
     try:
+        connection = None
+        if connection_json:
+             try:
+                connection = json.loads(connection_json)
+             except:
+                pass
+
         from app.saved_queries import delete_saved_query
-        success = delete_saved_query(query_id)
+        success = delete_saved_query(query_id, connection)
         if not success:
             raise HTTPException(status_code=404, detail="Query not found")
         return {"status": "success"}
@@ -11254,7 +12332,37 @@ async def warmup_endpoint(request: WarmupRequest, background_tasks: BackgroundTa
         return {"status": "success"}
     except Exception as e:
         # Don't fail the request, just log
-        return {"status": "ignored", "error": str(e)}
+
+class SaveLayoutRequest(BaseModel):
+    layout: dict
+    connection: Optional[ConnectionInfo] = None
+
+@app.post("/api/er_layout")
+async def save_er_layout_endpoint(request: SaveLayoutRequest):
+    try:
+        from app.saved_queries import save_er_layout
+        conn_dict = request.connection.model_dump() if request.connection else None
+        
+        save_er_layout(request.layout, conn_dict)
+        return {"status": "success"}
+    except Exception as e:
+         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/er_layout")
+async def get_er_layout_endpoint(connection_json: Optional[str] = Query(None)):
+    try:
+        connection = None
+        if connection_json:
+            try:
+                connection = json.loads(connection_json)
+            except:
+                pass
+                
+        from app.saved_queries import get_er_layout
+        layout = get_er_layout(connection)
+        return {"status": "success", "layout": layout}
+    except Exception as e:
+         raise HTTPException(status_code=500, detail=str(e))
 
 
 
@@ -11486,6 +12594,63 @@ FILE PATH: ./backend/saved_queries/queries.json
       ],
       "original_sql": "SELECT m1.name AS movie_name, ROUND(m1.revenue / 1000000, 2) AS revenue_in_millions\nFROM movies m1\nJOIN movies m2 ON m1.parent_id = m2.id\nWHERE m2.name = 'James Bond - 007' AND m1.kind = 'movie'\nORDER BY m1.revenue DESC NULLS LAST;\n",
       "created_at": "2026-01-27T17:29:07.723019"
+    },
+    {
+      "id": "20260130154051",
+      "name": "Movies from a Specific Year",
+      "sql": "SELECT m.id, m.name, m.vote_average, m.votes_count\nFROM movies m\nWHERE EXTRACT(YEAR FROM m.date) = :year_val\nORDER BY m.vote_average DESC NULLS LAST,\n         m.votes_count DESC NULLS LAST;\n",
+      "params": [
+        {
+          "name": "year_val",
+          "original_value": "2025",
+          "table": null,
+          "column": null
+        }
+      ],
+      "original_sql": "SELECT m.id, m.name, m.vote_average, m.votes_count\nFROM movies m\nWHERE EXTRACT(YEAR FROM m.date) = 2025\nORDER BY m.vote_average DESC NULLS LAST,\n         m.votes_count DESC NULLS LAST;\n",
+      "created_at": "2026-01-30T15:40:51.842446"
+    },
+    {
+      "id": "20260130174515",
+      "name": "Movies by two Actors together",
+      "sql": "SELECT DISTINCT m.id, m.name, (m.revenue / 1000000) AS revenue_in_millions\nFROM movies m\nJOIN casts c1 ON m.id = c1.movie_id AND c1.person_id = (SELECT id FROM people WHERE name = :actor1_name)\nJOIN casts c2 ON m.id = c2.movie_id AND c2.person_id = (SELECT id FROM people WHERE name = :actor2_name)\nWHERE c1.job_id = (SELECT id FROM jobs WHERE name = 'Actor') AND c2.job_id = (SELECT id FROM jobs WHERE name = 'Actor');\n",
+      "params": [
+        {
+          "name": "actor1_name",
+          "original_value": "'Tom Hanks'",
+          "table": "people",
+          "column": "name"
+        },
+        {
+          "name": "actor2_name",
+          "original_value": "'Meg Ryan'",
+          "table": "people",
+          "column": "name"
+        }
+      ],
+      "original_sql": "SELECT DISTINCT m.id, m.name, (m.revenue / 1000000) AS revenue_in_millions\nFROM movies m\nJOIN casts c1 ON m.id = c1.movie_id AND c1.person_id = (SELECT id FROM people WHERE name = 'Tom Hanks')\nJOIN casts c2 ON m.id = c2.movie_id AND c2.person_id = (SELECT id FROM people WHERE name = 'Meg Ryan')\nWHERE c1.job_id = (SELECT id FROM jobs WHERE name = 'Actor') AND c2.job_id = (SELECT id FROM jobs WHERE name = 'Actor');\n",
+      "created_at": "2026-01-30T17:45:15.196199"
+    },
+    {
+      "id": "20260131072139",
+      "name": "Movies by Actor in a particular language",
+      "sql": "SELECT DISTINCT m.id, m.name, m.date\nFROM movies m\nJOIN casts c ON m.id = c.movie_id\nJOIN people p ON c.person_id = p.id\nJOIN job_names jn ON c.job_id = jn.job_id\nWHERE p.name = :actor_name AND jn.name = :job_name\nAND EXISTS (\n    SELECT 1\n    FROM movie_languages ml\n    WHERE ml.movie_id = m.id AND ml.language = 'en'\n)\nORDER BY m.date DESC NULLS LAST;\n",
+      "params": [
+        {
+          "name": "actor_name",
+          "original_value": "'Leonardo DiCaprio'",
+          "table": "people",
+          "column": "name"
+        },
+        {
+          "name": "job_name",
+          "original_value": "'Actor'",
+          "table": "job_names",
+          "column": "name"
+        }
+      ],
+      "original_sql": "SELECT DISTINCT m.id, m.name, m.date\nFROM movies m\nJOIN casts c ON m.id = c.movie_id\nJOIN people p ON c.person_id = p.id\nJOIN job_names jn ON c.job_id = jn.job_id\nWHERE p.name = 'Leonardo DiCaprio' AND jn.name = 'Actor'\nAND EXISTS (\n    SELECT 1\n    FROM movie_languages ml\n    WHERE ml.movie_id = m.id AND ml.language = 'en'\n)\nORDER BY m.date DESC NULLS LAST;\n",
+      "created_at": "2026-01-31T07:21:39.883297"
     }
   ]
 }
@@ -11495,5 +12660,230 @@ FILE PATH: ./backend/saved_queries/queries.json
 FILE PATH: ./backend/saved_queries/session_history.json
 ============================================================
 {
-  "sessions": []
+  "sessions": [
+    {
+      "time": "2026-01-31T15:50:39.538735",
+      "title": "Test Session",
+      "queries": [
+        {
+          "prompt": "test prompt",
+          "sql": "SELECT 1;"
+        }
+      ]
+    }
+  ]
+}
+
+
+============================================================
+FILE PATH: ./backend/saved_queries/localhost_5432/db1/queries.json
+============================================================
+{
+  "queries": [
+    {
+      "id": "20260131102245",
+      "name": "Query for DB 1",
+      "sql": "SELECT 1;",
+      "params": [],
+      "original_sql": "SELECT 1;",
+      "created_at": "2026-01-31T10:22:45.963040"
+    }
+  ]
+}
+
+
+============================================================
+FILE PATH: ./backend/saved_queries/localhost_5432/db2/queries.json
+============================================================
+{
+  "queries": [
+    {
+      "id": "20260131102245",
+      "name": "Query for DB 2",
+      "sql": "SELECT 2;",
+      "params": [],
+      "original_sql": "SELECT 2;",
+      "created_at": "2026-01-31T10:22:45.977079"
+    }
+  ]
+}
+
+
+============================================================
+FILE PATH: ./backend/saved_queries/host.docker.internal_5432/omdb/queries.json
+============================================================
+{
+  "queries": [
+    {
+      "id": "20260126040325",
+      "name": "Movies by two actors together",
+      "sql": "SELECT m1.name AS movie_name, m1.date AS release_date\nFROM movies m1\nJOIN casts c1 ON m1.id = c1.movie_id\nJOIN people p1 ON c1.person_id = p1.id\nJOIN jobs j1 ON c1.job_id = j1.id\nWHERE p1.name = :actor1_name AND j1.name = 'Actor'\nINTERSECT\nSELECT m2.name AS movie_name, m2.date AS release_date\nFROM movies m2\nJOIN casts c2 ON m2.id = c2.movie_id\nJOIN people p2 ON c2.person_id = p2.id\nJOIN jobs j2 ON c2.job_id = j2.id\nWHERE p2.name = :actor2_name AND j2.name = 'Actor'\nORDER BY release_date DESC NULLS LAST;\n",
+      "params": [
+        {
+          "name": "actor1_name",
+          "original_value": "'Chris Evans'",
+          "table": "people",
+          "column": "name"
+        },
+        {
+          "name": "actor2_name",
+          "original_value": "'Ana de Armas'",
+          "table": "people",
+          "column": "name"
+        }
+      ],
+      "original_sql": "SELECT m1.name AS movie_name, m1.date AS release_date\nFROM movies m1\nJOIN casts c1 ON m1.id = c1.movie_id\nJOIN people p1 ON c1.person_id = p1.id\nJOIN jobs j1 ON c1.job_id = j1.id\nWHERE p1.name = 'Chris Evans' AND j1.name = 'Actor'\nINTERSECT\nSELECT m2.name AS movie_name, m2.date AS release_date\nFROM movies m2\nJOIN casts c2 ON m2.id = c2.movie_id\nJOIN people p2 ON c2.person_id = p2.id\nJOIN jobs j2 ON c2.job_id = j2.id\nWHERE p2.name = 'Ana de Armas' AND j2.name = 'Actor'\nORDER BY release_date DESC NULLS LAST;\n",
+      "created_at": "2026-01-26T04:03:25.554765"
+    },
+    {
+      "id": "20260126042826",
+      "name": "Movies by Actor",
+      "sql": "SELECT m.name AS movie_name, m.date AS release_date\nFROM movies m\nJOIN casts c ON m.id = c.movie_id\nJOIN people p ON c.person_id = p.id\nJOIN jobs j ON c.job_id = j.id\nWHERE p.name = :actor_name AND j.name = 'Actor'\nORDER BY m.date DESC NULLS LAST;\n",
+      "params": [
+        {
+          "name": "actor_name",
+          "original_value": "'Chris Evans'",
+          "table": "people",
+          "column": "name"
+        }
+      ],
+      "original_sql": "SELECT m.name AS movie_name, m.date AS release_date\nFROM movies m\nJOIN casts c ON m.id = c.movie_id\nJOIN people p ON c.person_id = p.id\nJOIN jobs j ON c.job_id = j.id\nWHERE p.name = 'Chris Evans' AND j.name = 'Actor'\nORDER BY m.date DESC NULLS LAST;\n",
+      "created_at": "2026-01-26T04:28:26.941748"
+    },
+    {
+      "id": "20260126063819",
+      "name": "Movies by Director",
+      "sql": "SELECT m.name AS movie_name, m.date AS release_date\nFROM movies m\nJOIN casts c ON m.id = c.movie_id\nJOIN people p ON c.person_id = p.id\nJOIN jobs j ON c.job_id = j.id\nWHERE p.name = :director_name AND j.name = 'Director'\nORDER BY m.date DESC NULLS LAST;\n",
+      "params": [
+        {
+          "name": "director_name",
+          "original_value": "'Steven Spielberg'",
+          "table": "people",
+          "column": "name"
+        }
+      ],
+      "original_sql": "SELECT m.name AS movie_name, m.date AS release_date\nFROM movies m\nJOIN casts c ON m.id = c.movie_id\nJOIN people p ON c.person_id = p.id\nJOIN jobs j ON c.job_id = j.id\nWHERE p.name = 'Steven Spielberg' AND j.name = 'Director'\nORDER BY m.date DESC NULLS LAST;\n",
+      "created_at": "2026-01-26T06:38:19.752214"
+    },
+    {
+      "id": "20260127073504",
+      "name": "Top successful movies in a year(in millions of USD)",
+      "sql": "SELECT m.name AS movie_name, (m.revenue / 1000000) AS total_revenue_in_millions\nFROM movies m\nWHERE EXTRACT(YEAR FROM m.date) = :year\nORDER BY m.revenue DESC NULLS LAST\nLIMIT :limit_val;\n",
+      "params": [
+        {
+          "name": "year",
+          "original_value": "2024",
+          "table": "movies",
+          "column": "date"
+        },
+        {
+          "name": "limit_val",
+          "original_value": "1",
+          "table": null,
+          "column": null
+        }
+      ],
+      "original_sql": "SELECT m.name AS movie_name, (m.revenue / 1000000) AS total_revenue_in_millions\nFROM movies m\nWHERE EXTRACT(YEAR FROM m.date) = 2024\nORDER BY m.revenue DESC NULLS LAST\nLIMIT 1;\n",
+      "created_at": "2026-01-27T07:35:04.743713"
+    },
+    {
+      "id": "20260127170922",
+      "name": "Top successful movies of all time in a particular genre(with revenue in millions of USD)",
+      "sql": "SELECT m.name AS movie_name, ROUND(m.revenue / 1000000, 2) AS revenue_in_millions\nFROM movies m\nJOIN movie_categories mc ON m.id = mc.movie_id\nJOIN categories c ON mc.category_id = c.id\nWHERE c.name = :genre_name\nORDER BY m.revenue DESC NULLS LAST\nLIMIT :limit;\n",
+      "params": [
+        {
+          "name": "genre_name",
+          "original_value": ":genre_name",
+          "table": null,
+          "column": null
+        },
+        {
+          "name": "limit",
+          "original_value": ":limit",
+          "table": null,
+          "column": null
+        }
+      ],
+      "original_sql": "SELECT m.name AS movie_name, ROUND(m.revenue / 1000000, 2) AS revenue_in_millions\nFROM movies m\nJOIN movie_categories mc ON m.id = mc.movie_id\nJOIN categories c ON mc.category_id = c.id\nWHERE c.name = :genre_name\nORDER BY m.revenue DESC NULLS LAST\nLIMIT :limit;\n",
+      "created_at": "2026-01-27T17:09:22.660004"
+    },
+    {
+      "id": "20260127172907",
+      "name": "Top movies of a movie series",
+      "sql": "SELECT m1.name AS movie_name, ROUND(m1.revenue / 1000000, 2) AS revenue_in_millions\nFROM movies m1\nJOIN movies m2 ON m1.parent_id = m2.id\nWHERE m2.name = :movie_name AND m1.kind = :kind\nORDER BY m1.revenue DESC NULLS LAST;\n",
+      "params": [
+        {
+          "name": "movie_name",
+          "original_value": "'James Bond - 007'",
+          "table": "movies",
+          "column": "name"
+        },
+        {
+          "name": "kind",
+          "original_value": "'movie'",
+          "table": "movies",
+          "column": "kind"
+        }
+      ],
+      "original_sql": "SELECT m1.name AS movie_name, ROUND(m1.revenue / 1000000, 2) AS revenue_in_millions\nFROM movies m1\nJOIN movies m2 ON m1.parent_id = m2.id\nWHERE m2.name = 'James Bond - 007' AND m1.kind = 'movie'\nORDER BY m1.revenue DESC NULLS LAST;\n",
+      "created_at": "2026-01-27T17:29:07.723019"
+    },
+    {
+      "id": "20260130154051",
+      "name": "Movies from a Specific Year",
+      "sql": "SELECT m.id, m.name, m.vote_average, m.votes_count\nFROM movies m\nWHERE EXTRACT(YEAR FROM m.date) = :year_val\nORDER BY m.vote_average DESC NULLS LAST,\n         m.votes_count DESC NULLS LAST;\n",
+      "params": [
+        {
+          "name": "year_val",
+          "original_value": "2025",
+          "table": null,
+          "column": null
+        }
+      ],
+      "original_sql": "SELECT m.id, m.name, m.vote_average, m.votes_count\nFROM movies m\nWHERE EXTRACT(YEAR FROM m.date) = 2025\nORDER BY m.vote_average DESC NULLS LAST,\n         m.votes_count DESC NULLS LAST;\n",
+      "created_at": "2026-01-30T15:40:51.842446"
+    },
+    {
+      "id": "20260130174515",
+      "name": "Movies by two Actors together",
+      "sql": "SELECT DISTINCT m.id, m.name, (m.revenue / 1000000) AS revenue_in_millions\nFROM movies m\nJOIN casts c1 ON m.id = c1.movie_id AND c1.person_id = (SELECT id FROM people WHERE name = :actor1_name)\nJOIN casts c2 ON m.id = c2.movie_id AND c2.person_id = (SELECT id FROM people WHERE name = :actor2_name)\nWHERE c1.job_id = (SELECT id FROM jobs WHERE name = 'Actor') AND c2.job_id = (SELECT id FROM jobs WHERE name = 'Actor');\n",
+      "params": [
+        {
+          "name": "actor1_name",
+          "original_value": "'Tom Hanks'",
+          "table": "people",
+          "column": "name"
+        },
+        {
+          "name": "actor2_name",
+          "original_value": "'Meg Ryan'",
+          "table": "people",
+          "column": "name"
+        }
+      ],
+      "original_sql": "SELECT DISTINCT m.id, m.name, (m.revenue / 1000000) AS revenue_in_millions\nFROM movies m\nJOIN casts c1 ON m.id = c1.movie_id AND c1.person_id = (SELECT id FROM people WHERE name = 'Tom Hanks')\nJOIN casts c2 ON m.id = c2.movie_id AND c2.person_id = (SELECT id FROM people WHERE name = 'Meg Ryan')\nWHERE c1.job_id = (SELECT id FROM jobs WHERE name = 'Actor') AND c2.job_id = (SELECT id FROM jobs WHERE name = 'Actor');\n",
+      "created_at": "2026-01-30T17:45:15.196199"
+    },
+    {
+      "id": "20260131072139",
+      "name": "Movies by Actor in a particular language",
+      "sql": "SELECT DISTINCT m.id, m.name, m.date\nFROM movies m\nJOIN casts c ON m.id = c.movie_id\nJOIN people p ON c.person_id = p.id\nJOIN job_names jn ON c.job_id = jn.job_id\nWHERE p.name = :actor_name AND jn.name = :job_name\nAND EXISTS (\n    SELECT 1\n    FROM movie_languages ml\n    WHERE ml.movie_id = m.id AND ml.language = 'en'\n)\nORDER BY m.date DESC NULLS LAST;\n",
+      "params": [
+        {
+          "name": "actor_name",
+          "original_value": "'Leonardo DiCaprio'",
+          "table": "people",
+          "column": "name"
+        },
+        {
+          "name": "job_name",
+          "original_value": "'Actor'",
+          "table": "job_names",
+          "column": "name"
+        }
+      ],
+      "original_sql": "SELECT DISTINCT m.id, m.name, m.date\nFROM movies m\nJOIN casts c ON m.id = c.movie_id\nJOIN people p ON c.person_id = p.id\nJOIN job_names jn ON c.job_id = jn.job_id\nWHERE p.name = 'Leonardo DiCaprio' AND jn.name = 'Actor'\nAND EXISTS (\n    SELECT 1\n    FROM movie_languages ml\n    WHERE ml.movie_id = m.id AND ml.language = 'en'\n)\nORDER BY m.date DESC NULLS LAST;\n",
+      "created_at": "2026-01-31T07:21:39.883297"
+    }
+  ]
 }
