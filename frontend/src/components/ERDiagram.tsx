@@ -2,7 +2,6 @@ import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import ReactFlow, {
     Background,
     Controls,
-    MiniMap,
     Node,
     Edge,
     useNodesState,
@@ -451,7 +450,6 @@ const ERDiagram: React.FC<ERDiagramProps> = ({ schema, connectionInfo }) => {
             >
                 <Background color="#1e293b" gap={16} />
                 <Controls style={{ background: '#1e293b', border: '1px solid #475569', fill: '#cbd5e1' }} />
-                <MiniMap style={{ background: '#1e293b', border: '1px solid #475569' }} nodeColor="#3b82f6" />
             </ReactFlow>
         </div>
     );
