@@ -16,7 +16,7 @@ def _set_search_path(conn, schema_name: str):
 def test_connection(info: ConnectionInfo) -> bool:
     try:
         # Construct DSN
-        dsn = f"host={info.host} port={info.port} dbname={info.database} user={info.username} password={info.password}"
+        dsn = f"host={info.host} port={info.port} dbname={info.database} user={info.username} password={info.password} connect_timeout=10"
         conn = psycopg2.connect(dsn)
 
         # Ensure unqualified table names resolve in the selected schema

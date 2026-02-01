@@ -19,6 +19,8 @@ function App() {
 
   // Results State (Lifted)
   const [executionResult, setExecutionResult] = useState<any>(null);
+
+  // Tuning & Explanation State
   const [execError, setExecError] = useState<string | null>(null);
   const [isExecuting, setIsExecuting] = useState(false);
 
@@ -97,7 +99,7 @@ function App() {
 
   // Resize State
   const [sidebarWidth, setSidebarWidth] = useState(400);
-  const [activeCenterTab, setActiveCenterTab] = useState<'editor' | 'tune' | 'server' | 'queries'>('editor');
+  const [activeCenterTab, setActiveCenterTab] = useState<'editor' | 'tune' | 'server' | 'schema'>('editor');
   const isResizingSidebar = useRef(false);
 
   const startSidebarResize = (e: React.MouseEvent) => {

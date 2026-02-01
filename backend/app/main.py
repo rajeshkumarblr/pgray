@@ -394,4 +394,34 @@ async def warmup_endpoint(request: WarmupRequest, background_tasks: BackgroundTa
         return {"status": "success"}
     except Exception as e:
         # Don't fail the request, just log
-        return {"status": "ignored", "error": str(e)}
+
+class SaveLayoutRequest(BaseModel):
+    layout: dict
+    connection: Optional[ConnectionInfo] = None
+
+@app.post("/api/er_layout")
+async def save_er_layout_endpoint(request: SaveLayoutRequest):
+    try:
+        from app.saved_queries import save_er_layout
+        conn_dict = request.connection.model_dump() if request.connection else None
+        
+        save_er_layout(request.layout, conn_dict)
+        return {"status": "success"}
+    except Exception as e:
+         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/er_layout")
+async def get_er_layout_endpoint(connection_json: Optional[str] = Query(None)):
+    try:
+        connection = None
+        if connection_json:
+            try:
+                connection = json.loads(connection_json)
+            except:
+                pass
+                
+        from app.saved_queries import get_er_layout
+        layout = get_er_layout(connection)
+        return {"status": "success", "layout": layout}
+    except Exception as e:
+         raise HTTPException(status_code=500, detail=str(e))

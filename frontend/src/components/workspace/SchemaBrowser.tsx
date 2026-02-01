@@ -6,13 +6,42 @@ interface SchemaBrowserProps {
     schema: any;
     loadingSchema: boolean;
     connectionInfo: any;
+    selectedTables: Set<string>;
+    setSelectedTables: (tables: Set<string>) => void;
+    onShowER: () => void;
 }
 
-const SchemaBrowser: React.FC<SchemaBrowserProps> = ({ schema, loadingSchema, connectionInfo }) => {
+const SchemaBrowser: React.FC<SchemaBrowserProps> = ({
+    schema, loadingSchema, connectionInfo,
+    selectedTables, setSelectedTables, onShowER
+}) => {
     const [expandedTables, setExpandedTables] = useState<Record<string, boolean>>({});
-    const [showER, setShowER] = useState(false);
 
-    // Hover Preview Logic
+    const toggleSelection = (table: string) => {
+        const newSet = new Set(selectedTables);
+        if (newSet.has(table)) {
+            newSet.delete(table);
+        } else {
+            newSet.add(table);
+        }
+        setSelectedTables(newSet);
+    };
+
+    const toggleSelectAll = () => {
+        if (!schema) return;
+        const allTables = Object.keys(schema);
+        if (selectedTables.size === allTables.length) {
+            setSelectedTables(new Set());
+        } else {
+            setSelectedTables(new Set(allTables));
+        }
+    };
+
+    // Derived filtered schema is now calculated in QueryWorkspace, so we don't strictly need it here unless needed for something else.
+    // It's not used here anymore since ER display is lifted.
+
+
+    // Hover Preview Logic (unchanged)
     const [hoveredTable, setHoveredTable] = useState<string | null>(null);
     const [previewData, setPreviewData] = useState<any>(null);
     const [previewPos, setPreviewPos] = useState<{ x: number, y: number } | null>(null);
@@ -22,6 +51,8 @@ const SchemaBrowser: React.FC<SchemaBrowserProps> = ({ schema, loadingSchema, co
     const toggleTable = (table: string) => {
         setExpandedTables(prev => ({ ...prev, [table]: !prev[table] }));
     };
+
+    // ... (mouse handlers unchanged)
 
     const handleTableMouseEnter = (e: React.MouseEvent, table: string) => {
         if (closeTimerRef.current) {
@@ -54,52 +85,39 @@ const SchemaBrowser: React.FC<SchemaBrowserProps> = ({ schema, loadingSchema, co
         }, 2000);
     };
 
-    const handleTableMouseLeave = () => {
-        if (hoverTimerRef.current) {
-            clearTimeout(hoverTimerRef.current);
-            hoverTimerRef.current = null;
-        }
-        closeTimerRef.current = setTimeout(() => {
-            setHoveredTable(null);
-            setPreviewData(null);
-        }, 300);
-    };
-
-    const handleTooltipMouseEnter = () => {
-        if (closeTimerRef.current) {
-            clearTimeout(closeTimerRef.current);
-            closeTimerRef.current = null;
-        }
-    };
-
-    const handleTooltipMouseLeave = () => {
-        closeTimerRef.current = setTimeout(() => {
-            setHoveredTable(null);
-            setPreviewData(null);
-        }, 300);
-    };
+    // ... other handlers ...
 
     return (
-        <div style={{ width: '250px', borderRight: '1px solid #334155', background: '#0f172a', padding: '10px', overflowY: 'auto' }}>
+        <div style={{ height: '100%', overflowY: 'auto', padding: '10px', background: '#0f172a' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                <h3 style={{ fontSize: '12px', fontWeight: 'bold', color: '#94a3b8', margin: 0 }}>SCHEMA BROWSER</h3>
-                <button
-                    onClick={() => setShowER(true)}
-                    style={{
-                        background: 'transparent', border: '1px solid #475569', color: '#cbd5e1',
-                        padding: '2px 6px', borderRadius: '3px', cursor: 'pointer', fontSize: '10px'
-                    }}
-                    title="View ER Relationship Diagram"
-                >
-                    🔗 ER
-                </button>
+                <h3 style={{ fontSize: '14px', fontWeight: 'bold', color: '#94a3b8', margin: 0 }}>SCHEMA BROWSER</h3>
+
+                <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                        onClick={toggleSelectAll}
+                        style={{
+                            background: 'transparent', border: 'none', color: '#64748b',
+                            cursor: 'pointer', fontSize: '11px', textDecoration: 'underline'
+                        }}
+                    >
+                        {schema && selectedTables.size === Object.keys(schema).length ? 'Unselect All' : 'Select All'}
+                    </button>
+                    <button
+                        onClick={onShowER}
+                        style={{
+                            background: 'transparent', border: '1px solid #475569', color: '#cbd5e1',
+                            padding: '2px 6px', borderRadius: '3px', cursor: 'pointer', fontSize: '10px'
+                        }}
+                        title="View ER Relationship Diagram for Selected Tables"
+                    >
+                        🔗 ER Diagram
+                    </button>
+                </div>
             </div>
 
             {loadingSchema && <span style={{ fontSize: '11px', color: '#64748b' }}>Loading...</span>}
 
-            {showER && schema && (
-                <ERDiagram schema={schema} connectionInfo={connectionInfo} onClose={() => setShowER(false)} />
-            )}
+            {/* removed embedded ERDiagram */}
 
             {schema && (
                 <div style={{ fontSize: '13px' }}>
@@ -107,15 +125,14 @@ const SchemaBrowser: React.FC<SchemaBrowserProps> = ({ schema, loadingSchema, co
                         const tableData = schema[table];
                         const columns = Array.isArray(tableData) ? tableData : tableData.columns;
                         const isExpanded = expandedTables[table];
+                        const isSelected = selectedTables.has(table);
 
                         return (
                             <div key={table} style={{ marginBottom: '4px' }}>
                                 <div
-                                    onClick={() => toggleTable(table)}
                                     onMouseEnter={(e) => handleTableMouseEnter(e, table)}
                                     onMouseLeave={handleTableMouseLeave}
                                     style={{
-                                        cursor: 'pointer',
                                         display: 'flex',
                                         alignItems: 'center',
                                         padding: '4px 6px',
@@ -125,11 +142,23 @@ const SchemaBrowser: React.FC<SchemaBrowserProps> = ({ schema, loadingSchema, co
                                         position: 'relative'
                                     }}
                                 >
-                                    <span style={{ marginRight: '6px', fontSize: '10px', transform: isExpanded ? 'rotate(90deg)' : 'none' }}>▶</span>
-                                    <span style={{ fontWeight: 600 }}>{table}</span>
+                                    <input
+                                        type="checkbox"
+                                        checked={isSelected}
+                                        onChange={() => toggleSelection(table)}
+                                        style={{ marginRight: '8px', cursor: 'pointer' }}
+                                    />
+
+                                    <div
+                                        onClick={() => toggleTable(table)}
+                                        style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', flex: 1 }}
+                                    >
+                                        <span style={{ marginRight: '6px', fontSize: '10px', transform: isExpanded ? 'rotate(90deg)' : 'none' }}>▶</span>
+                                        <span style={{ fontWeight: 600 }}>{table}</span>
+                                    </div>
                                 </div>
                                 {isExpanded && (
-                                    <div style={{ paddingLeft: '14px', marginTop: '2px', borderLeft: '1px solid #334155', marginLeft: '9px' }}>
+                                    <div style={{ paddingLeft: '34px', marginTop: '2px', marginLeft: '0px' }}>
                                         {columns && columns.length > 0 && (
                                             <div style={{ marginBottom: '8px' }}>
                                                 <div style={{ fontSize: '10px', color: '#475569', fontWeight: 'bold', textTransform: 'uppercase' }}>Columns</div>

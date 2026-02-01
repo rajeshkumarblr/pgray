@@ -12,6 +12,7 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
     *   **Node Metrics**: Instant visibility of Rows (Est/Act), Time, and Loops directly on the node.
     *   **Context Menu**: Right-click any node to **Analyze** it with AI or view details.
     *   **Auto-Fit**: Automatically centers and zooms the graph for the best view.
+    *   **ER Diagram**: Interactive Entity-Relationship diagram with **drag-and-drop** layout and **persistent saving**.
 
 *   **Local-First AI Assistant**:
     *   **Context-Aware**: Understands your database schema and query history.
@@ -38,7 +39,7 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
     *   **Parameterized Storage**: Saved queries are automatically parameterized (e.g., `WHERE name = :name` or `LIMIT :limit_val`) for reuse.
     *   **History**: Access previously saved sessions and resume work instantly.
     *   **Queries Tab**: Dedicated tab to explore, fill parameters (e.g., `:actor_name`), and Execute saved queries without switching context to the Editor.
-    *   **Visual Query Management**: Edit, Duplicate, or Delete saved queries directly from a consolidated toolbar.
+    *   **Visual Query Management**: Edit, Duplicate, or Delete saved queries directly from a **dedicated sidebar** with Context Menu support.
     *   **Context Menu**: Right-click saved queries to **Rename**, **Duplicate**, or **Delete** them instantly.
     *   **Enhanced Layout**: SQL Editor maximizes to fill the screen ("flex-grow") with long-line wrapping, while keeping controls pinned to the footer.
     *   **Searchable Dropdowns**: Parameters with table/column metadata show a searchable dropdown that filters potential values from the database in real-time.

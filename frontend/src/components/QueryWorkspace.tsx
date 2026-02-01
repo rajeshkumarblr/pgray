@@ -1,17 +1,19 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Node } from 'reactflow';
 import SchemaBrowser from './workspace/SchemaBrowser';
+import SavedQueriesSidebar from './workspace/SavedQueriesSidebar';
 import WorkspaceToolbar from './workspace/WorkspaceToolbar';
 import BottomPane from './workspace/BottomPane';
 import SimpleEditor from './SimpleEditor';
 import DiffView from './DiffView';
 import QueryTuneTab from './tabs/QueryTuneTab';
 import ServerTuneTab from './tabs/ServerTuneTab';
-import SavedQueriesTab from './tabs/SavedQueriesTab';
-import PlanNode from './PlanNode'; // Import Custom Node
-import { getSavedQueries } from '../api';
+import QueryParametersPanel from './workspace/QueryParametersPanel';
+import PlanNode from './PlanNode';
+import { getSavedQueries, ParameterizedQuery, ParamDef } from '../api';
+import ERDiagram from './ERDiagram';
 
-const nodeTypes = { planNode: PlanNode }; // Define Node Types
+const nodeTypes = { planNode: PlanNode };
 
 interface QueryWorkspaceProps {
     connectionInfo: any;
@@ -33,7 +35,6 @@ interface QueryWorkspaceProps {
     explainText: string;
     loadingExplain: boolean;
     explainError: string;
-    // Tune Specific
     selectedNode: any;
     setSelectedNode: (node: any) => void;
     nodes: any[];
@@ -41,26 +42,20 @@ interface QueryWorkspaceProps {
     onNodesChange: any;
     onNodeClick: any;
     onPaneClick: any;
-
-    // Diff
     diffBaseQuery: string;
     showDiff: boolean;
     setShowDiff: (b: boolean) => void;
-
-    // Misc
     onCopy: () => void;
     onReset: () => void;
     onAnalyzeNode: (node: Node) => void;
-
-    // Insights
     insights: any[];
     onRunInsight: (id: string, sql: string) => void;
     insightResults: any;
     onCompare: () => void;
     baselineMetrics: { planning: number, execution: number } | null;
     queriesRefreshTrigger: number;
-    activeTab: 'editor' | 'tune' | 'server' | 'queries';
-    setActiveTab: (tab: 'editor' | 'tune' | 'server' | 'queries') => void;
+    activeTab: 'editor' | 'tune' | 'server' | 'schema' | 'er';
+    setActiveTab: (tab: 'editor' | 'tune' | 'server' | 'schema' | 'er') => void;
     onAnalyzeParamQuery: (sql: string) => void;
     onEdit: (sql: string, name: string) => void;
     onOpenSettings?: () => void;
@@ -80,115 +75,130 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
     activeTab, setActiveTab, onAnalyzeParamQuery, onEdit,
     onOpenSettings
 }) => {
-    // Layout State
-    // activeTab is now props
-    const [tuneTabMode, setTuneTabMode] = useState<'plan' | 'text'>('plan'); // New State
-    const [bottomExpanded, setBottomExpanded] = useState(true);
-    const [bottomHeight, setBottomHeight] = useState(() => Math.max(150, window.innerHeight * 0.2)); // 20% default
+
+    // --- Local State ---
+    const [savedQueries, setSavedQueries] = useState<ParameterizedQuery[]>([]);
     const [activeBottomTab, setActiveBottomTab] = useState<'results' | 'details' | 'insights'>('results');
+    const [bottomExpanded, setBottomExpanded] = useState(true);
+    const [bottomHeight, setBottomHeight] = useState(300);
+    const [tuneTabMode, setTuneTabMode] = useState<'visual' | 'text' | 'compare'>('visual');
+    const [paramValues, setParamValues] = useState<Record<string, string>>({});
 
-    // Resizing Bottom Pane
-    const isResizingBottom = useRef(false);
+    // --- Lifted Selection State for Schema/ER ---
+    const [selectedTables, setSelectedTables] = useState<Set<string>>(new Set());
 
-    const startBottomResize = (e: React.MouseEvent) => {
-        isResizingBottom.current = true;
-        e.preventDefault();
-        document.addEventListener('mousemove', handleBottomResize);
-        document.addEventListener('mouseup', stopBottomResize);
-    };
-
-    const handleBottomResize = (e: MouseEvent) => {
-        if (!isResizingBottom.current) return;
-        const newHeight = window.innerHeight - e.clientY;
-        if (newHeight > 50 && newHeight < window.innerHeight - 200) {
-            setBottomHeight(newHeight);
-        }
-    };
-
-    const stopBottomResize = () => {
-        isResizingBottom.current = false;
-        document.removeEventListener('mousemove', handleBottomResize);
-        document.removeEventListener('mouseup', stopBottomResize);
-    };
-
-
-    // Local Session State
-    const [savedQueries, setSavedQueries] = useState<string[]>([]);
-
+    // Auto-select all when schema loads
     useEffect(() => {
+        if (schema && selectedTables.size === 0) {
+            setSelectedTables(new Set(Object.keys(schema)));
+        }
+    }, [schema]);
+
+    // Derived filtered schema for ER
+    const filteredSchema = React.useMemo(() => {
+        if (!schema) return null;
+        const filtered: any = {};
+        selectedTables.forEach(t => {
+            if (schema[t]) filtered[t] = schema[t];
+        });
+        return filtered;
+    }, [schema, selectedTables]);
+
+    // --- Load Saved Queries ---
+    const [loadingSavedQueries, setLoadingSavedQueries] = useState(false);
+
+    const loadSavedQueries = useCallback(() => {
         if (connectionInfo) {
-            getSavedQueries(connectionInfo).then(data => {
-                if (data && data.queries) setSavedQueries(data.queries);
-                else setSavedQueries([]);
-            }).catch(err => {
-                console.error("Failed to fetch saved queries", err);
-                setSavedQueries([]);
-            });
+            setLoadingSavedQueries(true);
+            getSavedQueries(connectionInfo)
+                .then(res => {
+                    if (res && res.parameterized) {
+                        setSavedQueries(res.parameterized);
+                    } else {
+                        setSavedQueries([]);
+                    }
+                })
+                .catch(err => {
+                    console.error("Failed to load queries", err);
+                    setSavedQueries([]);
+                })
+                .finally(() => setLoadingSavedQueries(false));
         }
-    }, [connectionInfo, queriesRefreshTrigger]); // Added queriesRefreshTrigger to reload toolbar list too
+    }, [connectionInfo]);
 
-    // Automatically switch tabs based on actions
     useEffect(() => {
-        if (executionResult) {
-            setActiveBottomTab('results');
-            if (!bottomExpanded) setBottomExpanded(true);
-        }
-    }, [executionResult]);
+        loadSavedQueries();
+    }, [loadSavedQueries, queriesRefreshTrigger]);
 
-    useEffect(() => {
-        if (selectedNode) {
-            setActiveBottomTab('details');
-            if (!bottomExpanded) setBottomExpanded(true);
-        }
-    }, [selectedNode]);
+    // --- Handlers ---
 
-    // Auto-open Insights if we get new ones
-    useEffect(() => {
-        if (insights && insights.length > 0) {
-            setActiveBottomTab('insights');
-            if (!bottomExpanded) setBottomExpanded(true);
-        }
-    }, [insights]);
-
-    // Handle Tab Switching
-    const handleExecuteWrapper = () => {
-        if (activeTab !== 'queries') {
-            setActiveTab('editor');
-        }
-        onExecute();
+    const handleSelectSavedQuery = (query: ParameterizedQuery) => {
+        setSqlQuery(query.sql);
+        setSessionTitle(query.name);
+        setActiveTab('editor'); // Switch to editor when selecting a query
     };
 
-    const handleEditorWrapper = () => {
-        setActiveTab('editor');
+    const handleExecuteWrapper = () => {
+        // Support parameters if needed, or just regular execute
+        // For now, simple execute
+        onExecute(sqlQuery);
+        // Ensure bottom pane is open to show results
         setActiveBottomTab('results');
+        setBottomExpanded(true);
     };
 
     const handleTuneWrapper = () => {
         setActiveTab('tune');
-        setActiveBottomTab('details');
-        // Auto-trigger if missing
-        if (!explainResult || (explainResult && Array.isArray(explainResult) && explainResult.length === 0)) {
-            onTune();
-        }
+        onTune();
     };
 
-    const tabStyle = (tab: string) => ({
-        padding: '8px 20px',
+    const handleEditorWrapper = () => {
+        setActiveTab('editor');
+    };
+
+    const startBottomResize = (e: React.MouseEvent) => {
+        e.preventDefault();
+        const startY = e.clientY;
+        const startHeight = bottomHeight;
+
+        const onMouseMove = (moveEvent: MouseEvent) => {
+            const newHeight = startHeight - (moveEvent.clientY - startY);
+            if (newHeight >= 100 && newHeight <= 800) {
+                setBottomHeight(newHeight);
+            }
+        };
+
+        const onMouseUp = () => {
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+        };
+
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+    };
+
+    const tabStyle = (tabName: string) => ({
+        padding: '8px 16px',
         cursor: 'pointer',
-        fontSize: '13px',
-        fontWeight: activeTab === tab ? 600 : 500,
-        color: activeTab === tab ? '#e2e8f0' : '#94a3b8',
-        borderBottom: activeTab === tab ? '2px solid #3b82f6' : '2px solid transparent',
-        background: activeTab === tab ? '#1e293b' : 'transparent',
+        color: activeTab === tabName ? '#60a5fa' : '#94a3b8',
+        borderBottom: activeTab === tabName ? '2px solid #60a5fa' : '2px solid transparent',
+        fontWeight: activeTab === tabName ? ('bold' as const) : ('normal' as const)
     });
+
+    const activeQueryMetadata = React.useMemo(() => {
+        return savedQueries.find(q => q.name === sessionTitle);
+    }, [savedQueries, sessionTitle]);
+
 
     return (
         <div style={{ display: 'flex', height: '100%', width: '100%', overflow: 'hidden' }}>
-            {/* Left: Schema Browser */}
-            <SchemaBrowser
-                schema={schema}
-                loadingSchema={loadingSchema}
+            {/* ... Sidebar ... */}
+            <SavedQueriesSidebar
                 connectionInfo={connectionInfo}
+                onSelectQuery={handleSelectSavedQuery}
+                queries={savedQueries}
+                loading={loadingSavedQueries}
+                onReload={loadSavedQueries}
             />
 
             {/* Main Center Column */}
@@ -196,12 +206,6 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
 
                 {/* 1. Toolbar */}
                 <WorkspaceToolbar
-                    sessionTitle={sessionTitle}
-                    setSessionTitle={setSessionTitle}
-                    savedQueries={savedQueries}
-                    onLoadSession={onLoadSession}
-                    onNewSession={onNewSession}
-                    onSaveSession={onSaveSession}
                     onExecute={handleExecuteWrapper}
                     isExecuting={isExecuting}
                     onTune={handleTuneWrapper}
@@ -210,39 +214,57 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                     onCopy={onCopy}
                     onReset={onReset}
                     onOpenSettings={onOpenSettings}
+                    onLoadSession={onLoadSession}
+                    onNewSession={onNewSession}
+                    onSaveSession={onSaveSession}
+                    sessionTitle={sessionTitle}
+                    setSessionTitle={setSessionTitle}
                 />
 
-                {/* 2. Tabs Row (Below Toolbar) */}
+                {/* 2. Tabs Row */}
                 <div style={{ display: 'flex', background: '#334155', borderBottom: '1px solid #475569', paddingLeft: '10px' }}>
                     <div onClick={handleEditorWrapper} style={tabStyle('editor')}>Editor</div>
-                    <div onClick={() => setActiveTab('queries')} style={tabStyle('queries')}>Queries</div>
                     <div onClick={handleTuneWrapper} style={tabStyle('tune')}>Analyze</div>
+                    <div onClick={() => setActiveTab('schema')} style={tabStyle('schema')}>Schema</div>
+                    <div onClick={() => setActiveTab('er')} style={tabStyle('er')}>ER Diagram</div>
                     <div onClick={() => setActiveTab('server')} style={tabStyle('server')}>Server</div>
                 </div>
 
                 {/* 3. Center Content */}
-                <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#1e293b' }}>
+                <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#1e293b', display: 'flex', flexDirection: 'column' }}>
 
                     {/* Editor Tab */}
                     <div style={{
                         display: activeTab === 'editor' ? 'flex' : 'none',
                         height: '100%', flexDirection: 'column'
                     }}>
-                        {showDiff ? (
-                            <DiffView
-                                oldCode={diffBaseQuery}
-                                newCode={sqlQuery}
-                                onClose={() => setShowDiff(false)}
+                        <div style={{ flex: 1, overflow: 'hidden' }}>
+                            {showDiff ? (
+                                <DiffView
+                                    oldCode={diffBaseQuery}
+                                    newCode={sqlQuery}
+                                    onClose={() => setShowDiff(false)}
+                                />
+                            ) : (
+                                <SimpleEditor
+                                    value={sqlQuery}
+                                    onChange={setSqlQuery}
+                                    language="sql"
+                                    placeholder="SELECT * FROM ..."
+                                    style={{ flex: 1 }}
+                                />
+                            )}
+                        </div>
+
+                        <div style={{ flexShrink: 0 }}>
+                            <QueryParametersPanel
+                                sql={sqlQuery}
+                                paramValues={paramValues}
+                                onChange={setParamValues}
+                                connectionInfo={connectionInfo}
+                                metaParams={activeQueryMetadata?.params as any}
                             />
-                        ) : (
-                            <SimpleEditor
-                                value={sqlQuery}
-                                onChange={setSqlQuery}
-                                language="sql"
-                                placeholder="SELECT * FROM ..."
-                                style={{ flex: 1 }}
-                            />
-                        )}
+                        </div>
                     </div>
 
                     {/* Tune Tab */}
@@ -279,29 +301,36 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                         <ServerTuneTab connectionInfo={connectionInfo} />
                     </div>
 
-                    {/* Queries Tab */}
+                    {/* Schema Tab */}
                     <div style={{
-                        display: activeTab === 'queries' ? 'block' : 'none',
+                        display: activeTab === 'schema' ? 'block' : 'none',
                         height: '100%'
                     }}>
-                        <SavedQueriesTab
-                            onExecute={(sql: string) => {
-                                setSqlQuery(sql);
-                                onExecute(sql);
-                            }}
-                            onAnalyze={(sql: string) => {
-                                onAnalyzeParamQuery(sql);
-                            }}
-                            onEdit={onEdit}
-                            refreshTrigger={queriesRefreshTrigger}
+                        <SchemaBrowser
+                            schema={schema}
+                            loadingSchema={loadingSchema}
                             connectionInfo={connectionInfo}
-                            setSqlQuery={setSqlQuery}
+                            selectedTables={selectedTables}
+                            setSelectedTables={setSelectedTables}
+                            onShowER={() => setActiveTab('er')}
                         />
+                    </div>
+
+                    {/* ER Diagram Tab */}
+                    <div style={{
+                        display: activeTab === 'er' ? 'block' : 'none',
+                        height: '100%'
+                    }}>
+                        {filteredSchema && (
+                            <ERDiagram
+                                schema={filteredSchema}
+                                connectionInfo={connectionInfo}
+                            />
+                        )}
                     </div>
                 </div>
 
                 {/* 4. Resizable Bottom Pane */}
-                {/* Resizer Handle */}
                 {bottomExpanded && (
                     <div
                         onMouseDown={startBottomResize}

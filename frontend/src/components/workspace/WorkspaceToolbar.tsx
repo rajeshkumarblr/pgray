@@ -3,10 +3,6 @@ import React from 'react';
 interface WorkspaceToolbarProps {
     sessionTitle: string;
     setSessionTitle: (t: string) => void;
-    // savedQueries managed internally by Workspace now? No, we moved it to Workspace but didn't update Toolbar to remove it?
-    // Wait, QueryWorkspace passed savedQueries to Toolbar in Step 186/198.
-    // So Toolbar DOES receive it.
-    savedQueries: string[];
     onLoadSession: (name: string) => void;
     onNewSession: () => void;
     onSaveSession: () => Promise<void>;

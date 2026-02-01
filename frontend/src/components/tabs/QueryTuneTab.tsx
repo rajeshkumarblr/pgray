@@ -3,8 +3,8 @@ import ReactFlow, { Background, Controls, Node, Edge } from 'reactflow';
 import 'reactflow/dist/style.css';
 
 interface QueryTuneTabProps {
-    activeTab: 'plan' | 'text';
-    setActiveTab: (tab: 'plan' | 'text') => void;
+    activeTab: 'visual' | 'text' | 'compare';
+    setActiveTab: (tab: 'visual' | 'text' | 'compare') => void;
 
     nodes: Node[];
     edges: Edge[];
@@ -87,8 +87,9 @@ const QueryTuneTab: React.FC<QueryTuneTabProps> = ({
             {/* Header / Tabs */}
             <div style={{ display: 'flex', background: '#0f172a', borderBottom: '1px solid #475569', alignItems: 'center' }}>
 
-                <div onClick={() => setActiveTab('plan')} style={{ padding: '8px 20px', cursor: 'pointer', color: activeTab === 'plan' ? '#e2e8f0' : '#64748b', borderBottom: activeTab === 'plan' ? '2px solid #3b82f6' : 'none', fontWeight: activeTab === 'plan' ? 600 : 500, fontSize: '13px' }}>Visual Plan</div>
+                <div onClick={() => setActiveTab('visual')} style={{ padding: '8px 20px', cursor: 'pointer', color: activeTab === 'visual' ? '#e2e8f0' : '#64748b', borderBottom: activeTab === 'visual' ? '2px solid #3b82f6' : 'none', fontWeight: activeTab === 'visual' ? 600 : 500, fontSize: '13px' }}>Visual Plan</div>
                 <div onClick={() => setActiveTab('text')} style={{ padding: '8px 20px', cursor: 'pointer', color: activeTab === 'text' ? '#e2e8f0' : '#64748b', borderBottom: activeTab === 'text' ? '2px solid #3b82f6' : 'none', fontWeight: activeTab === 'text' ? 600 : 500, fontSize: '13px' }}>Text Plan</div>
+                <div onClick={() => setActiveTab('compare')} style={{ padding: '8px 20px', cursor: 'pointer', color: activeTab === 'compare' ? '#e2e8f0' : '#64748b', borderBottom: activeTab === 'compare' ? '2px solid #3b82f6' : 'none', fontWeight: activeTab === 'compare' ? 600 : 500, fontSize: '13px' }}>Compare</div>
 
                 {/* Metrics Display */}
                 <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '15px', paddingRight: '20px', fontSize: '12px', color: '#94a3b8' }}>
@@ -147,7 +148,7 @@ const QueryTuneTab: React.FC<QueryTuneTabProps> = ({
 
             {/* Content */}
             <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-                {activeTab === 'plan' ? (
+                {activeTab === 'visual' ? (
                     <>
                         <div ref={flowWrapperRef} style={{ height: '100%', width: '100%' }}>
                             <ReactFlow

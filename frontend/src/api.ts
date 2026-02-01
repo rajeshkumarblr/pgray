@@ -9,7 +9,24 @@ export const api = axios.create({
     headers: {
         'Content-Type': 'application/json',
     },
+    timeout: 30000, // 30s timeout
 });
+
+export interface ParamDef {
+    name: string;
+    original_value: string;
+    table?: string | null;
+    column?: string | null;
+}
+
+export interface ParameterizedQuery {
+    id: string;
+    name: string;
+    sql: string;
+    params: (string | ParamDef)[];
+    original_sql: string;
+    created_at?: string;
+}
 
 export const getAIModels = async () => {
     try {
@@ -184,5 +201,29 @@ export const warmupModel = async (model: string) => {
         await api.post('/warmup', { model });
     } catch (e) {
         console.warn("Warmup failed (ignored)", e);
+    }
+};
+
+export const saveERLayout = async (layout: any, connection: any = null) => {
+    try {
+        const response = await api.post('/er_layout', { layout, connection });
+        return response.data;
+    } catch (error) {
+        console.error("Error saving ER layout:", error);
+        throw error;
+    }
+};
+
+export const getERLayout = async (connection: any = null) => {
+    try {
+        const params: any = {};
+        if (connection) {
+            params.connection_json = JSON.stringify(connection);
+        }
+        const response = await api.get('/er_layout', { params });
+        return response.data.layout;
+    } catch (error) {
+        console.error("Error fetching ER layout:", error);
+        return null; // Return null if fail
     }
 };
