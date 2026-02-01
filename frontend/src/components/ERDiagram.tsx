@@ -259,7 +259,7 @@ const ERDiagram: React.FC<ERDiagramProps> = ({ schema, connectionInfo }) => {
     const STORAGE_KEY = `pgray_er_layout_${connectionInfo?.database || 'default'}`;
 
     // --- Hover Tooltip State ---
-    const [layoutLoaded, setLayoutLoaded] = useState(false);
+    // --- Hover Tooltip State (Removed) ---
 
     // --- Graph State ---
     const { nodes: initialNodes, edges: initialEdges } = useMemo(() => {
