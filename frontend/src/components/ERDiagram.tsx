@@ -16,7 +16,7 @@ import ReactFlow, {
     NodeProps
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { executeQuery, saveERLayout, getERLayout } from '../api';
+import { saveERLayout, getERLayout } from '../api';
 
 interface ERDiagramProps {
     schema: any;
@@ -259,10 +259,7 @@ const ERDiagram: React.FC<ERDiagramProps> = ({ schema, connectionInfo }) => {
     const STORAGE_KEY = `pgray_er_layout_${connectionInfo?.database || 'default'}`;
 
     // --- Hover Tooltip State ---
-    const [hoveredNode, setHoveredNode] = useState<string | null>(null);
-    const [tooltipData, setTooltipData] = useState<any>(null);
-    const [tooltipPos, setTooltipPos] = useState<{ x: number, y: number } | null>(null);
-    const hoverTimerRef = React.useRef<NodeJS.Timeout | null>(null);
+    const [layoutLoaded, setLayoutLoaded] = useState(false);
 
     // --- Graph State ---
     const { nodes: initialNodes, edges: initialEdges } = useMemo(() => {
@@ -373,8 +370,17 @@ const ERDiagram: React.FC<ERDiagramProps> = ({ schema, connectionInfo }) => {
                 console.error("Error loading layout", e);
             }
         };
-        loadLayout();
-    }, [connectionInfo, setNodes, STORAGE_KEY]);
+        // Only load layout if we have nodes (schema loaded)
+        if (nodes.length > 0) {
+            loadLayout();
+        }
+    }, [connectionInfo, setNodes, STORAGE_KEY, nodes.length]);
+
+    // Sync state when schema changes (Fix for empty diagram on load)
+    useEffect(() => {
+        setNodes(initialNodes);
+        setEdges(initialEdges);
+    }, [initialNodes, initialEdges, setNodes, setEdges]);
 
 
     const onNodesChange: OnNodesChange = useCallback(
