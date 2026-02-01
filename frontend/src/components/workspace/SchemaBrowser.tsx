@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import ERDiagram from '../ERDiagram';
+// import ERDiagram from '../ERDiagram'; // Removed unused import
 import { executeQuery } from '../../api';
 
 interface SchemaBrowserProps {
@@ -85,7 +85,31 @@ const SchemaBrowser: React.FC<SchemaBrowserProps> = ({
         }, 2000);
     };
 
-    // ... other handlers ...
+    const handleTableMouseLeave = () => {
+        if (hoverTimerRef.current) {
+            clearTimeout(hoverTimerRef.current);
+            hoverTimerRef.current = null;
+        }
+        // Delay closing to allow moving to tooltip
+        closeTimerRef.current = setTimeout(() => {
+            setHoveredTable(null);
+            setPreviewPos(null);
+            setPreviewData(null);
+        }, 300);
+    };
+
+    const handleTooltipMouseEnter = () => {
+        if (closeTimerRef.current) {
+            clearTimeout(closeTimerRef.current);
+            closeTimerRef.current = null;
+        }
+    };
+
+    const handleTooltipMouseLeave = () => {
+        setHoveredTable(null);
+        setPreviewPos(null);
+        setPreviewData(null);
+    };
 
     return (
         <div style={{ height: '100%', overflowY: 'auto', padding: '10px', background: '#0f172a' }}>
