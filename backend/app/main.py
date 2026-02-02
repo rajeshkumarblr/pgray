@@ -54,7 +54,7 @@ async def execute_query(request: QueryRequest):
     try:
         # We also save to history
         add_history_item(request.query)
-        result = execute_query_results(request.connection, request.query, request.limit)
+        result = execute_query_results(request.connection, request.query, request.limit, request.params)
         return {"status": "success", "data": result}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

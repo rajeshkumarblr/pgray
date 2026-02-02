@@ -24,6 +24,7 @@ class QueryRequest(BaseModel):
     connection: ConnectionInfo
     query: str = Field(..., description="SQL query to execute")
     limit: int = Field(100, description="Max rows to fetch")
+    params: Optional[dict] = Field(default_factory=dict, description="Query parameters")
 
 class GenerateSqlRequest(BaseModel):
     prompt: str

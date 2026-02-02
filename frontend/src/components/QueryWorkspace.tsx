@@ -26,7 +26,7 @@ interface QueryWorkspaceProps {
     onLoadSession: (name: string) => void;
     onNewSession: () => void;
     onSaveSession: () => Promise<void>;
-    onExecute: (sql?: string) => void;
+    onExecute: (sql?: string, params?: any) => void;
     isExecuting: boolean;
     executionResult: any;
     execError?: string | null;
@@ -141,7 +141,7 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
     const handleExecuteWrapper = () => {
         // Support parameters if needed, or just regular execute
         // For now, simple execute
-        onExecute(sqlQuery);
+        onExecute(sqlQuery, paramValues);
         // Ensure bottom pane is open to show results
         setActiveBottomTab('results');
         setBottomExpanded(true);

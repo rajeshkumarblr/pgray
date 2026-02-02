@@ -55,7 +55,7 @@ def execute_explain(info: ConnectionInfo, query: str, analyze: bool = True):
         print(f"Explain failed: {e}")
         raise e
 
-def execute_query_results(info: ConnectionInfo, query: str, limit: int = 1000):
+def execute_query_results(info: ConnectionInfo, query: str, limit: int = 1000, params: dict = None):
     try:
         dsn = f"host={info.host} port={info.port} dbname={info.database} user={info.username} password={info.password}"
         conn = psycopg2.connect(dsn)
@@ -68,7 +68,21 @@ def execute_query_results(info: ConnectionInfo, query: str, limit: int = 1000):
         import time
         start_time = time.time()
         
-        cur.execute(query)
+        # Convert :param style to %(param)s style for psycopg2
+        # This is simple regex replacement, might need robustness for strings containing :
+        import re
+        if params:
+             # Look for :word boundaries. 
+             # Be careful not to replace things inside strings, but for now a simple regex is a good start for this use case.
+             # Better way: Let the frontend send $1 or let's assume the user uses :param.
+             # Psycopg2 uses %(name)s for dict parameters.
+             # We replace :name with %(name)s
+             for key in params.keys():
+                  # Replace :key with %(key)s, ensuring word boundary
+                  pattern = r'(?<!\w):' + re.escape(key) + r'\b'
+                  query = re.sub(pattern, f'%({key})s', query)
+
+        cur.execute(query, params)
         
         # Check if query returns rows
         if cur.description:

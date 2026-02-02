@@ -283,7 +283,7 @@ function App() {
     setActiveCenterTab('tune');
   };
 
-  const handleExecute = async (sqlOverride?: string) => {
+  const handleExecute = async (sqlOverride?: string, params: any = null) => {
     const queryToRun = sqlOverride || sqlQuery;
     if (!connectionInfo || !queryToRun) return;
     setIsExecuting(true);
@@ -291,7 +291,7 @@ function App() {
     setExecutionResult(null);
 
     try {
-      const res = await executeQuery(connectionInfo, queryToRun, 50);
+      const res = await executeQuery(connectionInfo, queryToRun, 50, params);
       setExecutionResult(res.data);
     } catch (err: any) {
       console.error("Execution failed", err);

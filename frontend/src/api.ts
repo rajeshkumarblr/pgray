@@ -110,8 +110,8 @@ export const explainQuery = async (connectionInfo: any, query: string, analyze: 
     return response.data;
 };
 
-export const executeQuery = async (connectionInfo: any, query: string, limit: number = 1000) => {
-    const response = await api.post('/execute', { connection: connectionInfo, query, limit });
+export const executeQuery = async (connectionInfo: any, query: string, limit: number = 1000, params: any = null) => {
+    const response = await api.post('/execute', { connection: connectionInfo, query, limit, params });
     return response.data;
 };
 

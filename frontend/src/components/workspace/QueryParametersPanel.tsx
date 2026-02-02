@@ -70,9 +70,9 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({ value, onChange, on
             </div>
             {isOpen && (
                 <div style={{
-                    position: 'absolute', top: '100%', left: 0, right: 0,
-                    background: '#1e293b', border: '1px solid #475569', borderRadius: '0 0 4px 4px',
-                    maxHeight: '150px', overflowY: 'auto', zIndex: 50, boxShadow: '0 4px 6px -1px rgba(0,0,0,0.5)'
+                    position: 'absolute', bottom: '100%', left: 0, right: 0, marginBottom: '5px',
+                    background: '#1e293b', border: '1px solid #475569', borderRadius: '4px 4px 0 0',
+                    maxHeight: '150px', overflowY: 'auto', zIndex: 50, boxShadow: '0 -4px 6px -1px rgba(0,0,0,0.5)'
                 }}>
                     {options.length > 0 ? (
                         options.map((opt, idx) => (
