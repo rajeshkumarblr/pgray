@@ -105,8 +105,8 @@ export const connectDb = async (connectionInfo: any) => {
     return response.data;
 };
 
-export const explainQuery = async (connectionInfo: any, query: string, analyze: boolean = true) => {
-    const response = await api.post('/explain', { connection: connectionInfo, query, analyze });
+export const explainQuery = async (connectionInfo: any, query: string, analyze: boolean = true, params: any = null) => {
+    const response = await api.post('/explain', { connection: connectionInfo, query, analyze, params });
     return response.data;
 };
 
@@ -152,6 +152,16 @@ export const getConnectionConfig = async () => {
     } catch (error) {
         // Silent fail if file doesn't exist
         return null;
+    }
+};
+
+export const getDatabases = async (connection: any) => {
+    try {
+        const response = await api.post('/databases', { connection });
+        return response.data.databases;
+    } catch (error) {
+        console.error("Error fetching databases:", error);
+        return [];
     }
 };
 

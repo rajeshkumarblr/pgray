@@ -328,3 +328,31 @@ def delete_saved_query(query_id: str, connection: dict = None):
     except Exception as e:
         print(f"Error deleting query: {e}")
         return False
+
+def save_er_layout(layout: dict, connection: dict = None):
+    try:
+        base_dir = get_connection_dir(connection)
+        if not os.path.exists(base_dir):
+            os.makedirs(base_dir)
+            
+        filepath = os.path.join(base_dir, "er_layout.json")
+        with open(filepath, "w") as f:
+            json.dump(layout, f)
+        return True
+    except Exception as e:
+        print(f"Error saving ER layout: {e}")
+        raise e
+
+def get_er_layout(connection: dict = None):
+    try:
+        base_dir = get_connection_dir(connection)
+        filepath = os.path.join(base_dir, "er_layout.json")
+        
+        if os.path.exists(filepath):
+            with open(filepath, "r") as f:
+                return json.load(f)
+        return {}
+    except Exception as e:
+        print(f"Error reading ER layout: {e}")
+        # Return empty object instead of failing, to let frontend render default layout
+        return {}

@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field
 from pydantic.config import ConfigDict
 
 class ConnectionInfo(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra='ignore')
 
     host: str = Field(..., description="Postgres host, e.g., localhost or host.docker.internal")
     port: int = Field(5432, description="Postgres port")
@@ -19,12 +19,13 @@ class ExplainRequest(BaseModel):
     connection: ConnectionInfo
     query: str = Field(..., description="SQL query to explain")
     analyze: bool = Field(True, description="Whether to run EXPLAIN ANALYZE")
+    params: Optional[dict] = Field(default=None, description="Query parameters")
 
 class QueryRequest(BaseModel):
     connection: ConnectionInfo
     query: str = Field(..., description="SQL query to execute")
     limit: int = Field(100, description="Max rows to fetch")
-    params: Optional[dict] = Field(default_factory=dict, description="Query parameters")
+    params: Optional[dict] = Field(default=None, description="Query parameters")
 
 class GenerateSqlRequest(BaseModel):
     prompt: str

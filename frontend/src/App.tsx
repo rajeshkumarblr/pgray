@@ -301,7 +301,7 @@ function App() {
     }
   };
 
-  const handleTune = async () => {
+  const handleTune = async (params: any = null) => {
     if (!connectionInfo || !sqlQuery) return;
     setLoadingExplain(true);
     setExplainError('');
@@ -309,7 +309,7 @@ function App() {
     setEdges([]);
 
     try {
-      const res = await explainQuery(connectionInfo, sqlQuery, true);
+      const res = await explainQuery(connectionInfo, sqlQuery, true, params);
       if (res.data && res.data.json) {
         let rawPlan = res.data.json;
         if (Array.isArray(rawPlan) && rawPlan.length > 0) rawPlan = rawPlan;

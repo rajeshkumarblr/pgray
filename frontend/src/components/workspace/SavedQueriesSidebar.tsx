@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { deleteQuery, saveQueryFinal, ParameterizedQuery } from '../../api';
+import { deleteQuery, saveQueryFinal, ParameterizedQuery, getDatabases, connectDb } from '../../api';
 
 interface SavedQueriesSidebarProps {
     connectionInfo: any;
@@ -7,12 +7,15 @@ interface SavedQueriesSidebarProps {
     queries: ParameterizedQuery[];
     loading: boolean;
     onReload: () => void;
+    activeQueryName?: string;
 }
 
-const SavedQueriesSidebar: React.FC<SavedQueriesSidebarProps> = ({ connectionInfo, onSelectQuery, queries, loading, onReload }) => {
-    // Queries are now passed in props
-    // const [queries, setQueries] = useState<ParameterizedQuery[]>([]);
-    // const [loading, setLoading] = useState(false);
+const SavedQueriesSidebar: React.FC<SavedQueriesSidebarProps> = ({ connectionInfo, onSelectQuery, queries, loading, onReload, activeQueryName }) => {
+
+    // Database Switching State
+    const [databases, setDatabases] = useState<string[]>([]);
+    const [showDbDropdown, setShowDbDropdown] = useState(false);
+    const [switchingDb, setSwitchingDb] = useState(false);
 
     // Context Menu State
     const [contextMenu, setContextMenu] = useState<{ x: number, y: number, queryId: string } | null>(null);
@@ -20,25 +23,27 @@ const SavedQueriesSidebar: React.FC<SavedQueriesSidebarProps> = ({ connectionInf
     const [showRenameModal, setShowRenameModal] = useState(false);
     const [renameOldName, setRenameOldName] = useState('');
 
-    // Internal fetch removed
-    /*
+    // Load databases when connection changes
     useEffect(() => {
-        loadQueries();
-    }, [refreshTrigger, connectionInfo]);
-    */
+        if (connectionInfo) {
+            getDatabases(connectionInfo).then(dbs => {
+                if (dbs && dbs.length > 0) {
+                    setDatabases(dbs);
+                }
+            });
+        }
+    }, [connectionInfo]);
 
     // Close context menu on global click
     useEffect(() => {
-        const handleClick = () => setContextMenu(null);
+        const handleClick = () => {
+            setContextMenu(null);
+            setShowDbDropdown(false);
+        };
         document.addEventListener('click', handleClick);
         return () => document.removeEventListener('click', handleClick);
     }, []);
 
-    /*
-    const loadQueries = async () => {
-       // Removed
-    };
-    */
 
     const handleContextMenu = (e: React.MouseEvent, q: ParameterizedQuery) => {
         e.preventDefault();
@@ -109,6 +114,35 @@ const SavedQueriesSidebar: React.FC<SavedQueriesSidebarProps> = ({ connectionInf
         }
     };
 
+    const handleDbSwitch = async (dbName: string) => {
+        if (dbName === connectionInfo.database) return;
+        setSwitchingDb(true);
+        try {
+            const newConn = { ...connectionInfo, database: dbName };
+            // We need to trigger a full app reload/reconnect ideally, 
+            // but for now we just try to update connection. 
+            // Since props are read-only, we might need to rely on the parent updating.
+            // But wait, the parent manages connectionInfo via internal state or props.
+            // Simple approach: Just call connectDb which updates backend default, and proceed.
+            // However, React state needs to update.
+            // Since we don't have a callback to existing props to update connection,
+            // we will force a reload of the page or just alert user.
+
+            // BETTER: The app should really share connection state control.
+            // For this scope, let's assume we can just reload the page to pick up new default if we save it?
+
+            // Actually, `connectDb` updates the 'last used' connection file on backend usually.
+            await connectDb(newConn);
+            window.location.reload(); // Simple brute force to reload everything with new DB
+
+        } catch (e) {
+            console.error("Failed to switch DB", e);
+            alert("Failed to switch database");
+        } finally {
+            setSwitchingDb(false);
+        }
+    };
+
     return (
         <div style={{
             width: '250px',
@@ -118,6 +152,76 @@ const SavedQueriesSidebar: React.FC<SavedQueriesSidebarProps> = ({ connectionInf
             flexDirection: 'column',
             overflow: 'hidden'
         }}>
+            {/* Server Header */}
+            <div style={{
+                padding: '10px',
+                borderBottom: '1px solid #334155',
+                background: '#1e293b'
+            }}>
+                <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '2px' }}>SERVER</div>
+                <div style={{ fontSize: '13px', color: '#e2e8f0', fontWeight: 'bold' }}>
+                    {connectionInfo?.host}:{connectionInfo?.port}
+                </div>
+
+                <div style={{ marginTop: '8px', position: 'relative' }}>
+                    <div
+                        onClick={(e) => { e.stopPropagation(); setShowDbDropdown(!showDbDropdown); }}
+                        style={{
+                            fontSize: '12px',
+                            color: '#94a3b8',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '4px 6px',
+                            background: '#0f172a',
+                            borderRadius: '4px',
+                            border: '1px solid #334155'
+                        }}
+                    >
+                        <span>
+                            <span style={{ color: '#64748b', marginRight: '4px' }}>DB:</span>
+                            {switchingDb ? 'Switching...' : connectionInfo?.database}
+                        </span>
+                        <span>▼</span>
+                    </div>
+
+                    {showDbDropdown && (
+                        <div style={{
+                            position: 'absolute',
+                            top: '100%', left: 0, right: 0,
+                            background: '#1e293b',
+                            border: '1px solid #475569',
+                            borderRadius: '4px',
+                            zIndex: 100,
+                            marginTop: '2px',
+                            maxHeight: '200px',
+                            overflowY: 'auto',
+                            boxShadow: '0 4px 6px rgba(0,0,0,0.3)'
+                        }} onClick={(e) => e.stopPropagation()}>
+                            {databases.map(db => (
+                                <div
+                                    key={db}
+                                    onClick={() => handleDbSwitch(db)}
+                                    style={{
+                                        padding: '6px 10px',
+                                        fontSize: '12px',
+                                        color: db === connectionInfo.database ? '#60a5fa' : '#cbd5e1',
+                                        cursor: 'pointer',
+                                        background: db === connectionInfo.database ? '#334155' : 'transparent',
+                                        borderBottom: '1px solid #334155'
+                                    }}
+                                    onMouseEnter={(e) => e.currentTarget.style.background = '#334155'}
+                                    onMouseLeave={(e) => e.currentTarget.style.background = db === connectionInfo.database ? '#334155' : 'transparent'}
+                                >
+                                    {db}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
+
             <div style={{
                 padding: '10px',
                 borderBottom: '1px solid #334155',
@@ -157,14 +261,20 @@ const SavedQueriesSidebar: React.FC<SavedQueriesSidebarProps> = ({ connectionInf
                             borderRadius: '4px',
                             marginBottom: '2px',
                             fontSize: '13px',
-                            color: '#e2e8f0',
+                            color: activeQueryName === q.name ? '#fff' : '#e2e8f0',
+                            background: activeQueryName === q.name ? '#3b82f6' : 'transparent',
                             transition: 'background 0.2s',
                             whiteSpace: 'nowrap',
                             overflow: 'hidden',
-                            textOverflow: 'ellipsis'
+                            textOverflow: 'ellipsis',
+                            fontWeight: activeQueryName === q.name ? 'bold' : 'normal'
                         }}
-                        onMouseEnter={(e) => e.currentTarget.style.background = '#1e293b'}
-                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                        onMouseEnter={(e) => {
+                            if (activeQueryName !== q.name) e.currentTarget.style.background = '#1e293b'
+                        }}
+                        onMouseLeave={(e) => {
+                            if (activeQueryName !== q.name) e.currentTarget.style.background = 'transparent'
+                        }}
                         title={q.name}
                     >
                         {q.name}

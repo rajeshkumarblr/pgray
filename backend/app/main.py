@@ -87,6 +87,18 @@ async def get_settings(request: ConnectionRequest):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/api/databases")
+async def get_databases_endpoint(request: ConnectionRequest):
+    try:
+        from app.db_utils import get_databases
+        dbs = get_databases(request.connection)
+        return {"status": "success", "databases": dbs}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 @app.post("/api/generate_sql")
 def generate_sql_endpoint(request: GenerateSqlRequest):
     try:

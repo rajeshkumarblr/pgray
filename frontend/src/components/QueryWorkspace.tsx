@@ -4,7 +4,7 @@ import SchemaBrowser from './workspace/SchemaBrowser';
 import SavedQueriesSidebar from './workspace/SavedQueriesSidebar';
 import WorkspaceToolbar from './workspace/WorkspaceToolbar';
 import BottomPane from './workspace/BottomPane';
-import SimpleEditor from './SimpleEditor';
+import SqlEditor from './SqlEditor';
 import DiffView from './DiffView';
 import QueryTuneTab from './tabs/QueryTuneTab';
 import ServerTuneTab from './tabs/ServerTuneTab';
@@ -30,7 +30,7 @@ interface QueryWorkspaceProps {
     isExecuting: boolean;
     executionResult: any;
     execError?: string | null;
-    onTune: () => void;
+    onTune: (params?: any) => void;
     explainResult: any;
     explainText: string;
     loadingExplain: boolean;
@@ -149,7 +149,7 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
 
     const handleTuneWrapper = () => {
         setActiveTab('tune');
-        onTune();
+        onTune(paramValues);
     };
 
     const handleEditorWrapper = () => {
@@ -199,6 +199,7 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                 queries={savedQueries}
                 loading={loadingSavedQueries}
                 onReload={loadSavedQueries}
+                activeQueryName={sessionTitle}
             />
 
             {/* Main Center Column */}
@@ -246,12 +247,10 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                                     onClose={() => setShowDiff(false)}
                                 />
                             ) : (
-                                <SimpleEditor
+                                <SqlEditor
                                     value={sqlQuery}
                                     onChange={setSqlQuery}
-                                    language="sql"
-                                    placeholder="SELECT * FROM ..."
-                                    style={{ flex: 1 }}
+                                    schema={schema}
                                 />
                             )}
                         </div>

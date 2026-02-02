@@ -38,3 +38,24 @@ def get_distinct_values(info: ConnectionInfo, table: str, column: str, search: s
         print(f"Error fetching distinct values: {e}")
         # Instead of failing hard (might be permissions or invalid table inferred by AI), return empty
         return []
+
+def get_databases(info: ConnectionInfo):
+    """
+    Returns a list of all non-template databases on the server.
+    """
+    try:
+        # Connect to 'postgres' database to list others
+        dsn = f"host={info.host} port={info.port} dbname=postgres user={info.username} password={info.password}"
+        conn = psycopg2.connect(dsn)
+        cur = conn.cursor()
+        
+        cur.execute("SELECT datname FROM pg_database WHERE datistemplate = false;")
+        rows = cur.fetchall()
+        dbs = [row[0] for row in rows]
+        
+        conn.close()
+        return dbs
+    except Exception as e:
+        print(f"Error listing databases: {e}")
+        # Fallback: at least return the current one or empty
+        return [info.database]
