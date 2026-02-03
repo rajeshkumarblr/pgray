@@ -480,14 +480,7 @@ async def analyze_parameterized_query(sql_query: str, model: str = "qwen2.5-code
     existing_values = set(p["original_value"] for p in regex_params)
     
     for ai_p in ai_result["parameters"]:
-        # Skip if AI suggests satisfying an existing values literal entirely
-        if ai_p["original_value"] in existing_values:
-            continue
-            
-        # Skip heuristic ":limit"
-        if ai_p["original_value"].startswith(":") and not ai_p["original_value"].startswith("::"):
-             continue
-
+        # 1. Check for Name Match (Merge Metadata)
         if ai_p["name"] in existing_map:
             # MERGE METADATA: If AI found table/col/transform for an existing regex param, enrich it!
             existing = existing_map[ai_p["name"]]
@@ -497,8 +490,18 @@ async def analyze_parameterized_query(sql_query: str, model: str = "qwen2.5-code
                 existing["column"] = ai_p["column"]
             if not existing.get("transform") and ai_p.get("transform"):
                 existing["transform"] = ai_p["transform"]
-        else:
-            final_params.append(ai_p)
+            continue
+
+        # 2. Skip if AI suggests satisfying an existing values literal entirely (deduplication for new params)
+        if ai_p["original_value"] in existing_values:
+            continue
+            
+        # 3. Add new param
+        # Skip heuristic ":limit"
+        if ai_p["original_value"].startswith(":") and not ai_p["original_value"].startswith("::"):
+             continue
+
+        final_params.append(ai_p)
             
     final_result = {
         "title": ai_result["title"],
