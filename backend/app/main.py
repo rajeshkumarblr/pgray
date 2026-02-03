@@ -351,12 +351,14 @@ async def save_final_query_endpoint(request: SaveFinalQueryRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+
 class DistinctValuesRequest(BaseModel):
     table: str
     column: str
     connection: ConnectionInfo
-    search: str = None  # Optional search term
-    transform: str = None  # Optional transform function like 'EXTRACT(YEAR FROM {})'
+    search: Optional[str] = None
+    transform: Optional[str] = None
 
 @app.post("/api/db/values")
 async def get_distinct_values_endpoint(request: DistinctValuesRequest):

@@ -23,11 +23,8 @@ def get_distinct_values(info: ConnectionInfo, table: str, column: str, search: s
         # Build the query
         # Note: Using raw SQL for the transform expression since psycopg2.sql doesn't handle functions well
         if search:
-            # For transformed columns, cast to text for ILIKE comparison
-            if transform:
-                query_str = f"SELECT DISTINCT {col_expr} FROM \"{table}\" WHERE {col_expr}::text ILIKE %s ORDER BY 1 LIMIT %s"
-            else:
-                query_str = f"SELECT DISTINCT {col_expr} FROM \"{table}\" WHERE {col_expr} ILIKE %s ORDER BY 1 LIMIT %s"
+            # Always cast to text for ILIKE comparison to handle non-string columns like DATE/INT
+            query_str = f"SELECT DISTINCT {col_expr} FROM \"{table}\" WHERE {col_expr}::text ILIKE %s ORDER BY 1 LIMIT %s"
             cur.execute(query_str, (f"{search}%", limit))
         else:
             query_str = f"SELECT DISTINCT {col_expr} FROM \"{table}\" ORDER BY 1 LIMIT %s"
