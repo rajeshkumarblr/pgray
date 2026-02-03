@@ -77,9 +77,22 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({ value, onChange, on
                     {options.length > 0 ? (
                         options.map((opt, idx) => (
                             <div key={idx} onClick={() => handleSelect(opt)}
-                                style={{ padding: '6px 10px', cursor: 'pointer', borderBottom: '1px solid #334155', fontSize: '12px' }}
-                                onMouseEnter={(e) => e.currentTarget.style.background = '#334155'}
-                                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                                style={{
+                                    padding: '8px 12px',
+                                    cursor: 'pointer',
+                                    borderBottom: '1px solid #334155',
+                                    fontSize: '13px',
+                                    color: '#f1f5f9',
+                                    background: 'transparent'
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.background = '#3b82f6';
+                                    e.currentTarget.style.color = 'white';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.background = 'transparent';
+                                    e.currentTarget.style.color = '#f1f5f9';
+                                }}
                             >
                                 {opt}
                             </div>

@@ -19,7 +19,7 @@ def get_distinct_values(info: ConnectionInfo, table: str, column: str, search: s
                 sql.Identifier(column),
                 sql.Identifier(column)
             )
-            cur.execute(query, (f"%{search}%", limit))
+            cur.execute(query, (f"{search}%", limit))
         else:
             query = sql.SQL("SELECT DISTINCT {} FROM {} ORDER BY {} LIMIT %s").format(
                 sql.Identifier(column),
