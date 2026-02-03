@@ -53,6 +53,12 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
     *   **Node Details**: Drill down into specific operators to see Filters, Buffer Usage, and Output columns.
     *   **Diff View**: Compare the AI's suggested query changes against your original code side-by-side.
 
+*   **Smart SQL Editor**:
+    *   **Auto-Completion**: Context-aware suggestions as you type.
+    *   **Dot Trigger**: Type `table.` or `alias.` to see column suggestions with data types.
+    *   **Keyword Trigger**: Type `FROM ` or `JOIN ` to see available table names.
+    *   **Keyboard Navigation**: Use Arrow keys to navigate, Enter/Tab to select, Escape to dismiss.
+    *   **Visual Badges**: Distinct badges (TBL/COL) help identify suggestion types at a glance.
 
     
 ## Visual Tour

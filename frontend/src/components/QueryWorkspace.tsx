@@ -4,7 +4,7 @@ import SchemaBrowser from './workspace/SchemaBrowser';
 import SavedQueriesSidebar from './workspace/SavedQueriesSidebar';
 import WorkspaceToolbar from './workspace/WorkspaceToolbar';
 import BottomPane from './workspace/BottomPane';
-import SqlEditor from './SqlEditor';
+import SimpleEditor from './SimpleEditor';
 import DiffView from './DiffView';
 import QueryTuneTab from './tabs/QueryTuneTab';
 import ServerTuneTab from './tabs/ServerTuneTab';
@@ -247,7 +247,7 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                                     onClose={() => setShowDiff(false)}
                                 />
                             ) : (
-                                <SqlEditor
+                                <SimpleEditor
                                     value={sqlQuery}
                                     onChange={setSqlQuery}
                                     schema={schema}
