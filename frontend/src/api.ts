@@ -181,9 +181,9 @@ export const saveQueryFinal = async (name: string, sql: string, params: any[], o
     return response.data;
 };
 
-export const getDistinctValues = async (connection: any, table: string, column: string, search: string = '') => {
+export const getDistinctValues = async (connection: any, table: string, column: string, search: string = '', transform: string | null = null) => {
     try {
-        const response = await api.post('/db/values', { connection, table, column, search });
+        const response = await api.post('/db/values', { connection, table, column, search, transform });
         return response.data;
     } catch (error) {
         console.error("Error fetching distinct values:", error);

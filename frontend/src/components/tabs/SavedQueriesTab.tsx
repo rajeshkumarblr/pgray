@@ -10,6 +10,7 @@ interface ParamDef {
     original_value: string;
     table?: string | null;
     column?: string | null;
+    transform?: string | null;
 }
 
 interface ParameterizedQuery {
@@ -272,11 +273,11 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
         }
     };
 
-    const fetchOptions = async (pName: string, table: string, column: string, search: string = '') => {
+    const fetchOptions = async (pName: string, table: string, column: string, search: string = '', transform: string | null = null) => {
         try {
             setLoadingOptions((prev: any) => ({ ...prev, [pName]: true }));
             if (!connectionInfo) return;
-            const res = await getDistinctValues(connectionInfo, table, column, search);
+            const res = await getDistinctValues(connectionInfo, table, column, search, transform);
             if (res && res.values) {
                 setParamOptions((prev: any) => ({
                     ...prev,
@@ -308,7 +309,7 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
             if (typeof p !== 'string' && p.table && p.column) {
                 newLoading[pName] = true;
                 // Async fetch initial (no search)
-                fetchOptions(pName, p.table, p.column);
+                fetchOptions(pName, p.table, p.column, '', p.transform || null);
             }
         }
 
@@ -685,7 +686,7 @@ const SavedQueriesTab: React.FC<SavedQueriesTabProps> = ({ onExecute, onAnalyze,
                                                             onChange={(val) => setParamValues({ ...paramValues, [pName]: val })}
                                                             onSearch={(term) => {
                                                                 if (typeof p !== 'string' && p.table && p.column) {
-                                                                    fetchOptions(pName, p.table, p.column, term);
+                                                                    fetchOptions(pName, p.table, p.column, term, p.transform || null);
                                                                 }
                                                             }}
                                                             options={paramOptions[pName] || []}

@@ -401,19 +401,24 @@ async def analyze_parameterized_query(sql_query: str, model: str = "qwen2.5-code
         "3. Identify ALL literal values (strings, numbers) in WHERE/HAVING clauses OR LIMIT/OFFSET clauses that could be NEW parameters.\n"
         "4. ALSO analyze any EXISTING parameters (starting with :) found in the query.\n"
         "5. For each parameter (new or existing), identify the TABLE and COLUMN it is filtering (Use null if not applicable).\n"
-        "6. **IMPORTANT**: Only extract a number as a parameter if it is a standalone value.\n"
-        "7. **IMPORTANT**: For LIMIT/OFFSET, naming should be 'limit_val' or 'offset_val'.\n"
-        "8. Output valid JSON.\n\n"
+        "6. **CRITICAL**: If the column has a FUNCTION applied to it (e.g., EXTRACT(YEAR FROM col), DATE_TRUNC('month', col)), capture the function as 'transform'.\n"
+        "   - Use placeholder {} to indicate where the column goes.\n"
+        "   - Example: EXTRACT(YEAR FROM m.date) = :year -> transform: 'EXTRACT(YEAR FROM {})'\n"
+        "   - Example: DATE_TRUNC('month', created_at) = :month -> transform: 'DATE_TRUNC(\\'month\\', {})'\n"
+        "7. **IMPORTANT**: Only extract a number as a parameter if it is a standalone value.\n"
+        "8. **IMPORTANT**: For LIMIT/OFFSET, naming should be 'limit_val' or 'offset_val'.\n"
+        "9. Output valid JSON.\n\n"
         f"Input SQL:\n```sql\n{sql_query}\n```\n\n"
         "Output Format:\n"
         "{\n"
-        "  \"title\": \"Movies by Actor\",\n"
+        "  \"title\": \"Movies by Year\",\n"
         "  \"parameters\": [\n"
         "    { \n"
-        "      \"name\": \"actor_name\", \n"
-        "      \"original_value\": \"'Tom Hanks'\", \n"
-        "      \"table\": \"people\", \n"
-        "      \"column\": \"name\" \n"
+        "      \"name\": \"year\", \n"
+        "      \"original_value\": \":year\", \n"
+        "      \"table\": \"movies\", \n"
+        "      \"column\": \"date\",\n"
+        "      \"transform\": \"EXTRACT(YEAR FROM {})\" \n"
         "    }\n"
         "  ]\n"
         "}"
@@ -484,12 +489,14 @@ async def analyze_parameterized_query(sql_query: str, model: str = "qwen2.5-code
              continue
 
         if ai_p["name"] in existing_map:
-            # MERGE METADATA: If AI found table/col for an existing regex param, enrich it!
+            # MERGE METADATA: If AI found table/col/transform for an existing regex param, enrich it!
             existing = existing_map[ai_p["name"]]
             if not existing.get("table") and ai_p.get("table"):
                 existing["table"] = ai_p["table"]
             if not existing.get("column") and ai_p.get("column"):
                 existing["column"] = ai_p["column"]
+            if not existing.get("transform") and ai_p.get("transform"):
+                existing["transform"] = ai_p["transform"]
         else:
             final_params.append(ai_p)
             

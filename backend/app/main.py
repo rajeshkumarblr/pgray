@@ -355,13 +355,14 @@ class DistinctValuesRequest(BaseModel):
     table: str
     column: str
     connection: ConnectionInfo
-    search: str = None # Optional search term
+    search: str = None  # Optional search term
+    transform: str = None  # Optional transform function like 'EXTRACT(YEAR FROM {})'
 
 @app.post("/api/db/values")
 async def get_distinct_values_endpoint(request: DistinctValuesRequest):
     try:
         from app.db_utils import get_distinct_values
-        values = get_distinct_values(request.connection, request.table, request.column, request.search) 
+        values = get_distinct_values(request.connection, request.table, request.column, request.search, transform=request.transform) 
         return {"status": "success", "values": values}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -127,10 +127,10 @@ const QueryParametersPanel: React.FC<QueryParametersPanelProps> = ({ sql, paramV
         }
     }, [sql]);
 
-    const fetchOptions = async (pName: string, table: string, column: string, search: string = '') => {
+    const fetchOptions = async (pName: string, table: string, column: string, search: string = '', transform: string | null = null) => {
         try {
             setLoading(prev => ({ ...prev, [pName]: true }));
-            const res = await getDistinctValues(connectionInfo, table, column, search);
+            const res = await getDistinctValues(connectionInfo, table, column, search, transform);
             if (res && res.values) {
                 setOptions(prev => ({ ...prev, [pName]: res.values.map(String) }));
             }
@@ -182,7 +182,7 @@ const QueryParametersPanel: React.FC<QueryParametersPanelProps> = ({ sql, paramV
                                     <SearchableSelect
                                         value={paramValues[pName] || ''}
                                         onChange={(val) => onChange({ ...paramValues, [pName]: val })}
-                                        onSearch={(term) => fetchOptions(pName, meta.table, meta.column, term)}
+                                        onSearch={(term) => fetchOptions(pName, meta.table, meta.column, term, meta.transform || null)}
                                         options={options[pName] || []}
                                         loading={loading[pName]}
                                         placeholder="Select val..."

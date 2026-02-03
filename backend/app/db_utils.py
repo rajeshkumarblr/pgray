@@ -2,35 +2,42 @@ import psycopg2
 from psycopg2 import sql
 from app.models import ConnectionInfo
 
-def get_distinct_values(info: ConnectionInfo, table: str, column: str, search: str = None, limit: int = 50):
+def get_distinct_values(info: ConnectionInfo, table: str, column: str, search: str = None, limit: int = 50, transform: str = None):
     """
     Fetches distinct values for a given table and column.
+    If transform is provided (e.g., 'EXTRACT(YEAR FROM {})'), applies it to the column.
     """
     try:
         dsn = f"host={info.host} port={info.port} dbname={info.database} user={info.username} password={info.password}"
         conn = psycopg2.connect(dsn)
         cur = conn.cursor()
         
-        # Safe Identifier Construction
-        if search:
-            query = sql.SQL("SELECT DISTINCT {} FROM {} WHERE {} ILIKE %s ORDER BY {} LIMIT %s").format(
-                sql.Identifier(column),
-                sql.Identifier(table),
-                sql.Identifier(column),
-                sql.Identifier(column)
-            )
-            cur.execute(query, (f"{search}%", limit))
+        # Build the column expression (with optional transform)
+        if transform and '{}' in transform:
+            # Replace {} with the quoted column identifier
+            # We need to build this as raw SQL since transforms are complex expressions
+            col_expr = transform.format(f'"{column}"')
         else:
-            query = sql.SQL("SELECT DISTINCT {} FROM {} ORDER BY {} LIMIT %s").format(
-                sql.Identifier(column),
-                sql.Identifier(table),
-                sql.Identifier(column)
-            )
-            cur.execute(query, (limit,))
+            col_expr = f'"{column}"'
+        
+        # Build the query
+        # Note: Using raw SQL for the transform expression since psycopg2.sql doesn't handle functions well
+        if search:
+            # For transformed columns, cast to text for ILIKE comparison
+            if transform:
+                query_str = f"SELECT DISTINCT {col_expr} FROM \"{table}\" WHERE {col_expr}::text ILIKE %s ORDER BY 1 LIMIT %s"
+            else:
+                query_str = f"SELECT DISTINCT {col_expr} FROM \"{table}\" WHERE {col_expr} ILIKE %s ORDER BY 1 LIMIT %s"
+            cur.execute(query_str, (f"{search}%", limit))
+        else:
+            query_str = f"SELECT DISTINCT {col_expr} FROM \"{table}\" ORDER BY 1 LIMIT %s"
+            cur.execute(query_str, (limit,))
 
         rows = cur.fetchall()
         
-        values = [row[0] for row in rows if row[0] is not None]
+        # Convert values to strings for JSON serialization
+        values = [str(row[0]) if row[0] is not None else None for row in rows]
+        values = [v for v in values if v is not None]
         
         conn.close()
         return values
