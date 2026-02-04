@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { warmupModel } from '../api';
+import { warmupModel, autocomplete } from '../api';
 
 interface Message {
     role: 'user' | 'assistant';
@@ -27,19 +27,80 @@ interface AIChatSidebarProps {
     onSetGoogleApiKey?: (key: string) => void;
     onOpenSettings?: () => void;
     onClearHistory?: () => void;
+    onIndexDatabase?: () => void;
+    connectionInfo: any;
 }
 
 const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
     messages, onClose, onSend, loading, aiState = 'idle', title = "Query Discussion", onRunSql,
     selectedModel = "qwen2.5-coder:latest", onModelChange,
-    googleApiKey = '', onSetGoogleApiKey, onOpenSettings, onClearHistory
+    googleApiKey = '', onSetGoogleApiKey, onOpenSettings, onClearHistory, onIndexDatabase,
+    connectionInfo
 }) => {
     const endRef = useRef<HTMLDivElement>(null);
     const [input, setInput] = useState('');
     const [inputHistory, setInputHistory] = useState<string[]>([]);
     const [historyIndex, setHistoryIndex] = useState(-1);
     const [hasWarmedUp, setHasWarmedUp] = useState(false);
-    // const [showKeyInput, setShowKeyInput] = useState(false); // Removed
+
+    // Autocomplete State
+    const [suggestions, setSuggestions] = useState<any[]>([]);
+    const [showSuggestions, setShowSuggestions] = useState(false);
+    const [suggestionIndex, setSuggestionIndex] = useState(0);
+    const inputRef = useRef<HTMLTextAreaElement>(null);
+
+    // Check for autocomplete trigger
+    useEffect(() => {
+        if (!input || !connectionInfo) {
+            setShowSuggestions(false);
+            return;
+        }
+
+        // Find cursor position
+        const cursor = inputRef.current?.selectionStart || 0;
+        const textBeforeRequest = input.slice(0, cursor);
+        const lastWord = textBeforeRequest.split(/\s/).pop() || '';
+
+        if (lastWord.startsWith('@') && lastWord.length >= 3) {
+            const term = lastWord.substring(1); // Remove @
+            // TODO: Extract table context if syntax is @Table:Term? 
+            // For now, assuming Global search or Table search based on term
+
+            // Debounce or just fire? 
+            // Simulating debounce with timeout could be better but let's try direct for responsiveness
+            const timer = setTimeout(() => {
+                autocomplete(connectionInfo, term).then(res => {
+                    if (res && res.length > 0) {
+                        setSuggestions(res);
+                        setShowSuggestions(true);
+                        setSuggestionIndex(0);
+                    } else {
+                        setShowSuggestions(false);
+                    }
+                });
+            }, 300);
+            return () => clearTimeout(timer);
+        } else {
+            setShowSuggestions(false);
+        }
+    }, [input, connectionInfo]);
+
+    const insertSuggestion = (s: any) => {
+        if (!inputRef.current) return;
+        const cursor = inputRef.current.selectionStart;
+        const textBefore = input.slice(0, cursor);
+        const textAfter = input.slice(cursor);
+        const lastWord = textBefore.split(/\s/).pop() || '';
+
+        // Replace last word (the @term) with the value
+        const newTextBefore = textBefore.slice(0, -lastWord.length);
+        const insertion = s.type === 'table' ? s.value : `${s.value} (ID: ${s.meta.match(/ID: (.*?)\)/)?.[1] || '?'})`;
+        // Or just the value? Prompt said "complete the name". Adding ID helps context.
+
+        setInput(newTextBefore + insertion + " " + textAfter);
+        setShowSuggestions(false);
+        inputRef.current.focus();
+    };
 
     useEffect(() => {
         endRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -57,6 +118,28 @@ const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
     };
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (showSuggestions) {
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setSuggestionIndex(prev => (prev + 1) % suggestions.length);
+                return;
+            }
+            if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setSuggestionIndex(prev => (prev - 1 + suggestions.length) % suggestions.length);
+                return;
+            }
+            if (e.key === 'Enter' || e.key === 'Tab') {
+                e.preventDefault();
+                insertSuggestion(suggestions[suggestionIndex]);
+                return;
+            }
+            if (e.key === 'Escape') {
+                setShowSuggestions(false);
+                return;
+            }
+        }
+
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             handleSend();
@@ -216,6 +299,15 @@ const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
                     {/* Key Input Removed - Managed in Settings */}
                 </div>
                 <div style={{ display: 'flex', gap: '8px' }}>
+                    {onIndexDatabase && (
+                        <button
+                            onClick={onIndexDatabase}
+                            style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '14px' }}
+                            title="Index Database for Search"
+                        >
+                            🔍
+                        </button>
+                    )}
                     {onOpenSettings && (
                         <button
                             onClick={onOpenSettings}
@@ -318,9 +410,44 @@ const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
             </div>
 
             {/* Input Area */}
-            <div style={{ padding: '10px', borderTop: '1px solid #1e293b', background: '#0f172a' }}>
+            <div style={{ padding: '10px', borderTop: '1px solid #1e293b', background: '#0f172a', position: 'relative' }}>
+                {showSuggestions && (
+                    <div style={{
+                        position: 'absolute',
+                        bottom: '100%',
+                        left: '10px',
+                        background: '#1e293b',
+                        border: '1px solid #334155',
+                        borderRadius: '6px',
+                        boxShadow: '0 -4px 6px -1px rgba(0, 0, 0, 0.1)',
+                        width: '300px',
+                        maxHeight: '200px',
+                        overflowY: 'auto',
+                        zIndex: 10
+                    }}>
+                        {suggestions.map((s, idx) => (
+                            <div
+                                key={idx}
+                                onClick={() => insertSuggestion(s)}
+                                style={{
+                                    padding: '8px 12px',
+                                    borderBottom: '1px solid #334155',
+                                    cursor: 'pointer',
+                                    background: idx === suggestionIndex ? '#334155' : 'transparent',
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center'
+                                }}
+                            >
+                                <div style={{ color: '#e2e8f0', fontWeight: 'bold' }}>{s.value}</div>
+                                <div style={{ fontSize: '10px', color: '#94a3b8' }}>{s.meta}</div>
+                            </div>
+                        ))}
+                    </div>
+                )}
                 <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                     <textarea
+                        ref={inputRef}
                         value={input}
                         onChange={(e) => {
                             const val = e.target.value;

@@ -237,3 +237,23 @@ export const getERLayout = async (connection: any = null) => {
         return null; // Return null if fail
     }
 };
+
+export const searchDatabase = async (connection: any, query: string, limit: number = 5) => {
+    try {
+        const response = await api.post('/search/query', { connection, query, limit });
+        return response.data;
+    } catch (error) {
+        console.error("Error searching database:", error);
+        return { status: "error", results: [] };
+    }
+};
+
+export const autocomplete = async (connection: any, term: string, table?: string) => {
+    try {
+        const response = await api.post('/autocomplete', { connection, term, table });
+        return response.data.results;
+    } catch (e) {
+        console.error("Autocomplete failed:", e);
+        return [];
+    }
+};

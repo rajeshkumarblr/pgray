@@ -149,7 +149,8 @@ async def generate_sql_stream_endpoint(request: GenerateSqlRequest):
                 request.plan_text,
                 request.sql_query,
                 request.apiKey,
-                request.ollamaUrl
+                request.ollamaUrl,
+                request.connection
             ),
             media_type="text/plain"
         )
@@ -241,6 +242,46 @@ async def generate_title_endpoint(request: GenerateTitleRequest):
         from app.ai import generate_title
         title = await generate_title(request.prompt, request.model)
         return {"status": "success", "title": title}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class SearchIndexRequest(BaseModel):
+    connection: dict
+    force: bool = False
+
+@app.post("/api/search/index")
+async def index_database_endpoint(request: SearchIndexRequest):
+    try:
+        from app.search_engine import create_search_index
+        result = create_search_index(request.connection, request.force)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class SearchQueryRequest(BaseModel):
+    connection: dict
+    query: str
+    limit: int = 5
+
+@app.post("/api/search/query")
+async def search_query_endpoint(request: SearchQueryRequest):
+    try:
+        from app.search_engine import search_similiar
+        results = search_similiar(request.connection, request.query, request.limit)
+        return {"status": "success", "results": results}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+class AutocompleteRequest(BaseModel):
+    connection: dict
+    term: str
+    table: Optional[str] = None
+
+@app.post("/api/autocomplete")
+async def autocomplete_endpoint(request: AutocompleteRequest):
+    try:
+        from app.search_engine import autocomplete_entity
+        results = autocomplete_entity(request.connection, request.term, request.table)
+        return {"status": "success", "results": results}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

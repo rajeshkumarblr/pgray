@@ -12,6 +12,7 @@ import PlanNode from './PlanNode';
 import { getSavedQueries, ParameterizedQuery, ParamDef } from '../api';
 import ERDiagram from './ERDiagram';
 
+
 const nodeTypes = { planNode: PlanNode };
 
 interface QueryWorkspaceProps {
@@ -59,6 +60,8 @@ interface QueryWorkspaceProps {
     onEdit: (sql: string, name: string) => void;
     onOpenSettings?: () => void;
     highlightedLines?: number[];
+    onAskAI: (prompt: string) => void;
+    onAppSearch: (prompt: string) => void;
 }
 
 const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
@@ -73,7 +76,7 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
     insights, onRunInsight, insightResults,
     onCompare, baselineMetrics, queriesRefreshTrigger,
     activeTab, setActiveTab, onAnalyzeParamQuery, onEdit,
-    onOpenSettings, highlightedLines = []
+    onOpenSettings, onAskAI, onAppSearch, highlightedLines = []
 }) => {
 
     // --- Local State ---
@@ -240,6 +243,9 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
 
                 {/* 3. Center Content */}
                 <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#1e293b', display: 'flex', flexDirection: 'column' }}>
+                    {/* Search Tab */}
+
+
 
                     {/* Editor Tab */}
                     <div style={{
@@ -326,23 +332,25 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                             />
                         )}
                     </div>
-                </div>
 
+                </div>
                 {/* 4. Resizable Bottom Pane */}
-                {bottomExpanded && (
-                    <div
-                        onMouseDown={startBottomResize}
-                        style={{
-                            height: '5px',
-                            background: '#1e293b',
-                            cursor: 'row-resize',
-                            borderTop: '1px solid #334155',
-                            display: 'flex', justifyContent: 'center', alignItems: 'center'
-                        }}
-                    >
-                        <div style={{ width: '40px', height: '2px', background: '#475569', borderRadius: '2px' }} />
-                    </div>
-                )}
+                {
+                    bottomExpanded && (
+                        <div
+                            onMouseDown={startBottomResize}
+                            style={{
+                                height: '5px',
+                                background: '#1e293b',
+                                cursor: 'row-resize',
+                                borderTop: '1px solid #334155',
+                                display: 'flex', justifyContent: 'center', alignItems: 'center'
+                            }}
+                        >
+                            <div style={{ width: '40px', height: '2px', background: '#475569', borderRadius: '2px' }} />
+                        </div>
+                    )
+                }
 
                 <BottomPane
                     activeTab={activeBottomTab}
@@ -365,7 +373,7 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                     metaParams={activeQueryMetadata?.params as any}
                     onExecuteQuery={handleExecuteWrapper}
                 />
-            </div>
+            </div >
         </div >
     );
 };

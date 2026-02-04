@@ -7,6 +7,8 @@ import time
 
 import os
 
+from app.search_engine import search_database
+
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +56,41 @@ def generate_sql(prompt: str, schema_context: str = None, schema_data: dict = No
     elif not schema_context:
         schema_context = "-- No schema provided"
 
+    elif not schema_context:
+        schema_context = "-- No schema provided"
+
+    # --- LOCAL SEARCH ENGINE INTEGRATION ---
+    data_context = ""
+    if connection:
+        # Heuristic: Extract quoted strings or capitalized words as search terms
+        import re
+        # Find 'quoted strings' or words with >3 chars that aren't SQL keywords?
+        # Simplest: Just search the whole prompt if it's short, or key phrases.
+        # Let's search for words inside single/double quotes as high signal.
+        possible_terms = re.findall(r"['\"](.*?)['\"]", prompt)
+        
+        # Also simple words if no quotes?
+        if not possible_terms:
+             # Just split and take long words? Too noisy.
+             # Let's assume user might say: Find Titanium Widget
+             # We can try to search the whole prompt against index if index is efficient?
+             # For now, let's strictly search quoted things OR if the prompt is short < 5 words.
+             pass
+
+        search_results = []
+        for term in possible_terms:
+            if len(term) > 2:
+                 results = search_database(connection, term, limit=3)
+                 search_results.extend(results)
+        
+        if search_results:
+            data_context = "### Data Context (Found in Database)\n"
+            data_context += "The following values were found in the database. Use their IDs or Exact Spelling if relevant:\n"
+            for res in search_results:
+                # res is dict: table_name, column_name, original_value, record_id
+                data_context += f"- Value '{res['original_value']}' found in `{res['table_name']}`.`{res['column_name']}` (ID: {res['record_id']})\n"
+            data_context += "\n"
+
     # Format history if present
     # USER REQUESTED TO DISABLE HISTORY FOR NOW
     history_text = ""
@@ -73,6 +110,7 @@ def generate_sql(prompt: str, schema_context: str = None, schema_data: dict = No
             "You are a helpful SQL Assistant. Your goal is to generate correct, efficient SQL queries.\n\n"
             "### Database Schema\n"
             f"{context_str}\n\n"
+            f"{data_context}"
             "### Task\n"
             "Generate a SQL query to answer the following question.\n"
             f"{history_text}"
@@ -201,7 +239,7 @@ def explain_sql_query(query: str, schema_context: str = None, schema_data: dict 
         "prompt": debug_prompt
     }
 
-async def generate_sql_stream(prompt: str, schema_context: str = None, schema_data: dict = None, history: list = None, model: str = "qwen2.5-coder", plan_text: str = None, sql_query: str = None, apiKey: str = None, ollamaUrl: str = None):
+async def generate_sql_stream(prompt: str, schema_context: str = None, schema_data: dict = None, history: list = None, model: str = "qwen2.5-coder", plan_text: str = None, sql_query: str = None, apiKey: str = None, ollamaUrl: str = None, connection: dict = None):
     """
     Async Generator that streams the response from Ollama using httpx.
     """
@@ -217,6 +255,34 @@ async def generate_sql_stream(prompt: str, schema_context: str = None, schema_da
         schema_text = schema_context
     else:
         schema_text = "-- No schema provided"
+
+    # --- LOCAL SEARCH ENGINE INTEGRATION (Stream) ---
+    data_context = ""
+    if connection:
+        try:
+            import re
+            # Extract quoted strings or simple heuristic
+            possible_terms = re.findall(r"['\"](.*?)['\"]", prompt)
+            
+            search_results = []
+            for term in possible_terms:
+                if len(term) > 2:
+                     # Search DB - This is synchronous, but fast enough? Or should be async?
+                     # search_database uses psycopg2, which is sync.
+                     # We are in async def. 
+                     # Ideally we offload to thread, but for MVP keep it simple (it blocks loop briefly).
+                     results = search_database(connection, term, limit=3)
+                     search_results.extend(results)
+            
+            if search_results:
+                data_context = "### Data Context (Found in Database)\n"
+                data_context += "The following values were found in the database. Use their IDs or Exact Spelling if relevant:\n"
+                for res in search_results:
+                    data_context += f"- Value '{res['original_value']}' found in `{res['table_name']}`.`{res['column_name']}` (ID: {res['record_id']})\n"
+                data_context += "\n"
+        except Exception as e:
+            logger.error(f"Search Context Injection failed: {e}")
+            pass
 
     # optimization context
     optimization_context = ""
@@ -242,6 +308,7 @@ async def generate_sql_stream(prompt: str, schema_context: str = None, schema_da
             "### Database Schema\n"
             f"{schema_text}\n\n"
             f"{optimization_context}"
+            f"{data_context}"
             "### Task\n"
             "Analyze the plan and suggest optimizations/indexes.\n"
             f"User Note: {prompt}\n\n"
@@ -256,6 +323,7 @@ async def generate_sql_stream(prompt: str, schema_context: str = None, schema_da
             "### Database Schema\n"
             f"{schema_text}\n\n"
             f"{optimization_context}"
+            f"{data_context}"
             "### Task\n"
             "Generate a SQL query to answer the following question.\n"
             f"Current Request: {prompt}\n\n"
@@ -266,7 +334,8 @@ async def generate_sql_stream(prompt: str, schema_context: str = None, schema_da
             "4. Ensure column names and table names exist in the schema.\n"
             "5. **CRITICAL**: If you use `ORDER BY` clause, you MUST specify `NULLS LAST`.\n"
             "6. **CRITICAL**: If the user asks for 'acted by' or 'movies with actor' or 'actress', you MUST join the `jobs` table to filter by job type. The ONLY valid job name for actors/actresses is 'Actor'. Do NOT use 'Actress'.\n"
-            "7. Output ONLY the SQL code block. Do NOT include any explanations, introductions, or 'Here is the SQL'.\n"
+            "7. **IMPORTANT**: If the user input contains an entity with an ID (e.g. 'Brad Pitt (ID: 287)'), you MUST prefer filtering by the NAME string (e.g. `WHERE name = 'Brad Pitt'`) rather than the ID. Exception: Use IDs only for non-human-readable foreign keys (like UUIDs) or if the name is ambiguous.\n"
+            "8. Output ONLY the SQL code block. Do NOT include any explanations, introductions, or 'Here is the SQL'.\n"
         )
 
 

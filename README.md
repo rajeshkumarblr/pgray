@@ -55,6 +55,7 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
 
 *   **Smart SQL Editor**:
     *   **Auto-Completion**: Context-aware suggestions as you type.
+    *   **Smart @ Autocomplete**: Type `@` to instantly search tables and data entities (e.g., `@Brad` -> `Brad Pitt (ID: 287)`).
     *   **Dot Trigger**: Type `table.` or `alias.` to see column suggestions with data types.
     *   **Keyword Trigger**: Type `FROM ` or `JOIN ` to see available table names.
     *   **Keyboard Navigation**: Use Arrow keys to navigate, Enter/Tab to select, Escape to dismiss.

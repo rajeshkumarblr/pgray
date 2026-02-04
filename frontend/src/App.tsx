@@ -10,7 +10,7 @@ import QueryWorkspace from './components/QueryWorkspace';
 import AIChatSidebar from './components/AIChatSidebar';
 import Toast from './components/Toast';
 import SaveSessionModal from './components/SaveSessionModal';
-import { analyzeQuery, saveQueryFinal } from './api';
+import { analyzeQuery, saveQueryFinal, generateSql } from './api';
 
 
 function App() {
@@ -658,6 +658,33 @@ Please provide a detailed analysis in the following format:
     }
   }, [chatHistory]);
 
+  const handleIndexDatabase = useCallback(async () => {
+    if (!connectionInfo) {
+      setToast({ message: 'No active connection.', type: 'error' });
+      return;
+    }
+
+    setToast({ message: 'Indexing database for AI search... this may take 10-30 seconds.', type: 'info' });
+
+    try {
+      const response = await fetch('http://localhost:9000/api/search/index', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connection: connectionInfo, force: true })
+      });
+
+      const data = await response.json();
+
+      if (data.status === 'success') {
+        setToast({ message: `Search Index Built! ${data.indexed_entries} items indexed. AI is now data-aware.`, type: 'success' });
+      } else {
+        setToast({ message: `Indexing failed: ${data.message}`, type: 'error' });
+      }
+    } catch (error) {
+      setToast({ message: `Indexing error: ${error}`, type: 'error' });
+    }
+  }, [connectionInfo]);
+
 
   return (
     <div style={{ height: '100vh', width: '100vw', display: 'flex', background: '#0f172a', overflow: 'hidden' }}>
@@ -710,7 +737,9 @@ Please provide a detailed analysis in the following format:
 
           onCopy={() => navigator.clipboard.writeText(sqlQuery)}
           onReset={() => { setSqlQuery(''); setExecutionResult(null); }}
+
           onAnalyzeNode={handleAnalyzeNode}
+          onAskAI={handleAIStream}
           insights={actionableInsights}
           onRunInsight={handleRunInsight}
           insightResults={insightResults}
@@ -719,6 +748,49 @@ Please provide a detailed analysis in the following format:
           queriesRefreshTrigger={queriesRefreshTrigger}
           activeTab={activeCenterTab}
           setActiveTab={setActiveCenterTab}
+          onAppSearch={async (prompt: string) => {
+            // Unified NL-to-SQL Search
+            if (!connectionInfo) return;
+            setIsExecuting(true);
+            setExecutionResult(null);
+            setExecError(null);
+            setSqlQuery(''); // Clear previous
+
+            try {
+              // 1. Generate SQL
+              // Note: We ignore history for search tab typically? Or should we pass it? 
+              // For "Google-like", usually one-shot.
+              const res = await generateSql(prompt, schema, [], activeProvider === 'local' ? localModel : geminiModel, connectionInfo);
+
+              let generatedSql = "";
+              if (res.sql) {
+                generatedSql = res.sql;
+              } else if (res.response) {
+                // Extract SQL if wrapped in markdown
+                const match = res.response.match(/```sql\n([\s\S]*?)\n```/);
+                if (match) generatedSql = match[1];
+                else generatedSql = res.response; // Fallback
+              }
+
+              if (generatedSql) {
+                setSqlQuery(generatedSql);
+                // 2. Execute SQL
+                try {
+                  const execRes = await executeQuery(connectionInfo, generatedSql, 50);
+                  setExecutionResult(execRes.data);
+                } catch (execErr: any) {
+                  setExecError(execErr.response?.data?.detail || execErr.message || "Execution Failed");
+                }
+              } else {
+                setExecError("Could not generate SQL from prompt.");
+              }
+
+            } catch (e: any) {
+              setExecError(e.message || "Search failed");
+            } finally {
+              setIsExecuting(false);
+            }
+          }}
         />
       </div>
 
@@ -751,6 +823,8 @@ Please provide a detailed analysis in the following format:
           onSetGoogleApiKey={setGoogleApiKey}
           onOpenSettings={() => setShowSettingsModal(true)}
           onClearHistory={handleClearHistory}
+          onIndexDatabase={handleIndexDatabase}
+          connectionInfo={connectionInfo}
         />
       </div>
 
