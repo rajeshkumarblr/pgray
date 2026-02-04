@@ -15,7 +15,19 @@ def _set_search_path(conn, schema_name: str):
             )
         )
 
-def execute_explain(info: ConnectionInfo, query: str, analyze: bool = True):
+def _prepare_query_params(query: str, params: dict):
+    """
+    Convert :param style to %(param)s style for psycopg2
+    """
+    import re
+    if params:
+         for key in params.keys():
+              # Replace :key with %(key)s, ensuring word boundary
+              pattern = r'(?<!\w):' + re.escape(key) + r'\b'
+              query = re.sub(pattern, f'%({key})s', query)
+    return query
+
+def execute_explain(info: ConnectionInfo, query: str, analyze: bool = True, params: dict = None):
     try:
         dsn = f"host={info.host} port={info.port} dbname={info.database} user={info.username} password={info.password}"
         conn = psycopg2.connect(dsn)
@@ -25,6 +37,9 @@ def execute_explain(info: ConnectionInfo, query: str, analyze: bool = True):
         _set_search_path(conn, schema_name)
 
         cur = conn.cursor()
+        
+        # Prepare query with params
+        query = _prepare_query_params(query, params)
         
         # Build commands
         options = "ANALYZE" if analyze else ""
@@ -36,11 +51,11 @@ def execute_explain(info: ConnectionInfo, query: str, analyze: bool = True):
         explain_text_cmd = f"EXPLAIN (FORMAT TEXT, {options}) {query}" if analyze else f"EXPLAIN (FORMAT TEXT) {query}"
 
         # Run JSON Explain
-        cur.execute(explain_json_cmd)
+        cur.execute(explain_json_cmd, params)
         json_result = cur.fetchone()
         
         # Run Text Explain
-        cur.execute(explain_text_cmd)
+        cur.execute(explain_text_cmd, params)
         text_result_lines = cur.fetchall()
         text_plan = "\n".join([row[0] for row in text_result_lines])
 
@@ -68,19 +83,7 @@ def execute_query_results(info: ConnectionInfo, query: str, limit: int = 1000, p
         import time
         start_time = time.time()
         
-        # Convert :param style to %(param)s style for psycopg2
-        # This is simple regex replacement, might need robustness for strings containing :
-        import re
-        if params:
-             # Look for :word boundaries. 
-             # Be careful not to replace things inside strings, but for now a simple regex is a good start for this use case.
-             # Better way: Let the frontend send $1 or let's assume the user uses :param.
-             # Psycopg2 uses %(name)s for dict parameters.
-             # We replace :name with %(name)s
-             for key in params.keys():
-                  # Replace :key with %(key)s, ensuring word boundary
-                  pattern = r'(?<!\w):' + re.escape(key) + r'\b'
-                  query = re.sub(pattern, f'%({key})s', query)
+        query = _prepare_query_params(query, params)
 
         cur.execute(query, params)
         

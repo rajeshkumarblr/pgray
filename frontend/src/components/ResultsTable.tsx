@@ -70,9 +70,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({ data }) => {
                     </tbody>
                 </table>
             </div>
-            <div style={{ padding: '5px 15px', background: '#0f172a', borderTop: '1px solid #475569', fontSize: '12px', color: '#64748b' }}>
-                {data.rowCount} rows
-            </div>
+
         </div>
     );
 };

@@ -59,6 +59,8 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
     *   **Keyword Trigger**: Type `FROM ` or `JOIN ` to see available table names.
     *   **Keyboard Navigation**: Use Arrow keys to navigate, Enter/Tab to select, Escape to dismiss.
     *   **Visual Badges**: Distinct badges (TBL/COL) help identify suggestion types at a glance.
+    *   **Inline AI Diff**: Automatically highlights lines changed by the AI assistant directly in the editor, making it easy to spot modifications.
+    *   **Integrated Parameters**: "Query Parameters" panel lives within the Results pane for a seamless Edit -> Run -> Tune workflow.
 
     
 ## Visual Tour

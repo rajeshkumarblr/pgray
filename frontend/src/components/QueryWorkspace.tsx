@@ -8,7 +8,6 @@ import SimpleEditor from './SimpleEditor';
 import DiffView from './DiffView';
 import QueryTuneTab from './tabs/QueryTuneTab';
 import ServerTuneTab from './tabs/ServerTuneTab';
-import QueryParametersPanel from './workspace/QueryParametersPanel';
 import PlanNode from './PlanNode';
 import { getSavedQueries, ParameterizedQuery, ParamDef } from '../api';
 import ERDiagram from './ERDiagram';
@@ -54,11 +53,12 @@ interface QueryWorkspaceProps {
     onCompare: () => void;
     baselineMetrics: { planning: number, execution: number } | null;
     queriesRefreshTrigger: number;
-    activeTab: 'editor' | 'tune' | 'server' | 'schema' | 'er';
-    setActiveTab: (tab: 'editor' | 'tune' | 'server' | 'schema' | 'er') => void;
+    activeTab: 'editor' | 'tune' | 'server' | 'schema' | 'er' | 'queries';
+    setActiveTab: (tab: 'editor' | 'tune' | 'server' | 'schema' | 'er' | 'queries') => void;
     onAnalyzeParamQuery: (sql: string) => void;
     onEdit: (sql: string, name: string) => void;
     onOpenSettings?: () => void;
+    highlightedLines?: number[];
 }
 
 const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
@@ -73,7 +73,7 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
     insights, onRunInsight, insightResults,
     onCompare, baselineMetrics, queriesRefreshTrigger,
     activeTab, setActiveTab, onAnalyzeParamQuery, onEdit,
-    onOpenSettings
+    onOpenSettings, highlightedLines = []
 }) => {
 
     // --- Local State ---
@@ -129,6 +129,13 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
     useEffect(() => {
         loadSavedQueries();
     }, [loadSavedQueries, queriesRefreshTrigger]);
+
+    // Auto-collapse bottom pane for non-query tabs
+    useEffect(() => {
+        if (!['editor', 'tune'].includes(activeTab)) {
+            setBottomExpanded(false);
+        }
+    }, [activeTab]);
 
     // --- Handlers ---
 
@@ -251,19 +258,11 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                                     value={sqlQuery}
                                     onChange={setSqlQuery}
                                     schema={schema}
+                                    highlightLines={highlightedLines}
                                 />
                             )}
                         </div>
 
-                        <div style={{ flexShrink: 0 }}>
-                            <QueryParametersPanel
-                                sql={sqlQuery}
-                                paramValues={paramValues}
-                                onChange={setParamValues}
-                                connectionInfo={connectionInfo}
-                                metaParams={activeQueryMetadata?.params as any}
-                            />
-                        </div>
                     </div>
 
                     {/* Tune Tab */}
@@ -359,9 +358,15 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                     insights={insights}
                     onRunInsight={onRunInsight}
                     insightResults={insightResults}
+                    sqlQuery={sqlQuery}
+                    paramValues={paramValues}
+                    onParamChange={setParamValues}
+                    connectionInfo={connectionInfo}
+                    metaParams={activeQueryMetadata?.params as any}
+                    onExecuteQuery={handleExecuteWrapper}
                 />
             </div>
-        </div>
+        </div >
     );
 };
 

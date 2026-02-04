@@ -269,9 +269,15 @@ def save_parameterized_query(name: str, sql: str, params: list, original_sql: st
             except json.JSONDecodeError:
                 pass
                 
-        # Append new query
+        # Check for existing query with same name
+        existing_index = -1
+        for i, q in enumerate(data["queries"]):
+            if q.get("name") == name:
+                existing_index = i
+                break
+        
         new_query = {
-            "id": datetime.datetime.now().strftime("%Y%m%d%H%M%S"),
+            "id": data["queries"][existing_index]["id"] if existing_index >= 0 else datetime.datetime.now().strftime("%Y%m%d%H%M%S"),
             "name": name,
             "sql": sql,
             "params": params,
@@ -279,7 +285,10 @@ def save_parameterized_query(name: str, sql: str, params: list, original_sql: st
             "created_at": datetime.datetime.now().isoformat()
         }
         
-        data["queries"].append(new_query)
+        if existing_index >= 0:
+            data["queries"][existing_index] = new_query
+        else:
+            data["queries"].append(new_query)
         
         with open(filepath, "w") as f:
             json.dump(data, f, indent=2)

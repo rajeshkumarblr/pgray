@@ -6,6 +6,7 @@ interface Parameter {
     active: boolean;
     table?: string | null;
     column?: string | null;
+    transform?: string | null;
 }
 
 interface SaveSessionModalProps {
@@ -75,7 +76,8 @@ const SaveSessionModal: React.FC<SaveSessionModalProps> = ({ isOpen, onClose, on
             name: p.name,
             original_value: p.original_value,
             table: p.table,
-            column: p.column
+            column: p.column,
+            transform: p.transform
         }));
         onSave(title, previewSql, activeParams);
     };

@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { Node, Edge, applyNodeChanges, NodeChange } from 'reactflow';
+import * as Diff from 'diff';
 import SettingsModal from './components/SettingsModal';
 import { connectDb, explainQuery, getSavedQueryContent, executeQuery, getSchema, getConnectionConfig } from './api';
 import { parsePlanToFlow } from './utils/planLayout';
@@ -67,6 +68,7 @@ function App() {
     return localStorage.getItem('pgray_diff_base') || '';
   });
   const [showDiff, setShowDiff] = useState(false);
+  const [highlightedLines, setHighlightedLines] = useState<number[]>([]);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
 
   // AI Config
@@ -97,7 +99,7 @@ function App() {
 
   // Resize State
   const [sidebarWidth, setSidebarWidth] = useState(400);
-  const [activeCenterTab, setActiveCenterTab] = useState<'editor' | 'tune' | 'server' | 'queries'>('editor');
+  const [activeCenterTab, setActiveCenterTab] = useState<'editor' | 'tune' | 'server' | 'queries' | 'schema' | 'er'>('editor');
   const isResizingSidebar = useRef(false);
 
   const startSidebarResize = (e: React.MouseEvent) => {
@@ -264,7 +266,7 @@ function App() {
 
   const handleFinalSave = async (title: string, sql: string, params: any[]) => {
     try {
-      const res = await saveQueryFinal(title, sql, params, saveAnalysis.originalSql);
+      const res = await saveQueryFinal(title, sql, params, saveAnalysis.originalSql, connectionInfo);
       if (res.status === 'success') {
         setSessionTitle(title);
         setToast({ message: `Saved as: ${title}`, type: 'success' });
@@ -482,11 +484,16 @@ function App() {
 
               setChatHistory(prev => {
                 const newHist = [...prev];
-                const last = newHist[newHist.length - 1];
+                const lastIndex = newHist.length - 1;
+                // Deep clone the last message to avoid mutating previous state reference
+                const last = { ...newHist[lastIndex] };
+
                 if (last.role === 'assistant') {
                   last.content = (last.content || "") + token;
                   if (ttftVal) last.ttft = ttftVal;
                   if (json.total_duration) last.respTime = json.total_duration;
+
+                  newHist[lastIndex] = last; // Replace with updated copy
                 }
                 return newHist;
               });
@@ -522,6 +529,29 @@ function App() {
         if (last.role === 'assistant') { last.status = 'success'; last.hidden = false; }
         return newHist;
       });
+
+      // Highlight Differences if logic changed
+      if (!isAnalysis && diffBaseQuery && textBuffer && diffBaseQuery !== textBuffer) {
+        // Calculate diff lines
+        const diff = Diff.diffLines(diffBaseQuery, textBuffer);
+        const linesToHighlight: number[] = [];
+        let currentLine = 1;
+
+        diff.forEach(part => {
+          const lineCount = part.value.replace(/\n$/, "").split("\n").length;
+          if (part.added) {
+            for (let i = 0; i < lineCount; i++) {
+              linesToHighlight.push(currentLine + i);
+            }
+            currentLine += lineCount;
+          } else if (!part.removed) {
+            currentLine += lineCount;
+          }
+          // if removed, do nothing (lines disappear)
+        });
+
+        setHighlightedLines(linesToHighlight);
+      }
 
       // Auto-Execute check (Using CLEAN textBuffer)
       if (!isAnalysis && textBuffer) {
@@ -637,7 +667,8 @@ Please provide a detailed analysis in the following format:
         <QueryWorkspace
           connectionInfo={connectionInfo}
           sqlQuery={sqlQuery}
-          setSqlQuery={setSqlQuery}
+          setSqlQuery={(q) => { setSqlQuery(q); setHighlightedLines([]); }}
+          highlightedLines={highlightedLines}
           schema={schema}
           loadingSchema={loadingSchema}
 

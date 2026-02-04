@@ -280,7 +280,7 @@ async def generate_sql_stream(prompt: str, schema_context: str = None, schema_da
 
     if model.startswith("gemini"):
         if not apiKey:
-             yield "-- Error: Gemini model selected but no API Key provided."
+             yield json.dumps({"error": "Gemini model selected but no API Key provided."}) + "\n"
              return
         
         
@@ -292,12 +292,16 @@ async def generate_sql_stream(prompt: str, schema_context: str = None, schema_da
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
             start_time = time.time()
-            # print(f"DEBUG: sending to {active_ollama_url}/api/generate")
-            async with client.stream("POST", f"{active_ollama_url}/api/generate", json=payload) as response:
+            target_url = active_ollama_url
+            if "/api/generate" not in target_url:
+                 target_url = f"{active_ollama_url}/api/generate"
+
+            # print(f"DEBUG: sending to {target_url}")
+            async with client.stream("POST", target_url, json=payload) as response:
                 if response.status_code != 200:
                     error_detail = await response.aread()
                     logger.error(f"Ollama API error: {response.status_code} - {error_detail.decode()}")
-                    yield f"\n-- Error from Ollama API: {response.status_code} - {error_detail.decode()}"
+                    yield json.dumps({"error": f"Ollama API error: {response.status_code} - {error_detail.decode()}"}) + "\n"
                     return
 
                 full_response = ""
@@ -312,11 +316,11 @@ async def generate_sql_stream(prompt: str, schema_context: str = None, schema_da
                         token = body.get("response", "")
                         if token:
                             full_response += token
-                            yield token
+                            yield json.dumps({"response": token}) + "\n"
                 logger.info(f"✅ Generated Stream:\n{full_response}")
     except Exception as e:
         logger.error(f"Stream failed: {e}")
-        yield f"\n-- Error: {str(e)}"
+        yield json.dumps({"error": str(e)}) + "\n"
 
 
 async def generate_title(prompt: str, model: str = "qwen2.5-coder") -> str:
@@ -504,7 +508,6 @@ async def analyze_parameterized_query(sql_query: str, model: str = "qwen2.5-code
         final_params.append(ai_p)
             
     final_result = {
-        "title": ai_result["title"],
         "parameters": final_params
     }
     
@@ -599,7 +602,7 @@ async def generate_gemini_stream(prompt: str, model: str, api_key: str):
                          except Exception as list_e:
                              logger.error(f"Failed to list models exception: {list_e}")
 
-                    yield f"-- Error from Google: {response.status_code} {error_msg}"
+                    yield json.dumps({"error": f"Error from Google: {response.status_code} {error_msg}"}) + "\n"
                     return
 
                 # Gemini returns a JSON array '[' ... ',' ... ',' ... ']'
@@ -634,7 +637,7 @@ async def generate_gemini_stream(prompt: str, model: str, api_key: str):
                                     text = parts[0].get("text", "")
                                     if text:
                                         # logger.info(f"DEBUG: yielded {text}")
-                                        yield text
+                                        yield json.dumps({"response": text}) + "\n"
                             continue # Success
                         except:
                             pass
@@ -652,11 +655,11 @@ async def generate_gemini_stream(prompt: str, model: str, api_key: str):
                                 
                                 data = json.loads(fragment)
                                 if "text" in data:
-                                    yield data["text"]
+                                    yield json.dumps({"response": data["text"]}) + "\n"
                             except Exception as e:
                                 # logger.error(f"Gemini Fragment Parse Error: {cleaned} | {e}")
                                 pass
 
     except Exception as e:
         logger.error(f"Gemini stream failed: {e}")
-        yield f"-- Error: {str(e)}"
+        yield json.dumps({"error": str(e)}) + "\n"

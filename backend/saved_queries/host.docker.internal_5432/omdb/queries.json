@@ -128,6 +128,52 @@
       ],
       "original_sql": "SELECT DISTINCT m.id, m.name, m.date\nFROM movies m\nJOIN casts c ON m.id = c.movie_id\nJOIN people p ON c.person_id = p.id\nJOIN job_names jn ON c.job_id = jn.job_id\nWHERE p.name = 'Leonardo DiCaprio' AND jn.name = 'Actor'\nAND EXISTS (\n    SELECT 1\n    FROM movie_languages ml\n    WHERE ml.movie_id = m.id AND ml.language = 'en'\n)\nORDER BY m.date DESC NULLS LAST;\n",
       "created_at": "2026-01-31T07:21:39.883297"
+    },
+    {
+      "id": "20260203153854",
+      "name": "Top successful movies in a year (Manual Test)",
+      "sql": "SELECT m.name AS movie_name, (m.revenue / 1000000) AS total_revenue_in_millions FROM movies m WHERE EXTRACT(YEAR FROM m.date) = :year ORDER BY m.revenue DESC NULLS LAST LIMIT :limit_val;",
+      "params": [
+        {
+          "name": "year",
+          "original_value": ":year",
+          "active": true,
+          "table": "movies",
+          "column": "date",
+          "transform": "EXTRACT(YEAR FROM {})"
+        },
+        {
+          "name": "limit_val",
+          "original_value": ":limit_val",
+          "active": true,
+          "table": null,
+          "column": null
+        }
+      ],
+      "original_sql": "SELECT m.name AS movie_name, (m.revenue / 1000000) AS total_revenue_in_millions FROM movies m WHERE EXTRACT(YEAR FROM m.date) = :year ORDER BY m.revenue DESC NULLS LAST LIMIT :limit_val;",
+      "created_at": "2026-02-03T15:38:54.100168"
+    },
+    {
+      "id": "20260204020315",
+      "name": "top movies of genre in year",
+      "sql": "SELECT \n    m.id,\n    m.name,\n    m.vote_average,\n    m.votes_count,\n    c.name AS genre\nFROM \n    movies m\nJOIN \n    movie_categories mc ON m.id = mc.movie_id\nJOIN \n    categories c ON mc.category_id = c.id\nWHERE \n    c.name = :genre AND \n    EXTRACT(YEAR FROM m.date) = :year\nORDER BY \n    m.votes_count DESC NULLS LAST\nLIMIT 5;\n",
+      "params": [
+        {
+          "name": "genre",
+          "original_value": ":genre",
+          "table": "categories",
+          "column": "name"
+        },
+        {
+          "name": "year",
+          "original_value": ":year",
+          "table": "movies",
+          "column": "date",
+          "transform": "EXTRACT(YEAR FROM {})"
+        }
+      ],
+      "original_sql": "SELECT \n    m.id,\n    m.name,\n    m.vote_average,\n    m.votes_count,\n    c.name AS genre\nFROM \n    movies m\nJOIN \n    movie_categories mc ON m.id = mc.movie_id\nJOIN \n    categories c ON mc.category_id = c.id\nWHERE \n    c.name = :genre AND \n    EXTRACT(YEAR FROM m.date) = :year\nORDER BY \n    m.votes_count DESC NULLS LAST\nLIMIT 5;\n",
+      "created_at": "2026-02-04T02:03:15.979462"
     }
   ]
 }

@@ -1,6 +1,8 @@
+import React from 'react';
 import InsightsTab from './InsightsTab';
 import ResultsTable from '../ResultsTable';
 import NodeDetailsPanel from '../NodeDetailsPanel';
+import QueryParametersPanel from './QueryParametersPanel';
 
 interface BottomPaneProps {
     activeTab: 'results' | 'details' | 'insights';
@@ -23,6 +25,14 @@ interface BottomPaneProps {
     height: number;
     isExpanded: boolean;
     onToggleExpand: () => void;
+
+    // Query Param Props
+    sqlQuery: string;
+    paramValues: { [key: string]: string };
+    onParamChange: (values: { [key: string]: string }) => void;
+    connectionInfo: any;
+    metaParams?: any[];
+    onExecuteQuery: () => void;
 }
 
 const BottomPane: React.FC<BottomPaneProps> = ({
@@ -30,7 +40,8 @@ const BottomPane: React.FC<BottomPaneProps> = ({
     executionResult, execError,
     selectedNode, fullPlan, onCloseDetails,
     insights, onRunInsight, insightResults,
-    height, isExpanded, onToggleExpand
+    height, isExpanded, onToggleExpand,
+    sqlQuery, paramValues, onParamChange, connectionInfo, metaParams, onExecuteQuery
 }) => {
 
     return (
@@ -137,18 +148,28 @@ const BottomPane: React.FC<BottomPaneProps> = ({
             {isExpanded && (
                 <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
                     {activeTab === 'results' && (
-                        <div style={{ height: '100%', overflow: 'auto' }}>
-                            {execError ? (
-                                <div style={{ padding: '20px', color: '#ef4444', fontFamily: 'monospace' }}>
-                                    ❌ Error: {execError}
-                                </div>
-                            ) : executionResult ? (
-                                <ResultsTable data={executionResult} />
-                            ) : (
-                                <div style={{ padding: '20px', color: '#64748b', fontSize: '12px', fontStyle: 'italic' }}>
-                                    Execute a query to see results.
-                                </div>
-                            )}
+                        <div style={{ height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                            <QueryParametersPanel
+                                sql={sqlQuery}
+                                paramValues={paramValues}
+                                onChange={onParamChange}
+                                connectionInfo={connectionInfo}
+                                metaParams={metaParams}
+                                onExecute={onExecuteQuery}
+                            />
+                            <div style={{ flex: 1, overflow: 'auto' }}>
+                                {execError ? (
+                                    <div style={{ padding: '20px', color: '#ef4444', fontFamily: 'monospace' }}>
+                                        ❌ Error: {execError}
+                                    </div>
+                                ) : executionResult ? (
+                                    <ResultsTable data={executionResult} />
+                                ) : (
+                                    <div style={{ padding: '20px', color: '#64748b', fontSize: '12px', fontStyle: 'italic' }}>
+                                        Execute a query to see results.
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     )}
 

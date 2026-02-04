@@ -7,6 +7,7 @@ interface QueryParametersPanelProps {
     onChange: (values: { [key: string]: string }) => void;
     connectionInfo: any;
     metaParams?: any[]; // From saved query metadata
+    onExecute?: () => void;
 }
 
 // Reuse SearchableSelect logic (Inline for now to avoid refactor scope creep)
@@ -106,7 +107,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({ value, onChange, on
     );
 };
 
-const QueryParametersPanel: React.FC<QueryParametersPanelProps> = ({ sql, paramValues, onChange, connectionInfo, metaParams }) => {
+const QueryParametersPanel: React.FC<QueryParametersPanelProps> = ({ sql, paramValues, onChange, connectionInfo, metaParams, onExecute }) => {
     const [params, setParams] = useState<string[]>([]);
     const [options, setOptions] = useState<{ [key: string]: string[] }>({});
     const [loading, setLoading] = useState<{ [key: string]: boolean }>({});
@@ -160,11 +161,25 @@ const QueryParametersPanel: React.FC<QueryParametersPanelProps> = ({ sql, paramV
 
     return (
         <div style={{
-            background: '#1e293b', borderTop: '1px solid #334155',
-            padding: '10px 15px', display: 'flex', flexDirection: 'column', gap: '10px'
+            background: '#1e293b', borderBottom: '1px solid #334155',
+            padding: '10px 15px', display: 'flex', flexDirection: 'column', gap: '10px', flexShrink: 0
         }}>
-            <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600 }}>
-                Query Parameters
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600 }}>
+                    Query Parameters
+                </div>
+                {onExecute && (
+                    <button
+                        onClick={onExecute}
+                        style={{
+                            background: '#22c55e', color: 'white', border: 'none', borderRadius: '4px',
+                            padding: '4px 12px', fontSize: '12px', cursor: 'pointer', fontWeight: 600,
+                            display: 'flex', alignItems: 'center', gap: '4px'
+                        }}
+                    >
+                        <span>▶</span> Run
+                    </button>
+                )}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '10px' }}>
                 {params.map(pName => {
