@@ -134,12 +134,18 @@ Create a `connection.json` file in the `backend/` directory to auto-fill your cr
 ```json
 {
   "host": "host.docker.internal",
-  "port": "5432",
+  "port": "5433",
   "user": "postgres",
-  "password": "yourpassword",
-  "database": "postgres"
+  "password": "password",
+  "database": "northwind"
 }
 ```
+
+
+> **Note**: A sample **Northwind** database is automatically bundled. 
+> *   **From the App**: Use host `postgres` and port `5432`.
+> *   **From Host (DBeaver/pgAdmin)**: Use host `localhost` and port `5433`.
+> Use credentials: `postgres` / `password`.
 
 ## License
 

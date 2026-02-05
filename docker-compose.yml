@@ -14,6 +14,17 @@ services:
     environment:
       - OLLAMA_URL=http://host.docker.internal:11434/api/generate
 
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: northwind
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./database/init:/docker-entrypoint-initdb.d
+
   frontend:
     build:
       context: ./frontend

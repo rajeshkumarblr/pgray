@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Node } from 'reactflow';
 import SchemaBrowser from './workspace/SchemaBrowser';
 import SavedQueriesSidebar from './workspace/SavedQueriesSidebar';
-import WorkspaceToolbar from './workspace/WorkspaceToolbar';
+import EditorToolbar from './EditorToolbar';
 import BottomPane from './workspace/BottomPane';
 import SimpleEditor from './SimpleEditor';
 import DiffView from './DiffView';
@@ -216,20 +216,19 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: '#0f172a' }}>
 
                 {/* 1. Toolbar */}
-                <WorkspaceToolbar
+                {/* 1. Toolbar */}
+                <EditorToolbar
                     onExecute={handleExecuteWrapper}
                     isExecuting={isExecuting}
-                    onTune={handleTuneWrapper}
-                    showDiff={showDiff}
-                    setShowDiff={setShowDiff}
-                    onCopy={onCopy}
-                    onReset={onReset}
+                    onStop={() => { }} // Placeholder
+                    onClear={onReset}
+                    onFormat={() => { }} // Placeholder
+                    onSave={onSaveSession}
+                    onExplain={handleTuneWrapper}
+                    onVisualize={() => { setActiveBottomTab('results'); setBottomExpanded(true); }}
+                    onAskAI={() => { /* Focus AI Sidebar? */ }}
                     onOpenSettings={onOpenSettings}
-                    onLoadSession={onLoadSession}
-                    onNewSession={onNewSession}
-                    onSaveSession={onSaveSession}
                     sessionTitle={sessionTitle}
-                    setSessionTitle={setSessionTitle}
                 />
 
                 {/* 2. Tabs Row */}

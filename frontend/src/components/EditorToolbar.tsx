@@ -1,0 +1,112 @@
+import React from 'react';
+import { Play, Square, Eraser, AlignLeft, Save, Search, BarChart, Sparkles, Settings } from 'lucide-react';
+
+interface EditorToolbarProps {
+    sessionTitle?: string; // Optional if we move title elsewhere, but keeping simpler props
+    onExecute: () => void;
+    isExecuting: boolean;
+    onStop?: () => void; // For the square/stop button
+    onClear: () => void;
+    onFormat: () => void;
+    onSave: () => void;
+    onExplain: () => void; // Analyze
+    onVisualize?: () => void;
+    onAskAI: () => void;
+    onOpenSettings?: () => void;
+}
+
+const EditorToolbar: React.FC<EditorToolbarProps> = ({
+    onExecute, isExecuting, onStop,
+    onClear, onFormat, onSave,
+    onExplain, onVisualize,
+    onAskAI, onOpenSettings
+}) => {
+
+    // Configurable styles constants
+    const ICON_SIZE = 16;
+    const BUTTON_CLASS = "p-2 rounded hover:bg-gray-800 text-gray-400 hover:text-white transition-colors flex items-center justify-center";
+    const DIVIDER_CLASS = "w-px h-5 bg-gray-700 mx-2";
+
+    return (
+        <div className="h-12 bg-[#0D0D0D] border-b border-gray-800 flex items-center px-4 select-none">
+
+            {/* Group 1: Execution */}
+            <div className="flex items-center gap-1">
+                <button
+                    onClick={onExecute}
+                    disabled={isExecuting}
+                    className={`p-2 rounded flex items-center justify-center transition-colors ${isExecuting ? 'bg-green-800 cursor-wait opacity-50' : 'bg-green-600 hover:bg-green-500'
+                        } text-white`}
+                    title="Execute Query (Ctrl+Enter)"
+                >
+                    <Play size={ICON_SIZE} fill="currentColor" />
+                </button>
+                {/* Optional Stop Button - Placeholder action if not provided */}
+                <button
+                    onClick={onStop}
+                    className={BUTTON_CLASS}
+                    title="Stop Execution"
+                    disabled={!isExecuting}
+                >
+                    <Square size={ICON_SIZE} fill="currentColor" />
+                </button>
+            </div>
+
+            <div className={DIVIDER_CLASS} />
+
+            {/* Group 2: Editor Tools */}
+            <div className="flex items-center gap-1">
+                <button onClick={onClear} className={BUTTON_CLASS} title="Clear Editor">
+                    <Eraser size={ICON_SIZE} />
+                </button>
+                <button onClick={onFormat} className={BUTTON_CLASS} title="Format SQL">
+                    <AlignLeft size={ICON_SIZE} />
+                </button>
+                <button onClick={onSave} className={BUTTON_CLASS} title="Save Query">
+                    <Save size={ICON_SIZE} />
+                </button>
+            </div>
+
+            <div className={DIVIDER_CLASS} />
+
+            {/* Group 3: Analysis */}
+            <div className="flex items-center gap-1">
+                <button onClick={onExplain} className={BUTTON_CLASS} title="Explain Plan">
+                    <Search size={ICON_SIZE} />
+                </button>
+                <button onClick={onVisualize} className={BUTTON_CLASS} title="Visualize Results">
+                    <BarChart size={ICON_SIZE} />
+                </button>
+            </div>
+
+            {/* Spacer & Command Centerpiece */}
+            <div className="flex-1 flex justify-center items-center">
+                <div className="text-gray-600 text-xs flex items-center gap-2 cursor-default">
+                    {/* Optional Command Icon */}
+                    {/* <Command size={12} /> */}
+                    Type &gt; to run commands...
+                </div>
+            </div>
+
+            {/* Group 4: AI & Settings */}
+            <div className="flex items-center gap-1">
+                <button
+                    onClick={onAskAI}
+                    className={`${BUTTON_CLASS} !text-purple-400 hover:!text-purple-200`}
+                    title="Ask AI Assistant"
+                >
+                    <Sparkles size={ICON_SIZE} />
+                </button>
+
+                {onOpenSettings && (
+                    <button onClick={onOpenSettings} className={BUTTON_CLASS} title="Settings">
+                        <Settings size={ICON_SIZE} />
+                    </button>
+                )}
+            </div>
+
+        </div>
+    );
+};
+
+export default EditorToolbar;
