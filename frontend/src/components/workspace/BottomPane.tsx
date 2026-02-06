@@ -3,6 +3,7 @@ import InsightsTab from './InsightsTab';
 import ResultsTable from '../ResultsTable';
 import NodeDetailsPanel from '../NodeDetailsPanel';
 import QueryParametersPanel from './QueryParametersPanel';
+import PerformanceBadge from '../PerformanceBadge';
 
 interface BottomPaneProps {
     activeTab: 'results' | 'details' | 'insights';
@@ -98,7 +99,10 @@ const BottomPane: React.FC<BottomPaneProps> = ({
                     </button>
                 </div>
 
-                <div style={{ display: 'flex', gap: '10px' }}>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                    {executionResult && executionResult.executionTime !== undefined && (
+                        <PerformanceBadge durationMs={executionResult.executionTime} rowCount={executionResult.rowCount || 0} />
+                    )}
                     {activeTab === 'results' && executionResult && (
                         <button
                             onClick={() => {

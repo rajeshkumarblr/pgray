@@ -72,6 +72,7 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
 *   **Production Safety**:
     *   **Schema-Only Indexing**: Search engine scans only `information_schema` metadata—never touches your actual table data.
     *   **Telemetry Envelope**: APIs return execution metrics (`duration_ms`, `row_count`) alongside results for performance visibility.
+    *   **Performance Badge**: Visual ⚡/⚠️/🐢 indicator shows query speed (Green < 200ms, Yellow < 1s, Red > 1s) in both Search and Editor results.
     *   **Graceful Timeouts**: Extended timeouts (90s) accommodate complex AI-generated queries without premature failures.
 
     

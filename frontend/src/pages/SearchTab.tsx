@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Search, BarChart2, Database, Code, Activity, ArrowRight } from 'lucide-react';
 import ChartViz from '../components/ChartViz';
 import ResultsTable from '../components/ResultsTable';
+import PerformanceBadge from '../components/PerformanceBadge';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
@@ -319,6 +320,9 @@ const SearchTab: React.FC<SearchTabProps> = ({
                                     );
                                 })}
                                 <div className="flex-1" />
+                                {result && result.executionTime !== undefined && (
+                                    <PerformanceBadge durationMs={result.executionTime} rowCount={result.rowCount || 0} />
+                                )}
                                 <button className="px-3 py-1.5 text-sm text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 rounded-lg transition-colors">
                                     Export
                                 </button>
