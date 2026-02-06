@@ -107,65 +107,34 @@ def generate_sql(prompt: str, schema_context: str = None, schema_data: dict = No
 
     def build_prompt(context_str, error_msg=None):
         base_prompt = (
-            "You are a helpful SQL Assistant. Your goal is to generate correct, efficient SQL queries.\n\n"
+            "## Instructions\n"
+            "You are an expert PostgreSQL Data Analyst. Your goal is to write the most accurate SQL query for the user's question.\n\n"
+            "## Process\n"
+            "1.  **Identify the Subject:** What is the main entity the user wants to list? (e.g., Customers, Orders, Patients, Transactions).\n"
+            "    -   *Rule:* If the user asks for a specific Subject, that Subject's Name/ID MUST appear in the generic `SELECT` clause. Do not aggregate it away unless explicitly asked to \"count\" or \"summarize\".\n"
+            "2.  **Identify the Metrics:** What value are we measuring? (e.g., Total Sales, Count of Visits).\n"
+            "3.  **Generate SQL:** Write standard PostgreSQL code.\n\n"
+            "## Constraint Checklist & Confidence Score\n"
+            "1. Does the query return the columns requested?\n"
+            "2. Are the joins correct based on Foreign Keys?\n"
+            "3. Confidence Score: 1-5\n\n"
             "### Database Schema\n"
             f"{context_str}\n\n"
-            f"{data_context}"
+            f"{data_context}\n\n"
             "### Task\n"
-            "Generate a SQL query to answer the following question.\n"
             f"{history_text}"
             f"Current Request: {prompt}\n\n"
-            "### Guidelines\n"
-            "1. Output ONLY the SQL code block. No conversational text.\n"
-            "2. Use markdown formatting: ```sql ... ```\n"
-            "3. Ensure column names and table names exist in the schema.\n"
-            "4. Use `NULLS LAST` for sorting.\n"
-            "5. Use `limit 10` if the result could be large.\n"
+            "### Output\n"
+            "Return ONLY the SQL code block. No conversational text.\n"
+            "```sql\n"
+            "SELECT ...\n"
+            "```"
         )
         if error_msg:
             base_prompt += f"\n\n!!! PREVIOUS ATTEMPT FAILED !!!\nError: {error_msg}\nFIX THE SQL AND RETURN ONLY THE FIXED SQL."
         return base_prompt
 
-    # ... existing retry loop ...
 
-def explain_sql_query(query: str, schema_context: str = None, schema_data: dict = None, model: str = "qwen2.5-coder"):
-    """
-    Generates a natural language explanation for a given SQL query.
-    """
-    if schema_data:
-        schema_context = format_schema_ddl(schema_data)
-    elif not schema_context:
-        schema_context = "-- No schema provided"
-
-    prompt = (
-        "You are an expert SQL Tutor. Explain the following SQL query clearly and concisely to a user.\n"
-        "Focus on the logical flow: what tables are joined, what filters are applied, and what the result represents.\n\n"
-        "### Database Schema\n"
-        f"{schema_context}\n\n"
-        "### SQL Query\n"
-        f"```sql\n{query}\n```\n\n"
-        "### Instructions\n"
-        "- Provide a summary of what the query does.\n"
-        "- Explain key parts (Joins, WHERE clauses).\n"
-        "- Do NOT reproduce the code, just explain the logic.\n"
-        "- Use bullet points for clarity.\n"
-    )
-
-    payload = {
-        "model": model,
-        "prompt": prompt,
-        "stream": False,
-        "keep_alive": "60m",
-        "options": { "temperature": 0.2 }
-    }
-
-    try:
-        response = requests.post(OLLAMA_URL, json=payload, timeout=300)
-        response.raise_for_status()
-        return response.json().get("response", "Could not generate explanation.")
-    except Exception as e:
-        logger.error(f"Explanation failed: {e}")
-        return f"Error generating explanation: {str(e)}"
 
     # Retry Loop
     max_retries = 1
@@ -238,6 +207,45 @@ def explain_sql_query(query: str, schema_context: str = None, schema_data: dict 
         "sql": final_sql,         # Clean code for execution logic
         "prompt": debug_prompt
     }
+
+def explain_sql_query(query: str, schema_context: str = None, schema_data: dict = None, model: str = "qwen2.5-coder"):
+    """
+    Generates a natural language explanation for a given SQL query.
+    """
+    if schema_data:
+        schema_context = format_schema_ddl(schema_data)
+    elif not schema_context:
+        schema_context = "-- No schema provided"
+
+    prompt = (
+        "You are an expert SQL Tutor. Explain the following SQL query clearly and concisely to a user.\n"
+        "Focus on the logical flow: what tables are joined, what filters are applied, and what the result represents.\n\n"
+        "### Database Schema\n"
+        f"{schema_context}\n\n"
+        "### SQL Query\n"
+        f"```sql\n{query}\n```\n\n"
+        "### Instructions\n"
+        "- Provide a summary of what the query does.\n"
+        "- Explain key parts (Joins, WHERE clauses).\n"
+        "- Do NOT reproduce the code, just explain the logic.\n"
+        "- Use bullet points for clarity.\n"
+    )
+
+    payload = {
+        "model": model,
+        "prompt": prompt,
+        "stream": False,
+        "keep_alive": "60m",
+        "options": { "temperature": 0.2 }
+    }
+
+    try:
+        response = requests.post(OLLAMA_URL, json=payload, timeout=300)
+        response.raise_for_status()
+        return response.json().get("response", "Could not generate explanation.")
+    except Exception as e:
+        logger.error(f"Explanation failed: {e}")
+        return f"Error generating explanation: {str(e)}"
 
 async def generate_sql_stream(prompt: str, schema_context: str = None, schema_data: dict = None, history: list = None, model: str = "qwen2.5-coder", plan_text: str = None, sql_query: str = None, apiKey: str = None, ollamaUrl: str = None, connection: dict = None):
     """

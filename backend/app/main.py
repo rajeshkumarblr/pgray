@@ -110,7 +110,7 @@ def generate_sql_endpoint(request: GenerateSqlRequest):
             request.schema_data, 
             request.history,
             request.model,
-            request.connection
+            request.connection.model_dump() if request.connection else None
         )
         # result is { "sql": str, "prompt": str }
         return {
@@ -150,7 +150,7 @@ async def generate_sql_stream_endpoint(request: GenerateSqlRequest):
                 request.sql_query,
                 request.apiKey,
                 request.ollamaUrl,
-                request.connection
+                request.connection.model_dump() if request.connection else None
             ),
             media_type="text/plain"
         )
@@ -351,6 +351,28 @@ async def get_connection_config():
 
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
+@app.post("/api/config/connection")
+async def save_connection_config(request: ConnectionRequest):
+    """
+    Saves the provided connection info to connection.json
+    """
+    import os
+    import json
+    
+    config_path = os.path.join(os.path.dirname(__file__), "..", "connection.json")
+    
+    try:
+        # Convert Pydantic model to dict
+        config_data = request.connection.dict()
+        
+        # Write to file
+        with open(config_path, "w") as f:
+            json.dump(config_data, f, indent=4)
+            
+        return {"status": "success", "message": "Connection saved"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 class ParameterizeRequest(BaseModel):
     sql: str

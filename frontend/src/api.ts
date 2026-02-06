@@ -9,7 +9,7 @@ export const api = axios.create({
     headers: {
         'Content-Type': 'application/json',
     },
-    timeout: 30000, // 30s timeout
+    timeout: 90000, // 90s timeout (increased for local LLM)
 });
 
 export interface ParamDef {
@@ -255,5 +255,15 @@ export const autocomplete = async (connection: any, term: string, table?: string
     } catch (e) {
         console.error("Autocomplete failed:", e);
         return [];
+    }
+};
+
+export const saveConnectionConfig = async (connection: any) => {
+    try {
+        const response = await api.post('/config/connection', { connection });
+        return response.data;
+    } catch (e) {
+        console.error("Failed to save connection config", e);
+        throw e;
     }
 };

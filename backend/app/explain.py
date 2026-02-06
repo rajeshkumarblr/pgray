@@ -29,12 +29,27 @@ def _prepare_query_params(query: str, params: dict):
 
 def execute_explain(info: ConnectionInfo, query: str, analyze: bool = True, params: dict = None):
     try:
-        dsn = f"host={info.host} port={info.port} dbname={info.database} user={info.username} password={info.password}"
+        # Normalize connection info (handle dict vs object)
+        if isinstance(info, dict):
+            host = info.get('host')
+            port = info.get('port')
+            database = info.get('database')
+            username = info.get('username')
+            password = info.get('password')
+            schema = info.get('schema_name') or info.get('schema') or 'public'
+        else:
+            host = info.host
+            port = info.port
+            database = info.database
+            username = info.username
+            password = info.password
+            schema = getattr(info, 'schema_name', None) or getattr(info, 'schema', None) or 'public'
+
+        dsn = f"host={host} port={port} dbname={database} user={username} password={password}"
         conn = psycopg2.connect(dsn)
 
         # Ensure unqualified table names resolve in the selected schema
-        schema_name = getattr(info, 'schema_name', None) or getattr(info, 'schema', None) or 'public'
-        _set_search_path(conn, schema_name)
+        _set_search_path(conn, schema)
 
         cur = conn.cursor()
         

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Node } from 'reactflow';
 import SchemaBrowser from './workspace/SchemaBrowser';
@@ -11,6 +12,7 @@ import ServerTuneTab from './tabs/ServerTuneTab';
 import PlanNode from './PlanNode';
 import { getSavedQueries, ParameterizedQuery, ParamDef } from '../api';
 import ERDiagram from './ERDiagram';
+import SearchTab from '../pages/SearchTab';
 
 
 const nodeTypes = { planNode: PlanNode };
@@ -54,8 +56,8 @@ interface QueryWorkspaceProps {
     onCompare: () => void;
     baselineMetrics: { planning: number, execution: number } | null;
     queriesRefreshTrigger: number;
-    activeTab: 'editor' | 'tune' | 'server' | 'schema' | 'er' | 'queries';
-    setActiveTab: (tab: 'editor' | 'tune' | 'server' | 'schema' | 'er' | 'queries') => void;
+    activeTab: 'search' | 'editor' | 'tune' | 'server' | 'schema' | 'er' | 'queries';
+    setActiveTab: (tab: 'search' | 'editor' | 'tune' | 'server' | 'schema' | 'er' | 'queries') => void;
     onAnalyzeParamQuery: (sql: string) => void;
     onEdit: (sql: string, name: string) => void;
     onOpenSettings?: () => void;
@@ -82,10 +84,27 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
     // --- Local State ---
     const [savedQueries, setSavedQueries] = useState<ParameterizedQuery[]>([]);
     const [activeBottomTab, setActiveBottomTab] = useState<'results' | 'details' | 'insights'>('results');
-    const [bottomExpanded, setBottomExpanded] = useState(true);
+    const [bottomExpanded, setBottomExpanded] = useState(false);
     const [bottomHeight, setBottomHeight] = useState(300);
     const [tuneTabMode, setTuneTabMode] = useState<'visual' | 'text' | 'compare'>('visual');
     const [paramValues, setParamValues] = useState<Record<string, string>>({});
+
+    // Lifted Search State
+    const [searchPrompt, setSearchPrompt] = useState('');
+    const [showSearchResults, setShowSearchResults] = useState(false);
+    const [pendingParams, setPendingParams] = useState<any[]>([]);
+
+    // Recent Searches State
+    const [recentSearches, setRecentSearches] = useState<string[]>([]);
+
+    const addToRecents = (query: string) => {
+        if (!query.trim()) return;
+        setRecentSearches(prev => {
+            // Remove duplicates and keep top 5
+            const newRecents = [query, ...prev.filter(q => q !== query)].slice(0, 5);
+            return newRecents;
+        });
+    };
 
     // --- Lifted Selection State for Schema/ER ---
     const [selectedTables, setSelectedTables] = useState<Set<string>>(new Set());
@@ -135,7 +154,7 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
 
     // Auto-collapse bottom pane for non-query tabs
     useEffect(() => {
-        if (!['editor', 'tune'].includes(activeTab)) {
+        if (!['editor', 'tune', 'search'].includes(activeTab)) {
             setBottomExpanded(false);
         }
     }, [activeTab]);
@@ -145,7 +164,23 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
     const handleSelectSavedQuery = (query: ParameterizedQuery) => {
         setSqlQuery(query.sql);
         setSessionTitle(query.name);
-        setActiveTab('editor'); // Switch to editor when selecting a query
+        setSearchPrompt(query.name); // Set prompt to query name
+        setShowSearchResults(true);  // Show results pane in Search Tab
+        setActiveTab('search');      // Switch to Search tab
+
+        // Execute immediately OR Ask for params
+        if (query.params && query.params.length > 0) {
+            setPendingParams(query.params);
+            // Do NOT execute yet. SearchTab will show form.
+        } else {
+            setPendingParams([]);
+            onExecute(query.sql);
+        }
+    };
+
+    const handleRunParameterizedSearch = (values: Record<string, string>) => {
+        // Run with parameters
+        onExecute(sqlQuery, values);
     };
 
     const handleExecuteWrapper = () => {
@@ -202,20 +237,21 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
 
     return (
         <div style={{ display: 'flex', height: '100%', width: '100%', overflow: 'hidden' }}>
-            {/* ... Sidebar ... */}
-            <SavedQueriesSidebar
-                connectionInfo={connectionInfo}
-                onSelectQuery={handleSelectSavedQuery}
-                queries={savedQueries}
-                loading={loadingSavedQueries}
-                onReload={loadSavedQueries}
-                activeQueryName={sessionTitle}
-            />
+            {/* ... Sidebar (Zen Mode: Hidden on Search) ... */}
+            {activeTab !== 'search' && (
+                <SavedQueriesSidebar
+                    connectionInfo={connectionInfo}
+                    onSelectQuery={handleSelectSavedQuery}
+                    queries={savedQueries}
+                    loading={loadingSavedQueries}
+                    onReload={loadSavedQueries}
+                    activeQueryName={sessionTitle}
+                />
+            )}
 
             {/* Main Center Column */}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: '#0f172a' }}>
 
-                {/* 1. Toolbar */}
                 {/* 1. Toolbar */}
                 <EditorToolbar
                     onExecute={handleExecuteWrapper}
@@ -233,6 +269,7 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
 
                 {/* 2. Tabs Row */}
                 <div style={{ display: 'flex', background: '#334155', borderBottom: '1px solid #475569', paddingLeft: '10px' }}>
+                    <div onClick={() => setActiveTab('search')} style={tabStyle('search')}>Search</div>
                     <div onClick={handleEditorWrapper} style={tabStyle('editor')}>Editor</div>
                     <div onClick={handleTuneWrapper} style={tabStyle('tune')}>Analyze</div>
                     <div onClick={() => setActiveTab('schema')} style={tabStyle('schema')}>Schema</div>
@@ -242,9 +279,60 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
 
                 {/* 3. Center Content */}
                 <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#1e293b', display: 'flex', flexDirection: 'column' }}>
+
                     {/* Search Tab */}
+                    <div style={{
+                        display: activeTab === 'search' ? 'block' : 'none',
+                        height: '100%'
+                    }}>
+                        <SearchTab
+                            onSearch={(p) => {
+                                // Default search handler from tab input
+                                onAppSearch(p);
+                                setShowSearchResults(true);
+                                setPendingParams([]);
+                                addToRecents(p);
+                            }}
+                            isExecuting={isExecuting}
+                            result={executionResult}
+                            error={execError || null}
+                            generatedSql={sqlQuery}
+                            onExplain={handleTuneWrapper}
+                            explainResult={explainResult}
+                            onReset={() => {
+                                setShowSearchResults(false);
+                                setSearchPrompt('');
+                                setPendingParams([]);
+                                onReset(); // Parent reset
+                            }}
+                            promptValue={searchPrompt}
+                            onPromptChange={setSearchPrompt}
+                            showResults={showSearchResults}
+                            onShowResults={setShowSearchResults}
+                            requiredParams={pendingParams}
+                            onRunParameterized={handleRunParameterizedSearch}
 
-
+                            // Smart Dropdown Props
+                            savedQueries={savedQueries}
+                            recentSearches={recentSearches}
+                            onSelectQuery={(q) => {
+                                // Handle selection from dropdown
+                                if (!q) return;
+                                // Check if it's a saved query object or a raw string
+                                if (typeof q === 'string') {
+                                    // Treat as raw search prompt
+                                    setSearchPrompt(q);
+                                    // Maybe auto-submit?
+                                    onAppSearch(q);
+                                    setShowSearchResults(true);
+                                    addToRecents(q);
+                                } else {
+                                    // It's a Saved Query object
+                                    handleSelectSavedQuery(q);
+                                }
+                            }}
+                        />
+                    </div>
 
                     {/* Editor Tab */}
                     <div style={{

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getAIModels, connectDb } from '../api';
+import { getAIModels, connectDb, saveConnectionConfig } from '../api';
 
 interface ConnectionInfo {
     host: string;
@@ -110,6 +110,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
             // If successful, save defaults and complete
             localStorage.setItem('pgray_connection_defaults', JSON.stringify({ host, port, username, database, schema }));
+
+            // Persist to Backend file so it survives reload
+            // (Assuming we imported saveConnectionConfig)
+            await saveConnectionConfig(newConn);
+
             onConnect(newConn);
         } catch (err: any) {
             console.error("Connection failed", err);

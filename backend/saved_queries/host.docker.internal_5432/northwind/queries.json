@@ -1,0 +1,36 @@
+{
+  "queries": [
+    {
+      "id": "20260205174705",
+      "name": "top customers by sales",
+      "sql": "SELECT c.customer_id, c.company_name, SUM(od.unit_price * od.quantity) AS total_sales\nFROM customers c\nJOIN orders o ON c.customer_id = o.customer_id\nJOIN order_details od ON o.order_id = od.order_id\nGROUP BY c.customer_id, c.company_name\nORDER BY total_sales DESC NULLS LAST\nLIMIT :limit_val;\n",
+      "params": [
+        {
+          "name": "limit_val",
+          "original_value": "20",
+          "table": null,
+          "column": null,
+          "transform": null
+        }
+      ],
+      "original_sql": "SELECT c.customer_id, c.company_name, SUM(od.unit_price * od.quantity) AS total_sales\nFROM customers c\nJOIN orders o ON c.customer_id = o.customer_id\nJOIN order_details od ON o.order_id = od.order_id\nGROUP BY c.customer_id, c.company_name\nORDER BY total_sales DESC NULLS LAST\nLIMIT 20;\n",
+      "created_at": "2026-02-05T17:47:05.882226"
+    },
+    {
+      "id": "20260206060334",
+      "name": "top customer sales by region",
+      "sql": "SELECT c.country, SUM(od.unit_price * od.quantity) AS total_sales\nFROM customers c\nJOIN orders o ON c.customer_id = o.customer_id\nJOIN order_details od ON o.order_id = od.order_id\nGROUP BY c.country\nORDER BY total_sales DESC\nLIMIT :limit_val;",
+      "params": [
+        {
+          "name": "limit_val",
+          "original_value": "5",
+          "table": null,
+          "column": null,
+          "transform": null
+        }
+      ],
+      "original_sql": "SELECT c.country, SUM(od.unit_price * od.quantity) AS total_sales\nFROM customers c\nJOIN orders o ON c.customer_id = o.customer_id\nJOIN order_details od ON o.order_id = od.order_id\nGROUP BY c.country\nORDER BY total_sales DESC\nLIMIT 5;",
+      "created_at": "2026-02-06T06:03:34.485316"
+    }
+  ]
+}

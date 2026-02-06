@@ -99,7 +99,7 @@ function App() {
 
   // Resize State
   const [sidebarWidth, setSidebarWidth] = useState(400);
-  const [activeCenterTab, setActiveCenterTab] = useState<'editor' | 'tune' | 'server' | 'queries' | 'schema' | 'er'>('editor');
+  const [activeCenterTab, setActiveCenterTab] = useState<'search' | 'editor' | 'tune' | 'server' | 'queries' | 'schema' | 'er'>('search');
   const isResizingSidebar = useRef(false);
 
   const startSidebarResize = (e: React.MouseEvent) => {
@@ -755,6 +755,7 @@ Please provide a detailed analysis in the following format:
             setExecutionResult(null);
             setExecError(null);
             setSqlQuery(''); // Clear previous
+            setActiveCenterTab('search');
 
             try {
               // 1. Generate SQL
@@ -802,13 +803,14 @@ Please provide a detailed analysis in the following format:
           cursor: 'col-resize',
           background: '#1e293b',
           borderLeft: '1px solid #334155',
-          display: 'flex', justifyContent: 'center', alignItems: 'center'
+          display: activeCenterTab === 'search' ? 'none' : 'flex',
+          justifyContent: 'center', alignItems: 'center'
         }}
       >
         <div style={{ width: '2px', height: '30px', background: '#475569', borderRadius: '2px' }} />
       </div>
 
-      <div style={{ width: `${sidebarWidth}px`, height: '100%' }}>
+      <div style={{ width: `${sidebarWidth}px`, height: '100%', display: activeCenterTab === 'search' ? 'none' : 'block' }}>
         <AIChatSidebar
           messages={chatHistory}
           onSend={handleAIStream}

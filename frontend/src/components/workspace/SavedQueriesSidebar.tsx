@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { deleteQuery, saveQueryFinal, ParameterizedQuery, getDatabases, connectDb } from '../../api';
+import { deleteQuery, saveQueryFinal, ParameterizedQuery, getDatabases, connectDb, saveConnectionConfig } from '../../api';
 
 interface SavedQueriesSidebarProps {
     connectionInfo: any;
@@ -119,21 +119,16 @@ const SavedQueriesSidebar: React.FC<SavedQueriesSidebarProps> = ({ connectionInf
         setSwitchingDb(true);
         try {
             const newConn = { ...connectionInfo, database: dbName };
-            // We need to trigger a full app reload/reconnect ideally, 
-            // but for now we just try to update connection. 
-            // Since props are read-only, we might need to rely on the parent updating.
-            // But wait, the parent manages connectionInfo via internal state or props.
-            // Simple approach: Just call connectDb which updates backend default, and proceed.
-            // However, React state needs to update.
-            // Since we don't have a callback to existing props to update connection,
-            // we will force a reload of the page or just alert user.
 
-            // BETTER: The app should really share connection state control.
-            // For this scope, let's assume we can just reload the page to pick up new default if we save it?
-
-            // Actually, `connectDb` updates the 'last used' connection file on backend usually.
+            // 1. Test Connection
             await connectDb(newConn);
-            window.location.reload(); // Simple brute force to reload everything with new DB
+
+            // 2. Persist to Backend file so it survives reload
+            // (Assuming we imported saveConnectionConfig)
+            await saveConnectionConfig(newConn);
+
+            // 3. Reload
+            window.location.reload();
 
         } catch (e) {
             console.error("Failed to switch DB", e);
