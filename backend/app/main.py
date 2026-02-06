@@ -55,7 +55,17 @@ async def execute_query(request: QueryRequest):
         # We also save to history
         add_history_item(request.query)
         result = execute_query_results(request.connection, request.query, request.limit, request.params)
-        return {"status": "success", "data": result}
+        
+        # New Response Format with Meta Envelope
+        return {
+            "status": "success", 
+            "data": result["rows"], 
+            "meta": {
+                "duration_ms": result["executionTime"],
+                "row_count": result["rowCount"],
+                "columns": result["columns"]
+            }
+        }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

@@ -52,7 +52,12 @@ const SchemaBrowser: React.FC<SchemaBrowserProps> = ({
             try {
                 const res = await executeQuery(connectionInfo, `SELECT * FROM "${table}" LIMIT 5`, 5);
                 if (res.status === 'success') {
-                    setPreviewData(res.data);
+                    // Transform new API format for preview
+                    const transformed = {
+                        rows: res.data,
+                        columns: res.meta?.columns || []
+                    };
+                    setPreviewData(transformed);
                 } else {
                     setPreviewData({ error: 'Failed to fetch preview' });
                 }

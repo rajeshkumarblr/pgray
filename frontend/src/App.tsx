@@ -169,7 +169,14 @@ function App() {
             executeQuery(connRes.data, sqlQuery, 50)
               .then(execRes => {
                 if (!cancelled) {
-                  setExecutionResult(execRes.data);
+                  // Transform new API format
+                  const transformed = {
+                    rows: execRes.data,
+                    columns: execRes.meta?.columns || [],
+                    rowCount: execRes.meta?.row_count || 0,
+                    executionTime: execRes.meta?.duration_ms || 0
+                  };
+                  setExecutionResult(transformed);
                   setExecError(null);
                 }
               })
@@ -294,7 +301,14 @@ function App() {
 
     try {
       const res = await executeQuery(connectionInfo, queryToRun, 50, params);
-      setExecutionResult(res.data);
+      // Transform new { data, meta } response to legacy format for downstream consumers
+      const transformed = {
+        rows: res.data,
+        columns: res.meta?.columns || [],
+        rowCount: res.meta?.row_count || 0,
+        executionTime: res.meta?.duration_ms || 0
+      };
+      setExecutionResult(transformed);
     } catch (err: any) {
       console.error("Execution failed", err);
       setExecError(err.response?.data?.detail || err.message || "Query execution failed");
@@ -568,7 +582,14 @@ function App() {
               setExecutionResult(null);
               try {
                 const res = await executeQuery(connectionInfo, extracted, 50);
-                setExecutionResult(res.data);
+                // Transform new API format
+                const transformed = {
+                  rows: res.data,
+                  columns: res.meta?.columns || [],
+                  rowCount: res.meta?.row_count || 0,
+                  executionTime: res.meta?.duration_ms || 0
+                };
+                setExecutionResult(transformed);
               } catch (err: any) {
                 setExecError(err.response?.data?.detail || err.message || "Query execution failed");
               } finally {
@@ -778,7 +799,14 @@ Please provide a detailed analysis in the following format:
                 // 2. Execute SQL
                 try {
                   const execRes = await executeQuery(connectionInfo, generatedSql, 50);
-                  setExecutionResult(execRes.data);
+                  // Transform new API format
+                  const transformed = {
+                    rows: execRes.data,
+                    columns: execRes.meta?.columns || [],
+                    rowCount: execRes.meta?.row_count || 0,
+                    executionTime: execRes.meta?.duration_ms || 0
+                  };
+                  setExecutionResult(transformed);
                 } catch (execErr: any) {
                   setExecError(execErr.response?.data?.detail || execErr.message || "Execution Failed");
                 }

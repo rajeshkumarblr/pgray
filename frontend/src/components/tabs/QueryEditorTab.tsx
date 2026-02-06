@@ -220,14 +220,34 @@ const QueryEditorTab = forwardRef<QueryEditorRef, QueryEditorTabProps>(({
 
         try {
             const res = await executeQuery(connectionInfo, sqlToRun, effectiveLimit);
-            setExecutionResult(res.data);
+            // Transform new API format
+            const transformed = {
+                rows: res.data,
+                columns: res.meta?.columns || [],
+                rowCount: res.meta?.row_count || 0,
+                executionTime: res.meta?.duration_ms || 0,
+                isLimited: res.meta?.row_count >= effectiveLimit
+            };
+            setExecutionResult(transformed);
 
-            if (res.data.isLimited) {
-                if (onStatusChange) onStatusChange(`Results limited to first ${res.data.rowCount} rows.`, 'warning');
+            if (transformed.isLimited) {
+                if (onStatusChange) onStatusChange(`Results limited to first ${transformed.rowCount} rows.`, 'warning');
             } else {
-                if (onStatusChange) onStatusChange(`Query executed. ${res.data.rowCount} rows fetched.`, 'success');
+                if (onStatusChange) onStatusChange(`Query executed. ${transformed.rowCount} rows fetched.`, 'success');
             }
 
+            // Update Chat History with Metrics if applicable
+            setChatHistory(prev => {
+                const newHist = [...prev];
+                const lastIdx = newHist.length - 1;
+                if (lastIdx >= 0 && newHist[lastIdx].role === 'assistant') {
+                    newHist[lastIdx] = {
+                        ...newHist[lastIdx],
+                        execTime: transformed.executionTime ? String(transformed.executionTime) : undefined
+                    };
+                }
+                return newHist;
+            });
             // Update Chat History with Metrics if applicable
             // We assume the last assistant message is the one associated with this run (if auto-executed)
             // Or we just update the last assistant message regardless?
@@ -320,7 +340,12 @@ const QueryEditorTab = forwardRef<QueryEditorRef, QueryEditorTabProps>(({
             try {
                 const res = await executeQuery(connectionInfo, `SELECT * FROM ${table} LIMIT 5`, 5);
                 if (res.status === 'success') {
-                    setPreviewData(res.data);
+                    // Transform new API format for preview
+                    const transformed = {
+                        rows: res.data,
+                        columns: res.meta?.columns || []
+                    };
+                    setPreviewData(transformed);
                 } else {
                     setPreviewData({ error: 'Failed to fetch preview' });
                 }
