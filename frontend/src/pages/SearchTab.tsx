@@ -5,6 +5,7 @@ import { Search, BarChart2, Database, Code, Activity, ArrowRight } from 'lucide-
 import ChartViz from '../components/ChartViz';
 import ResultsTable from '../components/ResultsTable';
 import PerformanceBadge from '../components/PerformanceBadge';
+import PerformanceDrawer from '../components/PerformanceDrawer';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
@@ -54,6 +55,7 @@ const SearchTab: React.FC<SearchTabProps> = ({
     // Lifted State
     const [activeTab, setActiveTab] = useState<'data' | 'visuals' | 'sql' | 'analysis'>('data');
     const [localParamValues, setLocalParamValues] = useState<Record<string, string>>({});
+    const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
     // Reset local params when requiredParams change
     React.useEffect(() => {
@@ -321,7 +323,11 @@ const SearchTab: React.FC<SearchTabProps> = ({
                                 })}
                                 <div className="flex-1" />
                                 {result && result.executionTime !== undefined && (
-                                    <PerformanceBadge durationMs={result.executionTime} rowCount={result.rowCount || 0} />
+                                    <PerformanceBadge
+                                        durationMs={result.executionTime}
+                                        rowCount={result.rowCount || 0}
+                                        onClick={() => setIsDrawerOpen(true)}
+                                    />
                                 )}
                                 <button className="px-3 py-1.5 text-sm text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 rounded-lg transition-colors">
                                     Export
@@ -389,6 +395,18 @@ const SearchTab: React.FC<SearchTabProps> = ({
                     </motion.div>
                 )}
             </AnimatePresence>
+
+            {/* Performance Drawer */}
+            <PerformanceDrawer
+                isOpen={isDrawerOpen}
+                onClose={() => setIsDrawerOpen(false)}
+                sql={generatedSql || ''}
+                metrics={{
+                    duration: result?.executionTime || 0,
+                    rowCount: result?.rowCount || 0
+                }}
+                onTune={onExplain}
+            />
         </div>
     );
 };

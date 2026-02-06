@@ -3,9 +3,10 @@ import React from 'react';
 interface PerformanceBadgeProps {
     durationMs: number;
     rowCount: number;
+    onClick?: () => void;
 }
 
-const PerformanceBadge: React.FC<PerformanceBadgeProps> = ({ durationMs, rowCount }) => {
+const PerformanceBadge: React.FC<PerformanceBadgeProps> = ({ durationMs, rowCount, onClick }) => {
     let color = 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30';
     let icon = '⚡';
     let label = 'Fast';
@@ -21,8 +22,14 @@ const PerformanceBadge: React.FC<PerformanceBadgeProps> = ({ durationMs, rowCoun
         label = 'Moderate';
     }
 
+    const clickableStyles = onClick ? 'cursor-pointer hover:opacity-80 hover:scale-105' : 'cursor-help';
+
     return (
-        <div className={`flex items-center gap-2 px-3 py-1 rounded-full border ${color} text-xs font-medium transition-all cursor-help`} title="Query Execution Time">
+        <div
+            className={`flex items-center gap-2 px-3 py-1 rounded-full border ${color} text-xs font-medium transition-all ${clickableStyles}`}
+            title={onClick ? "Click for details" : "Query Execution Time"}
+            onClick={onClick}
+        >
             <span className="text-sm">{icon}</span>
             <span className="font-bold">{durationMs.toFixed(0)}ms</span>
             <span className="opacity-70 hidden sm:inline">| {label}</span>
