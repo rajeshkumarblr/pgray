@@ -11,6 +11,7 @@ interface SimpleEditorProps {
     errorLine?: number | null;
     highlightLines?: number[]; // indices 1-based
     schema?: any; // { tableName: { columns: [...], ... } }
+    onExecute?: () => void;
 }
 
 interface Suggestion {
@@ -20,7 +21,7 @@ interface Suggestion {
 }
 
 const SimpleEditor: React.FC<SimpleEditorProps> = ({
-    value, onChange, language = 'sql', placeholder, style, errorLine, highlightLines = [], schema
+    value, onChange, language = 'sql', placeholder, style, errorLine, highlightLines = [], schema, onExecute
 }) => {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const codeRef = useRef<HTMLDivElement>(null);
@@ -172,6 +173,13 @@ const SimpleEditor: React.FC<SimpleEditorProps> = ({
 
     // Handle keyboard navigation
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        // Run Trigger
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            if (onExecute) onExecute();
+            return;
+        }
+
         if (!showDropdown) return;
 
         if (e.key === 'ArrowDown') {

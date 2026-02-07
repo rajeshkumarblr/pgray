@@ -97,7 +97,7 @@ function App() {
   const [baselineMetrics, setBaselineMetrics] = useState<{ planning: number, execution: number } | null>(null);
 
   // Resize State
-  const [activeCenterTab, setActiveCenterTab] = useState<'search' | 'queries' | 'tune' | 'server' | 'schema' | 'er'>('search');
+  const [activeCenterTab, setActiveCenterTab] = useState<'ask' | 'query' | 'design' | 'admin'>('ask');
 
   // Persistence Effects
   useEffect(() => { localStorage.setItem('pgray_chat_history', JSON.stringify(chatHistory)); }, [chatHistory]);
@@ -255,7 +255,10 @@ function App() {
         setToast({ message: `Saved as: ${title}`, type: 'success' });
         setIsSaveModalOpen(false);
         setQueriesRefreshTrigger(prev => prev + 1);
-        setActiveCenterTab('queries');
+        // Auto-switch to query tab
+        if (activeCenterTab !== 'query') {
+          setActiveCenterTab('query');
+        }
       }
     } catch (e) {
       console.error("Save failed", e);
@@ -265,7 +268,7 @@ function App() {
 
   const handleAnalyzeParamQuery = (sql: string) => {
     setSqlQuery(sql);
-    setActiveCenterTab('tune');
+    setActiveCenterTab('query');
   };
 
   const handleExecute = async (sqlOverride?: string, params: any = null) => {
@@ -566,8 +569,8 @@ function App() {
                   executionTime: res.meta?.duration_ms || 0
                 };
                 setExecutionResult(transformed);
-              } catch (err: any) {
-                setExecError(err.response?.data?.detail || err.message || "Query execution failed");
+              } catch (execErr: any) {
+                setExecError(execErr.response?.data?.detail || execErr.message || "Query execution failed");
               } finally {
                 setIsExecuting(false);
               }
@@ -704,7 +707,7 @@ Please provide a detailed analysis in the following format:
           onEdit={(sql, name) => {
             setSqlQuery(sql);
             setSessionTitle(name);
-            setActiveCenterTab('queries');
+            setActiveCenterTab('query');
           }}
           onOpenSettings={() => setShowSettingsModal(true)}
 
@@ -763,8 +766,9 @@ Please provide a detailed analysis in the following format:
             setIsExecuting(true);
             setExecutionResult(null);
             setExecError(null);
+            setExecError(null);
             setSqlQuery(''); // Clear previous
-            setActiveCenterTab('search');
+            setActiveCenterTab('ask');
 
             try {
               // 1. Generate SQL

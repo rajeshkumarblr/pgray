@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { getServerSettings } from '../../api';
 
-interface ServerTuneTabProps {
+interface AdminTabProps {
     connectionInfo: any;
 }
 
-const ServerTuneTab: React.FC<ServerTuneTabProps> = ({ connectionInfo }) => {
+const AdminTab: React.FC<AdminTabProps> = ({ connectionInfo }) => {
     const [settings, setSettings] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
 
@@ -46,4 +46,5 @@ const ServerTuneTab: React.FC<ServerTuneTabProps> = ({ connectionInfo }) => {
     );
 };
 
-export default ServerTuneTab;
+export default AdminTab;
+

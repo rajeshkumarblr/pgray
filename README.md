@@ -32,10 +32,11 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
     *   **Performance Metrics**: Real-time "Time to First Token" (TTFT) tracking to monitor AI responsiveness.
 
 *   **Flexible Workspace**:
-    *   **Tab-First Navigation**: Tabs at the top (Search, Queries, Analyze, Schema, ER, Server) for quick context switching.
-    *   **Three-Column Layout**: Queries & Analyze tabs feature Saved Queries (Left), Editor/Plan (Center), Query Assistant (Right).
-    *   **Zen Mode**: Search, Schema, ER Diagram, and Server tabs are full-width for distraction-free focus.
-    *   **Resizable Panes**: Customize the width of the Query Assistant sidebar.
+    *   **Verb-Based Architecture**: Streamlined navigation with **Ask**, **Query**, **Design**, and **Admin** tabs.
+    *   **Dual Query Modes**: Toggle between **Code** (Editor + Results) and **Plan** (Full-Screen Visual + Auto-Explain) modes.
+    *   **Design Studio**: Integrated Schema Browser and Interactive ER Diagram in a unified view.
+    *   **Admin Dashboard**: Centralized server configuration and health monitoring.
+    *   **Resizable Panes**: Customize the width of the AI Assistant sidebar.
     *   **Database Selector**: Toolbar shows current database with quick-switch dropdown.
 
 *   **Session Management**:

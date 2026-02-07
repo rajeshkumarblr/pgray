@@ -10,7 +10,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 // Add to interface
-interface SearchTabProps {
+interface AskTabProps {
     onSearch: (prompt: string) => void;
     isExecuting: boolean;
     result: any;
@@ -37,7 +37,7 @@ interface SearchTabProps {
     onTune?: () => void;
 }
 
-const SearchTab: React.FC<SearchTabProps> = ({
+const AskTab: React.FC<AskTabProps> = ({
     onSearch,
     isExecuting,
     result,
@@ -441,4 +441,4 @@ const SearchTab: React.FC<SearchTabProps> = ({
     );
 };
 
-export default SearchTab;
+export default AskTab;
