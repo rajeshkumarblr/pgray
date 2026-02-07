@@ -139,6 +139,9 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
     // Recent Searches State
     const [recentSearches, setRecentSearches] = useState<string[]>([]);
 
+    // SQL Explanation State for Search Tab
+    const [sqlExplanation, setSqlExplanation] = useState<string | null>(null);
+
     const addToRecents = (query: string) => {
         if (!query.trim()) return;
         setRecentSearches(prev => {
@@ -243,6 +246,17 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
         onTune(paramValues);
     };
 
+    // Handler for explaining SQL logic in plain English
+    const handleExplainLogic = () => {
+        if (!sqlQuery) return;
+        const prompt = `Explain this SQL query in simple plain English for a non-technical user. Focus on WHAT data it retrieves and WHY, not HOW. Be concise and clear:\n\n${sqlQuery}`;
+        // Use AI stream to get explanation
+        onAIStream(prompt);
+        // The response will come through chatHistory, but we want to capture it for sqlExplanation
+        // For now, set a placeholder and use the chat response
+        setSqlExplanation("Analyzing query logic...");
+    };
+
     const startBottomResize = (e: React.MouseEvent) => {
         e.preventDefault();
         const startY = e.clientY;
@@ -287,7 +301,7 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                 <div style={{ display: 'flex', background: '#334155', borderBottom: '1px solid #475569', paddingLeft: '10px' }}>
                     <div onClick={() => setActiveTab('search')} style={tabStyle('search')}>Search</div>
                     <div onClick={() => setActiveTab('queries')} style={tabStyle('queries')}>Queries</div>
-                    <div onClick={handleTuneWrapper} style={tabStyle('tune')}>Analyze</div>
+                    <div onClick={handleTuneWrapper} style={tabStyle('tune')}>Query Fine Tune</div>
                     <div onClick={() => setActiveTab('schema')} style={tabStyle('schema')}>Schema</div>
                     <div onClick={() => setActiveTab('er')} style={tabStyle('er')}>ER Diagram</div>
                     <div onClick={() => setActiveTab('server')} style={tabStyle('server')}>Server</div>
@@ -363,6 +377,11 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                                     handleSelectSavedQuery(q);
                                 }
                             }}
+
+                            // Explanation Feature Props
+                            sqlExplanation={sqlExplanation}
+                            onExplainLogic={handleExplainLogic}
+                            onTune={handleTuneWrapper}
                         />
                     </div>
 
@@ -493,6 +512,29 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                                     onRefreshPlan={onTune}
                                     onCompare={onCompare}
                                     baselineMetrics={baselineMetrics}
+                                />
+
+                                {/* Bottom Pane for Tune Tab */}
+                                <BottomPane
+                                    activeTab={activeBottomTab}
+                                    setActiveTab={setActiveBottomTab}
+                                    executionResult={executionResult}
+                                    execError={execError}
+                                    selectedNode={selectedNode}
+                                    fullPlan={explainResult}
+                                    onCloseDetails={() => setSelectedNode(null)}
+                                    height={bottomHeight}
+                                    isExpanded={bottomExpanded}
+                                    onToggleExpand={() => setBottomExpanded(!bottomExpanded)}
+                                    insights={insights}
+                                    onRunInsight={onRunInsight}
+                                    insightResults={insightResults}
+                                    sqlQuery={sqlQuery}
+                                    paramValues={paramValues}
+                                    onParamChange={setParamValues}
+                                    connectionInfo={connectionInfo}
+                                    metaParams={activeQueryMetadata?.params as any}
+                                    onExecuteQuery={handleExecuteWrapper}
                                 />
                             </div>
 

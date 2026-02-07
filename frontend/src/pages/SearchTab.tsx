@@ -31,6 +31,10 @@ interface SearchTabProps {
     savedQueries?: any[];
     recentSearches?: string[];
     onSelectQuery?: (query: any) => void;
+    // Explanation Feature
+    sqlExplanation?: string | null;
+    onExplainLogic?: () => void;
+    onTune?: () => void;
 }
 
 const SearchTab: React.FC<SearchTabProps> = ({
@@ -50,7 +54,10 @@ const SearchTab: React.FC<SearchTabProps> = ({
     onRunParameterized,
     savedQueries = [],
     recentSearches = [],
-    onSelectQuery
+    onSelectQuery,
+    sqlExplanation,
+    onExplainLogic,
+    onTune
 }) => {
     // Lifted State
     const [activeTab, setActiveTab] = useState<'data' | 'visuals' | 'sql' | 'analysis'>('data');
@@ -372,19 +379,42 @@ const SearchTab: React.FC<SearchTabProps> = ({
                                             </div>
                                         )}
                                         {activeTab === 'analysis' && (
-                                            <div className="h-full flex items-center justify-center text-slate-500">
-                                                {explainResult ? (
-                                                    <pre className="text-xs text-left p-4 overflow-auto max-h-full">
-                                                        {JSON.stringify(explainResult, null, 2)}
-                                                    </pre>
-                                                ) : (
-                                                    <button
-                                                        onClick={onExplain}
-                                                        className="px-6 py-3 bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700 shadow-xl transition-all"
-                                                    >
-                                                        Run Analysis
-                                                    </button>
-                                                )}
+                                            <div className="h-full flex flex-col p-4 overflow-hidden">
+                                                {/* Header with Fine Tune button */}
+                                                <div className="flex justify-between items-center mb-4">
+                                                    <h3 className="text-lg font-semibold text-slate-200">Query Logic Explanation</h3>
+                                                    {onTune && (
+                                                        <button
+                                                            onClick={onTune}
+                                                            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium transition-all shadow-lg flex items-center gap-2"
+                                                        >
+                                                            <Activity size={16} />
+                                                            Fine Tune Query
+                                                        </button>
+                                                    )}
+                                                </div>
+
+                                                {/* Explanation Content */}
+                                                <div className="flex-1 overflow-auto">
+                                                    {sqlExplanation ? (
+                                                        <div className="prose prose-invert max-w-none">
+                                                            <div className="p-4 bg-slate-800/50 rounded-lg border border-slate-700 text-slate-300 leading-relaxed whitespace-pre-wrap">
+                                                                {sqlExplanation}
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="h-full flex flex-col items-center justify-center text-slate-500 gap-4">
+                                                            <p className="text-sm">Get a plain English explanation of what this query does</p>
+                                                            <button
+                                                                onClick={onExplainLogic}
+                                                                className="px-6 py-3 bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700 shadow-xl transition-all flex items-center gap-2"
+                                                            >
+                                                                <Code size={18} />
+                                                                Explain Query Logic
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
                                         )}
                                     </div>
