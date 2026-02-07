@@ -390,6 +390,7 @@ const ERDiagram: React.FC<ERDiagramProps> = ({ schema, connectionInfo }) => {
                 }}
                 nodeTypes={nodeTypes}
                 fitView
+                fitViewOptions={{ padding: 0.2, includeHiddenNodes: false }}
                 minZoom={0.2}
                 maxZoom={2.0}
                 attributionPosition="bottom-right"

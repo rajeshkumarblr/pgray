@@ -1,21 +1,23 @@
 import React from 'react';
-import { Play, Square, Eraser, AlignLeft, Save, Search, BarChart, Sparkles, Settings } from 'lucide-react';
+import { Play, Square, Eraser, AlignLeft, Save, Search, BarChart, Sparkles, Settings, Database } from 'lucide-react';
 
 interface EditorToolbarProps {
-    sessionTitle?: string; // Optional if we move title elsewhere, but keeping simpler props
+    sessionTitle?: string;
+    connectionInfo?: any;
     onExecute: () => void;
     isExecuting: boolean;
-    onStop?: () => void; // For the square/stop button
+    onStop?: () => void;
     onClear: () => void;
     onFormat: () => void;
     onSave: () => void;
-    onExplain: () => void; // Analyze
+    onExplain: () => void;
     onVisualize?: () => void;
     onAskAI: () => void;
     onOpenSettings?: () => void;
 }
 
 const EditorToolbar: React.FC<EditorToolbarProps> = ({
+    connectionInfo,
     onExecute, isExecuting, onStop,
     onClear, onFormat, onSave,
     onExplain, onVisualize,
@@ -79,13 +81,17 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
                 </button>
             </div>
 
-            {/* Spacer & Command Centerpiece */}
-            <div className="flex-1 flex justify-center items-center">
-                <div className="text-gray-600 text-xs flex items-center gap-2 cursor-default">
-                    {/* Optional Command Icon */}
-                    {/* <Command size={12} /> */}
-                    Type &gt; to run commands...
-                </div>
+            {/* Spacer & Database Selector */}
+            <div className="flex-1 flex justify-end items-center pr-4">
+                <button
+                    onClick={onOpenSettings}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-gray-300 hover:text-white transition-colors text-sm"
+                    title="Switch Database"
+                >
+                    <Database size={14} />
+                    <span>{connectionInfo?.database || 'Select DB'}</span>
+                    <span className="text-xs text-gray-500">▼</span>
+                </button>
             </div>
 
             {/* Group 4: AI & Settings */}

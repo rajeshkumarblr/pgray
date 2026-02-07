@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { Node, Edge, applyNodeChanges, NodeChange } from 'reactflow';
 import * as Diff from 'diff';
 import SettingsModal from './components/SettingsModal';
@@ -7,7 +7,6 @@ import { parsePlanToFlow } from './utils/planLayout';
 
 // Workspace
 import QueryWorkspace from './components/QueryWorkspace';
-import AIChatSidebar from './components/AIChatSidebar';
 import Toast from './components/Toast';
 import SaveSessionModal from './components/SaveSessionModal';
 import { analyzeQuery, saveQueryFinal, generateSql } from './api';
@@ -98,30 +97,7 @@ function App() {
   const [baselineMetrics, setBaselineMetrics] = useState<{ planning: number, execution: number } | null>(null);
 
   // Resize State
-  const [sidebarWidth, setSidebarWidth] = useState(400);
-  const [activeCenterTab, setActiveCenterTab] = useState<'search' | 'editor' | 'tune' | 'server' | 'queries' | 'schema' | 'er'>('search');
-  const isResizingSidebar = useRef(false);
-
-  const startSidebarResize = (e: React.MouseEvent) => {
-    isResizingSidebar.current = true;
-    e.preventDefault();
-    document.addEventListener('mousemove', handleSidebarResize);
-    document.addEventListener('mouseup', stopSidebarResize);
-  };
-
-  const handleSidebarResize = (e: MouseEvent) => {
-    if (!isResizingSidebar.current) return;
-    const newWidth = window.innerWidth - e.clientX;
-    if (newWidth > 300 && newWidth < 800) {
-      setSidebarWidth(newWidth);
-    }
-  };
-
-  const stopSidebarResize = () => {
-    isResizingSidebar.current = false;
-    document.removeEventListener('mousemove', handleSidebarResize);
-    document.removeEventListener('mouseup', stopSidebarResize);
-  };
+  const [activeCenterTab, setActiveCenterTab] = useState<'search' | 'queries' | 'tune' | 'server' | 'schema' | 'er'>('search');
 
   // Persistence Effects
   useEffect(() => { localStorage.setItem('pgray_chat_history', JSON.stringify(chatHistory)); }, [chatHistory]);
@@ -619,7 +595,6 @@ function App() {
   };
 
   const handleAnalyzeNode = async (node: Node) => {
-    if (sidebarWidth < 50) setSidebarWidth(400);
 
     const nodeLabel = node.data.label;
     const nodeDetails = JSON.stringify(node.data.details, null, 2);
@@ -729,7 +704,7 @@ Please provide a detailed analysis in the following format:
           onEdit={(sql, name) => {
             setSqlQuery(sql);
             setSessionTitle(name);
-            setActiveCenterTab('editor');
+            setActiveCenterTab('queries');
           }}
           onOpenSettings={() => setShowSettingsModal(true)}
 
@@ -769,6 +744,19 @@ Please provide a detailed analysis in the following format:
           queriesRefreshTrigger={queriesRefreshTrigger}
           activeTab={activeCenterTab}
           setActiveTab={setActiveCenterTab}
+
+          // AI Props for internal sidebar
+          chatHistory={chatHistory}
+          onAIStream={handleAIStream}
+          aiLoading={aiLoading}
+          aiStatus={aiStatus}
+          activeProvider={activeProvider}
+          setActiveProvider={setActiveProvider}
+          googleApiKey={googleApiKey}
+          setGoogleApiKey={setGoogleApiKey}
+          onClearHistory={handleClearHistory}
+          onIndexDatabase={handleIndexDatabase}
+
           onAppSearch={async (prompt: string) => {
             // Unified NL-to-SQL Search
             if (!connectionInfo) return;
@@ -820,41 +808,6 @@ Please provide a detailed analysis in the following format:
               setIsExecuting(false);
             }
           }}
-        />
-      </div>
-
-      {/* Global AI Sidebar on the Right */}
-      <div
-        onMouseDown={startSidebarResize}
-        style={{
-          width: '5px',
-          cursor: 'col-resize',
-          background: '#1e293b',
-          borderLeft: '1px solid #334155',
-          display: activeCenterTab === 'search' ? 'none' : 'flex',
-          justifyContent: 'center', alignItems: 'center'
-        }}
-      >
-        <div style={{ width: '2px', height: '30px', background: '#475569', borderRadius: '2px' }} />
-      </div>
-
-      <div style={{ width: `${sidebarWidth}px`, height: '100%', display: activeCenterTab === 'search' ? 'none' : 'block' }}>
-        <AIChatSidebar
-          messages={chatHistory}
-          onSend={handleAIStream}
-          loading={aiLoading}
-          aiState={aiStatus}
-          title="AI Assistant"
-          onRunSql={(sql) => { setSqlQuery(sql); }}
-          onClose={() => { }}
-          selectedModel={activeProvider}
-          onModelChange={setActiveProvider}
-          googleApiKey={googleApiKey}
-          onSetGoogleApiKey={setGoogleApiKey}
-          onOpenSettings={() => setShowSettingsModal(true)}
-          onClearHistory={handleClearHistory}
-          onIndexDatabase={handleIndexDatabase}
-          connectionInfo={connectionInfo}
         />
       </div>
 

@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Node } from 'reactflow';
 import SchemaBrowser from './workspace/SchemaBrowser';
 import SavedQueriesSidebar from './workspace/SavedQueriesSidebar';
+import AIChatSidebar from './AIChatSidebar';
 import EditorToolbar from './EditorToolbar';
 import BottomPane from './workspace/BottomPane';
 import SimpleEditor from './SimpleEditor';
@@ -56,14 +57,25 @@ interface QueryWorkspaceProps {
     onCompare: () => void;
     baselineMetrics: { planning: number, execution: number } | null;
     queriesRefreshTrigger: number;
-    activeTab: 'search' | 'editor' | 'tune' | 'server' | 'schema' | 'er' | 'queries';
-    setActiveTab: (tab: 'search' | 'editor' | 'tune' | 'server' | 'schema' | 'er' | 'queries') => void;
+    activeTab: 'search' | 'queries' | 'tune' | 'server' | 'schema' | 'er';
+    setActiveTab: (tab: 'search' | 'queries' | 'tune' | 'server' | 'schema' | 'er') => void;
     onAnalyzeParamQuery: (sql: string) => void;
     onEdit: (sql: string, name: string) => void;
     onOpenSettings?: () => void;
     highlightedLines?: number[];
     onAskAI: (prompt: string) => void;
     onAppSearch: (prompt: string) => void;
+    // AI Sidebar Props
+    chatHistory: { role: 'user' | 'assistant', content: string, status?: 'success' | 'error' | 'pending', hidden?: boolean, respTime?: string, ttft?: string, planTime?: string, execTime?: string }[];
+    onAIStream: (userMsg: string, displayMsg?: string, isAnalysis?: boolean) => void;
+    aiLoading: boolean;
+    aiStatus: 'idle' | 'thinking' | 'generating';
+    activeProvider: string;
+    setActiveProvider: (provider: string) => void;
+    googleApiKey: string;
+    setGoogleApiKey: (key: string) => void;
+    onClearHistory: () => void;
+    onIndexDatabase: () => void;
 }
 
 const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
@@ -78,8 +90,38 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
     insights, onRunInsight, insightResults,
     onCompare, baselineMetrics, queriesRefreshTrigger,
     activeTab, setActiveTab, onAnalyzeParamQuery, onEdit,
-    onOpenSettings, onAskAI, onAppSearch, highlightedLines = []
+    onOpenSettings, onAskAI, onAppSearch, highlightedLines = [],
+    // AI Sidebar Props
+    chatHistory, onAIStream, aiLoading, aiStatus,
+    activeProvider, setActiveProvider, googleApiKey, setGoogleApiKey,
+    onClearHistory, onIndexDatabase
 }) => {
+
+    // --- AI Sidebar State ---
+    const [aiSidebarWidth, setAiSidebarWidth] = useState(400);
+    const isResizingAISidebar = useRef(false);
+
+    const startAISidebarResize = (e: React.MouseEvent) => {
+        isResizingAISidebar.current = true;
+        e.preventDefault();
+        const onMouseMove = (moveEvent: MouseEvent) => {
+            if (!isResizingAISidebar.current) return;
+            const containerRect = (e.target as HTMLElement).parentElement?.getBoundingClientRect();
+            if (containerRect) {
+                const newWidth = containerRect.right - moveEvent.clientX;
+                if (newWidth > 280 && newWidth < 600) {
+                    setAiSidebarWidth(newWidth);
+                }
+            }
+        };
+        const onMouseUp = () => {
+            isResizingAISidebar.current = false;
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+        };
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+    };
 
     // --- Local State ---
     const [savedQueries, setSavedQueries] = useState<ParameterizedQuery[]>([]);
@@ -154,7 +196,7 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
 
     // Auto-collapse bottom pane for non-query tabs
     useEffect(() => {
-        if (!['editor', 'tune', 'search'].includes(activeTab)) {
+        if (!['queries', 'tune', 'search'].includes(activeTab)) {
             setBottomExpanded(false);
         }
     }, [activeTab]);
@@ -164,14 +206,18 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
     const handleSelectSavedQuery = (query: ParameterizedQuery) => {
         setSqlQuery(query.sql);
         setSessionTitle(query.name);
-        setSearchPrompt(query.name); // Set prompt to query name
-        setShowSearchResults(true);  // Show results pane in Search Tab
-        setActiveTab('search');      // Switch to Search tab
+        setSearchPrompt(query.name);
+        setShowSearchResults(false);
+
+        // Switch to Queries tab if in Search, otherwise stay in current tab
+        if (activeTab === 'search') {
+            setActiveTab('queries');
+        }
 
         // Execute immediately OR Ask for params
         if (query.params && query.params.length > 0) {
             setPendingParams(query.params);
-            // Do NOT execute yet. SearchTab will show form.
+            // Do NOT execute yet. Show param form.
         } else {
             setPendingParams([]);
             onExecute(query.sql);
@@ -195,10 +241,6 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
     const handleTuneWrapper = () => {
         setActiveTab('tune');
         onTune(paramValues);
-    };
-
-    const handleEditorWrapper = () => {
-        setActiveTab('editor');
     };
 
     const startBottomResize = (e: React.MouseEvent) => {
@@ -237,45 +279,35 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
 
     return (
         <div style={{ display: 'flex', height: '100%', width: '100%', overflow: 'hidden' }}>
-            {/* ... Sidebar (Zen Mode: Hidden on Search) ... */}
-            {activeTab !== 'search' && (
-                <SavedQueriesSidebar
-                    connectionInfo={connectionInfo}
-                    onSelectQuery={handleSelectSavedQuery}
-                    queries={savedQueries}
-                    loading={loadingSavedQueries}
-                    onReload={loadSavedQueries}
-                    activeQueryName={sessionTitle}
-                />
-            )}
 
             {/* Main Center Column */}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: '#0f172a' }}>
 
-                {/* 1. Toolbar */}
-                <EditorToolbar
-                    onExecute={handleExecuteWrapper}
-                    isExecuting={isExecuting}
-                    onStop={() => { }} // Placeholder
-                    onClear={onReset}
-                    onFormat={() => { }} // Placeholder
-                    onSave={onSaveSession}
-                    onExplain={handleTuneWrapper}
-                    onVisualize={() => { setActiveBottomTab('results'); setBottomExpanded(true); }}
-                    onAskAI={() => { /* Focus AI Sidebar? */ }}
-                    onOpenSettings={onOpenSettings}
-                    sessionTitle={sessionTitle}
-                />
-
-                {/* 2. Tabs Row */}
+                {/* 1. Tabs Row */}
                 <div style={{ display: 'flex', background: '#334155', borderBottom: '1px solid #475569', paddingLeft: '10px' }}>
                     <div onClick={() => setActiveTab('search')} style={tabStyle('search')}>Search</div>
-                    <div onClick={handleEditorWrapper} style={tabStyle('editor')}>Editor</div>
+                    <div onClick={() => setActiveTab('queries')} style={tabStyle('queries')}>Queries</div>
                     <div onClick={handleTuneWrapper} style={tabStyle('tune')}>Analyze</div>
                     <div onClick={() => setActiveTab('schema')} style={tabStyle('schema')}>Schema</div>
                     <div onClick={() => setActiveTab('er')} style={tabStyle('er')}>ER Diagram</div>
                     <div onClick={() => setActiveTab('server')} style={tabStyle('server')}>Server</div>
                 </div>
+
+                {/* 2. Toolbar */}
+                <EditorToolbar
+                    onExecute={handleExecuteWrapper}
+                    isExecuting={isExecuting}
+                    onStop={() => { }}
+                    onClear={onReset}
+                    onFormat={() => { }}
+                    onSave={onSaveSession}
+                    onExplain={handleTuneWrapper}
+                    onVisualize={() => { setActiveBottomTab('results'); setBottomExpanded(true); }}
+                    onAskAI={() => { }}
+                    onOpenSettings={onOpenSettings}
+                    sessionTitle={sessionTitle}
+                    connectionInfo={connectionInfo}
+                />
 
                 {/* 3. Center Content */}
                 <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#1e293b', display: 'flex', flexDirection: 'column' }}>
@@ -334,55 +366,174 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                         />
                     </div>
 
-                    {/* Editor Tab */}
-                    <div style={{
-                        display: activeTab === 'editor' ? 'flex' : 'none',
-                        height: '100%', flexDirection: 'column'
-                    }}>
-                        <div style={{ flex: 1, overflow: 'hidden' }}>
-                            {showDiff ? (
-                                <DiffView
-                                    oldCode={diffBaseQuery}
-                                    newCode={sqlQuery}
-                                    onClose={() => setShowDiff(false)}
+                    {/* Queries Tab - 3 Column Layout */}
+                    {activeTab === 'queries' && (
+                        <div style={{ display: 'flex', height: '100%', flex: 1, overflow: 'hidden' }}>
+                            {/* Left: Saved Queries */}
+                            <SavedQueriesSidebar
+                                connectionInfo={connectionInfo}
+                                onSelectQuery={handleSelectSavedQuery}
+                                queries={savedQueries}
+                                loading={loadingSavedQueries}
+                                onReload={loadSavedQueries}
+                                activeQueryName={sessionTitle}
+                            />
+
+                            {/* Center: Editor + Bottom Pane */}
+                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
+                                <div style={{ flex: 1, overflow: 'hidden' }}>
+                                    {showDiff ? (
+                                        <DiffView
+                                            oldCode={diffBaseQuery}
+                                            newCode={sqlQuery}
+                                            onClose={() => setShowDiff(false)}
+                                        />
+                                    ) : (
+                                        <SimpleEditor
+                                            value={sqlQuery}
+                                            onChange={setSqlQuery}
+                                            schema={schema}
+                                            highlightLines={highlightedLines}
+                                        />
+                                    )}
+                                </div>
+
+                                <BottomPane
+                                    activeTab={activeBottomTab}
+                                    setActiveTab={setActiveBottomTab}
+                                    executionResult={executionResult}
+                                    execError={execError}
+                                    selectedNode={selectedNode}
+                                    fullPlan={explainResult}
+                                    onCloseDetails={() => setSelectedNode(null)}
+                                    height={bottomHeight}
+                                    isExpanded={bottomExpanded}
+                                    onToggleExpand={() => setBottomExpanded(!bottomExpanded)}
+                                    insights={insights}
+                                    onRunInsight={onRunInsight}
+                                    insightResults={insightResults}
+                                    sqlQuery={sqlQuery}
+                                    paramValues={paramValues}
+                                    onParamChange={setParamValues}
+                                    connectionInfo={connectionInfo}
+                                    metaParams={activeQueryMetadata?.params as any}
+                                    onExecuteQuery={handleExecuteWrapper}
                                 />
-                            ) : (
-                                <SimpleEditor
-                                    value={sqlQuery}
-                                    onChange={setSqlQuery}
-                                    schema={schema}
-                                    highlightLines={highlightedLines}
+                            </div>
+
+                            {/* Resize Handle */}
+                            <div
+                                onMouseDown={startAISidebarResize}
+                                style={{
+                                    width: '5px',
+                                    cursor: 'col-resize',
+                                    background: '#1e293b',
+                                    borderLeft: '1px solid #334155',
+                                    display: 'flex',
+                                    justifyContent: 'center',
+                                    alignItems: 'center'
+                                }}
+                            >
+                                <div style={{ width: '2px', height: '30px', background: '#475569', borderRadius: '2px' }} />
+                            </div>
+
+                            {/* Right: AI Assistant */}
+                            <div style={{ width: `${aiSidebarWidth}px`, height: '100%', flexShrink: 0 }}>
+                                <AIChatSidebar
+                                    messages={chatHistory}
+                                    onSend={onAIStream}
+                                    loading={aiLoading}
+                                    aiState={aiStatus}
+                                    title="Query Assistant"
+                                    onRunSql={(sql) => { setSqlQuery(sql); }}
+                                    onClose={() => { }}
+                                    selectedModel={activeProvider}
+                                    onModelChange={setActiveProvider}
+                                    googleApiKey={googleApiKey}
+                                    onSetGoogleApiKey={setGoogleApiKey}
+                                    onOpenSettings={onOpenSettings}
+                                    onClearHistory={onClearHistory}
+                                    onIndexDatabase={onIndexDatabase}
+                                    connectionInfo={connectionInfo}
                                 />
-                            )}
+                            </div>
                         </div>
+                    )}
 
-                    </div>
+                    {/* Analyze Tab - 3 Column Layout */}
+                    {activeTab === 'tune' && (
+                        <div style={{ display: 'flex', height: '100%', flex: 1, overflow: 'hidden' }}>
+                            {/* Left: Saved Queries */}
+                            <SavedQueriesSidebar
+                                connectionInfo={connectionInfo}
+                                onSelectQuery={handleSelectSavedQuery}
+                                queries={savedQueries}
+                                loading={loadingSavedQueries}
+                                onReload={loadSavedQueries}
+                                activeQueryName={sessionTitle}
+                            />
 
-                    {/* Tune Tab */}
-                    <div style={{
-                        display: activeTab === 'tune' ? 'block' : 'none',
-                        height: '100%'
-                    }}>
-                        <QueryTuneTab
-                            activeTab={tuneTabMode}
-                            setActiveTab={setTuneTabMode}
-                            nodes={nodes} edges={edges}
-                            onNodesChange={onNodesChange}
-                            onNodeClick={onNodeClick}
-                            onPaneClick={onPaneClick}
-                            selectedNode={selectedNode}
-                            explainResult={explainResult}
-                            explainText={explainText}
-                            loading={loadingExplain}
-                            error={explainError}
-                            setReactFlowInstance={() => { }}
-                            nodeTypes={nodeTypes}
-                            onAnalyzeNode={onAnalyzeNode}
-                            onRefreshPlan={onTune}
-                            onCompare={onCompare}
-                            baselineMetrics={baselineMetrics}
-                        />
-                    </div>
+                            {/* Center: Query Tune Content */}
+                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
+                                <QueryTuneTab
+                                    activeTab={tuneTabMode}
+                                    setActiveTab={setTuneTabMode}
+                                    nodes={nodes} edges={edges}
+                                    onNodesChange={onNodesChange}
+                                    onNodeClick={onNodeClick}
+                                    onPaneClick={onPaneClick}
+                                    selectedNode={selectedNode}
+                                    explainResult={explainResult}
+                                    explainText={explainText}
+                                    loading={loadingExplain}
+                                    error={explainError}
+                                    setReactFlowInstance={() => { }}
+                                    nodeTypes={nodeTypes}
+                                    onAnalyzeNode={onAnalyzeNode}
+                                    onRefreshPlan={onTune}
+                                    onCompare={onCompare}
+                                    baselineMetrics={baselineMetrics}
+                                />
+                            </div>
+
+                            {/* Resize Handle */}
+                            <div
+                                onMouseDown={startAISidebarResize}
+                                style={{
+                                    width: '5px',
+                                    cursor: 'col-resize',
+                                    background: '#1e293b',
+                                    borderLeft: '1px solid #334155',
+                                    display: 'flex',
+                                    justifyContent: 'center',
+                                    alignItems: 'center'
+                                }}
+                            >
+                                <div style={{ width: '2px', height: '30px', background: '#475569', borderRadius: '2px' }} />
+                            </div>
+
+                            {/* Right: AI Assistant */}
+                            <div style={{ width: `${aiSidebarWidth}px`, height: '100%', flexShrink: 0 }}>
+                                <AIChatSidebar
+                                    messages={chatHistory}
+                                    onSend={onAIStream}
+                                    loading={aiLoading}
+                                    aiState={aiStatus}
+                                    title="Query Assistant"
+                                    onRunSql={(sql) => { setSqlQuery(sql); }}
+                                    onClose={() => { }}
+                                    selectedModel={activeProvider}
+                                    onModelChange={setActiveProvider}
+                                    googleApiKey={googleApiKey}
+                                    onSetGoogleApiKey={setGoogleApiKey}
+                                    onOpenSettings={onOpenSettings}
+                                    onClearHistory={onClearHistory}
+                                    onIndexDatabase={onIndexDatabase}
+                                    connectionInfo={connectionInfo}
+                                />
+                            </div>
+                        </div>
+                    )}
 
                     {/* Server Tab */}
                     <div style={{
@@ -421,45 +572,6 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                     </div>
 
                 </div>
-                {/* 4. Resizable Bottom Pane */}
-                {
-                    bottomExpanded && (
-                        <div
-                            onMouseDown={startBottomResize}
-                            style={{
-                                height: '5px',
-                                background: '#1e293b',
-                                cursor: 'row-resize',
-                                borderTop: '1px solid #334155',
-                                display: 'flex', justifyContent: 'center', alignItems: 'center'
-                            }}
-                        >
-                            <div style={{ width: '40px', height: '2px', background: '#475569', borderRadius: '2px' }} />
-                        </div>
-                    )
-                }
-
-                <BottomPane
-                    activeTab={activeBottomTab}
-                    setActiveTab={setActiveBottomTab}
-                    executionResult={executionResult}
-                    execError={execError}
-                    selectedNode={selectedNode}
-                    fullPlan={explainResult}
-                    onCloseDetails={() => setSelectedNode(null)}
-                    height={bottomHeight}
-                    isExpanded={bottomExpanded}
-                    onToggleExpand={() => setBottomExpanded(!bottomExpanded)}
-                    insights={insights}
-                    onRunInsight={onRunInsight}
-                    insightResults={insightResults}
-                    sqlQuery={sqlQuery}
-                    paramValues={paramValues}
-                    onParamChange={setParamValues}
-                    connectionInfo={connectionInfo}
-                    metaParams={activeQueryMetadata?.params as any}
-                    onExecuteQuery={handleExecuteWrapper}
-                />
             </div >
         </div >
     );

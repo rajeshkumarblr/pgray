@@ -32,16 +32,18 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
     *   **Performance Metrics**: Real-time "Time to First Token" (TTFT) tracking to monitor AI responsiveness.
 
 *   **Flexible Workspace**:
-    *   **Three-Pane Layout**: Editor (Left), Visualizer (Center), Assistant (Right).
-    *   **Resizable Panes**: Customize the width of the AI Sidebar and height of the Results pane.
-    *   **Tabbed Interface**: seamlessly switch between the **Editor**, **Tune** (Visualizer), and **Server** tabs.
+    *   **Tab-First Navigation**: Tabs at the top (Search, Queries, Analyze, Schema, ER, Server) for quick context switching.
+    *   **Three-Column Layout**: Queries & Analyze tabs feature Saved Queries (Left), Editor/Plan (Center), Query Assistant (Right).
+    *   **Zen Mode**: Search, Schema, ER Diagram, and Server tabs are full-width for distraction-free focus.
+    *   **Resizable Panes**: Customize the width of the Query Assistant sidebar.
+    *   **Database Selector**: Toolbar shows current database with quick-switch dropdown.
 
 *   **Session Management**:
     *   **Explicit Save**: Sessions start as scratchpads. Saving them permanently stores the query.
     *   **Auto-Naming**: AI automatically generates descriptive titles (e.g., "Movies by Actor") upon saving.
     *   **Parameterized Storage**: Saved queries are automatically parameterized (e.g., `WHERE name = :name` or `LIMIT :limit_val`) for reuse.
     *   **History**: Access previously saved sessions and resume work instantly.
-    *   **Queries Tab**: Dedicated tab to explore, fill parameters (e.g., `:actor_name`), and Execute saved queries without switching context to the Editor.
+    *   **Queries Tab**: Dedicated tab to explore, fill parameters (e.g., `:actor_name`), and Execute saved queries seamlessly.
     *   **Visual Query Management**: Edit, Duplicate, or Delete saved queries directly from a **dedicated sidebar** with Context Menu support.
     *   **Context Menu**: Right-click saved queries to **Rename**, **Duplicate**, or **Delete** them instantly.
     *   **Enhanced Layout**: SQL Editor maximizes to fill the screen ("flex-grow") with long-line wrapping, while keeping controls pinned to the footer.
