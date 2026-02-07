@@ -16,6 +16,7 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { saveERLayout, getERLayout } from '../api';
+import { applyLayout, LayoutMode } from '../utils/layoutEngine';
 
 interface ERDiagramProps {
     schema: any;
@@ -134,120 +135,6 @@ const nodeTypes = {
     table: TableNode
 };
 
-// --- STAR / RADIAL LAYOUT ---
-const getStarLayout = (nodes: Node[], edges: Edge[]) => {
-    if (nodes.length === 0) return { nodes, edges };
-
-    // 1. Calculate degrees to find center
-    const degree: Record<string, number> = {};
-    const adj: Record<string, string[]> = {};
-
-    nodes.forEach(n => {
-        degree[n.id] = 0;
-        adj[n.id] = [];
-    });
-
-    edges.forEach(e => {
-        degree[e.source] = (degree[e.source] || 0) + 1;
-        degree[e.target] = (degree[e.target] || 0) + 1;
-        adj[e.source].push(e.target);
-        adj[e.target].push(e.source);
-    });
-
-    // Find node with max degree
-    let centerNodeId = nodes[0].id;
-    let maxDegree = -1;
-    nodes.forEach(n => {
-        if ((degree[n.id] || 0) > maxDegree) {
-            maxDegree = degree[n.id];
-            centerNodeId = n.id;
-        }
-    });
-
-    // 2. BFS for layering + Parent tracking
-    const layers: Record<number, string[]> = {};
-    const visited = new Set<string>();
-    const parents: Record<string, string> = {}; // Track parent for angle sorting
-
-    // BFS Queue: { id, dist, parent }
-    const queue: { id: string, dist: number, parent: string | null }[] = [{ id: centerNodeId, dist: 0, parent: null }];
-    visited.add(centerNodeId);
-
-    while (queue.length > 0) {
-        const { id, dist, parent } = queue.shift()!;
-        if (!layers[dist]) layers[dist] = [];
-        layers[dist].push(id);
-        if (parent) parents[id] = parent;
-
-        adj[id].forEach(neighbor => {
-            if (!visited.has(neighbor)) {
-                visited.add(neighbor);
-                queue.push({ id: neighbor, dist: dist + 1, parent: id });
-            }
-        });
-    }
-
-    // Handle orphans
-    const maxLayer = Math.max(...Object.keys(layers).map(Number));
-    const orphanLayer = maxLayer + 1;
-    nodes.forEach(n => {
-        if (!visited.has(n.id)) {
-            if (!layers[orphanLayer]) layers[orphanLayer] = [];
-            layers[orphanLayer].push(n.id);
-        }
-    });
-
-    // 3. Position assignment with Parent-Aware sorting
-    const R_STEP = 250; // Tighter radius (was 350)
-    const placedNodes = new Map<string, { x: number, y: number, angle: number }>();
-    placedNodes.set(centerNodeId, { x: 0, y: 0, angle: 0 });
-
-    const layerIndices = Object.keys(layers).map(Number).sort((a, b) => a - b);
-
-    layerIndices.forEach(layerIdx => {
-        if (layerIdx === 0) return;
-
-        let layerNodes = layers[layerIdx];
-        const radius = layerIdx * R_STEP;
-
-        // Sort nodes by parent's angle to keep subtrees closer
-        if (layerIdx > 1) {
-            layerNodes.sort((a, b) => {
-                const parentA = parents[a];
-                const parentB = parents[b];
-                const angleA = placedNodes.get(parentA)?.angle || 0;
-                const angleB = placedNodes.get(parentB)?.angle || 0;
-                return angleA - angleB;
-            });
-        }
-
-        const count = layerNodes.length;
-        const angleStep = (2 * Math.PI) / count;
-
-        layerNodes.forEach((nodeId, i) => {
-            const angle = i * angleStep;
-            placedNodes.set(nodeId, {
-                x: radius * Math.cos(angle),
-                y: radius * Math.sin(angle),
-                angle: angle
-            });
-        });
-    });
-
-    // Apply positions
-    nodes.forEach(node => {
-        const pos = placedNodes.get(node.id) || { x: 0, y: 0 };
-        node.position = {
-            x: pos.x - 100, // Center offset
-            y: pos.y - 25
-        };
-        node.targetPosition = Position.Left;
-        node.sourcePosition = Position.Right;
-    });
-
-    return { nodes, edges };
-};
-
 interface ERDiagramProps {
     schema: any;
     connectionInfo: any;
@@ -256,6 +143,7 @@ interface ERDiagramProps {
 const ERDiagram: React.FC<ERDiagramProps> = ({ schema, connectionInfo }) => {
 
     const STORAGE_KEY = `pgray_er_layout_${connectionInfo?.database || 'default'}`;
+    const [layoutMode, setLayoutMode] = useState<LayoutMode>('auto');
 
     // --- Hover Tooltip State ---
     // --- Hover Tooltip State (Removed) ---
@@ -327,14 +215,13 @@ const ERDiagram: React.FC<ERDiagramProps> = ({ schema, connectionInfo }) => {
         // But for initial render, we can use localStorage as cache or just wait.
         // Let's rely on an effect to load positions and apply them.
 
-        // Use Star Layout as default
-        return getStarLayout(nodes, edges);
+        // Apply layout based on current mode
+        return applyLayout(nodes, edges, layoutMode);
 
-    }, [schema]);
+    }, [schema, layoutMode]);
 
     const [nodes, setNodes] = useNodesState(initialNodes);
     const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
-    const [layoutLoaded, setLayoutLoaded] = useState(false);
 
     // Load layout from Backend
     useEffect(() => {
@@ -350,7 +237,6 @@ const ERDiagram: React.FC<ERDiagramProps> = ({ schema, connectionInfo }) => {
                         }
                         return n;
                     }));
-                    setLayoutLoaded(true);
                     return;
                 }
 
@@ -412,10 +298,10 @@ const ERDiagram: React.FC<ERDiagramProps> = ({ schema, connectionInfo }) => {
     };
 
     const handleResetLayout = () => {
-        if (confirm("Reset layout to default star arrangement?")) {
+        if (confirm(`Apply ${layoutMode === 'auto' ? 'auto-detected' : layoutMode} layout?`)) {
             localStorage.removeItem(STORAGE_KEY);
-            // Recalculate layout
-            const { nodes: newNodes, edges: newEdges } = getStarLayout(nodes, edges);
+            // Recalculate layout using the selected mode
+            const { nodes: newNodes, edges: newEdges } = applyLayout(nodes, edges, layoutMode);
             setNodes([...newNodes]);
             setEdges([...newEdges]);
         }
@@ -424,18 +310,44 @@ const ERDiagram: React.FC<ERDiagramProps> = ({ schema, connectionInfo }) => {
     return (
         <div style={{ height: '100%', width: '100%', background: '#0f172a', position: 'relative' }}>
             {/* Toolbar */}
-            <div style={{ position: 'absolute', top: '10px', right: '10px', zIndex: 10, display: 'flex', gap: '10px' }}>
-                <button
-                    onClick={handleSaveLayout}
-                    style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
-                >
-                    Save Layout
-                </button>
+            <div style={{ position: 'absolute', top: '10px', right: '10px', zIndex: 10, display: 'flex', gap: '8px', alignItems: 'center' }}>
+                {/* Layout Mode Selector */}
+                <div style={{ display: 'flex', background: '#1e293b', borderRadius: '6px', border: '1px solid #475569', overflow: 'hidden' }}>
+                    {[
+                        { mode: 'auto' as LayoutMode, label: '🪄 Auto' },
+                        { mode: 'hierarchical' as LayoutMode, label: '→ Flow' },
+                        { mode: 'star' as LayoutMode, label: '✦ Star' }
+                    ].map(({ mode, label }) => (
+                        <button
+                            key={mode}
+                            onClick={() => setLayoutMode(mode)}
+                            style={{
+                                background: layoutMode === mode ? '#3b82f6' : 'transparent',
+                                color: layoutMode === mode ? 'white' : '#94a3b8',
+                                border: 'none',
+                                padding: '6px 12px',
+                                cursor: 'pointer',
+                                fontSize: '12px',
+                                fontWeight: layoutMode === mode ? 'bold' : 'normal',
+                                transition: 'all 0.2s'
+                            }}
+                        >
+                            {label}
+                        </button>
+                    ))}
+                </div>
                 <button
                     onClick={handleResetLayout}
-                    style={{ background: '#334155', color: '#cbd5e1', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer' }}
+                    style={{ background: '#334155', color: '#cbd5e1', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}
+                    title="Apply selected layout"
                 >
-                    Reset Layout
+                    🔄 Apply Layout
+                </button>
+                <button
+                    onClick={handleSaveLayout}
+                    style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '12px' }}
+                >
+                    💾 Save
                 </button>
             </div>
 
