@@ -26,7 +26,11 @@ interface ERDiagramProps {
 
 // --- Custom Table Node ---
 const TableNode = ({ data, selected }: NodeProps) => {
-    const [expanded, setExpanded] = useState(false);
+    const [localExpanded, setLocalExpanded] = useState(false);
+
+    // forceExpand prop overrides local state (null = use local, true/false = override)
+    const forceExpand = data.forceExpand as boolean | null | undefined;
+    const expanded = forceExpand !== null && forceExpand !== undefined ? forceExpand : localExpanded;
 
     // Columns: { name, type, isPk, isFk }
     const columns = data.columns || [];
@@ -43,9 +47,9 @@ const TableNode = ({ data, selected }: NodeProps) => {
             background: '#1e293b',
             border: selected ? '2px solid #3b82f6' : '1px solid #475569',
             borderRadius: '8px',
-            minWidth: '180px',
+            minWidth: '220px',
             color: '#e2e8f0',
-            fontSize: '13px',
+            fontSize: '14px',
             boxShadow: '0 4px 12px -2px rgba(0, 0, 0, 0.6)',
             transition: 'all 0.2s ease'
         }}>
@@ -56,29 +60,30 @@ const TableNode = ({ data, selected }: NodeProps) => {
                 background: '#0f172a',
                 borderRadius: '8px 8px 0 0',
                 fontWeight: 'bold',
-                fontSize: '14px',
+                fontSize: '15px',
                 letterSpacing: '0.02em',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center'
             }}>
                 <span style={{ color: '#60a5fa' }}>{data.label}</span>
-                {hasHidden && (
-                    <button
-                        onClick={(e) => { e.stopPropagation(); setExpanded(true); }}
-                        style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '10px' }}
-                    >
-                        Show All
-                    </button>
-                )}
-                {expanded && columns.length > visibleColumns.length && (
-                    <button
-                        onClick={(e) => { e.stopPropagation(); setExpanded(false); }}
-                        style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '10px' }}
-                    >
-                        Compact
-                    </button>
-                )}
+                {forceExpand === null || forceExpand === undefined ? (
+                    hasHidden ? (
+                        <button
+                            onClick={(e) => { e.stopPropagation(); setLocalExpanded(true); }}
+                            style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '11px' }}
+                        >
+                            Show All
+                        </button>
+                    ) : expanded && columns.length > 0 ? (
+                        <button
+                            onClick={(e) => { e.stopPropagation(); setLocalExpanded(false); }}
+                            style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '11px' }}
+                        >
+                            Compact
+                        </button>
+                    ) : null
+                ) : null}
             </div>
 
             {/* Columns */}
@@ -123,8 +128,8 @@ const TableNode = ({ data, selected }: NodeProps) => {
                 ))}
                 {hasHidden && (
                     <div
-                        onClick={(e) => { e.stopPropagation(); setExpanded(true); }}
-                        style={{ padding: '4px 8px', color: '#64748b', fontSize: '10px', fontStyle: 'italic', cursor: 'pointer', textAlign: 'center' }}
+                        onClick={(e) => { e.stopPropagation(); setLocalExpanded(true); }}
+                        style={{ padding: '4px 8px', color: '#64748b', fontSize: '11px', fontStyle: 'italic', cursor: 'pointer', textAlign: 'center' }}
                     >
                         ... {columns.length - visibleColumns.length} more columns
                     </div>
@@ -148,6 +153,7 @@ const ERDiagram: React.FC<ERDiagramProps> = ({ schema, connectionInfo }) => {
     const STORAGE_KEY = `pgray_er_layout_${connectionInfo?.database || 'default'}`;
     const [layoutMode, setLayoutMode] = useState<LayoutMode>('auto');
     const [highlightedNode, setHighlightedNode] = useState<string | null>(null);
+    const [forceExpand, setForceExpand] = useState<boolean | null>(null);
 
     // --- Graph State ---
     const { nodes: initialNodes, edges: initialEdges } = useMemo(() => {
@@ -342,7 +348,22 @@ const ERDiagram: React.FC<ERDiagramProps> = ({ schema, connectionInfo }) => {
                     style={{ background: '#334155', color: '#cbd5e1', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}
                     title="Apply selected layout"
                 >
-                    🔄 Apply Layout
+                    🔄 Apply
+                </button>
+                <button
+                    onClick={() => setForceExpand(prev => prev === null ? true : prev ? false : null)}
+                    style={{
+                        background: forceExpand !== null ? '#475569' : '#334155',
+                        color: '#cbd5e1',
+                        border: 'none',
+                        padding: '6px 12px',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: '12px'
+                    }}
+                    title={forceExpand === null ? 'Show all columns' : forceExpand ? 'Show keys only' : 'Auto'}
+                >
+                    {forceExpand === null ? '📋 Details' : forceExpand ? '🔑 Keys Only' : '🔄 Auto'}
                 </button>
                 <button
                     onClick={handleSaveLayout}
@@ -355,6 +376,7 @@ const ERDiagram: React.FC<ERDiagramProps> = ({ schema, connectionInfo }) => {
             <ReactFlow
                 nodes={nodes.map(n => ({
                     ...n,
+                    data: { ...n.data, forceExpand },
                     style: {
                         ...n.style,
                         opacity: highlightedNode && highlightedNode !== n.id &&
@@ -383,7 +405,9 @@ const ERDiagram: React.FC<ERDiagramProps> = ({ schema, connectionInfo }) => {
                 onPaneClick={() => setHighlightedNode(null)}
                 nodeTypes={nodeTypes}
                 fitView
-                minZoom={0.1}
+                minZoom={0.2}
+                maxZoom={2.0}
+                attributionPosition="bottom-right"
             >
                 <Background color="#1e293b" gap={16} />
                 <Controls style={{ background: '#1e293b', border: '1px solid #475569', fill: '#cbd5e1' }} />

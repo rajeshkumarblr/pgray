@@ -17,9 +17,11 @@ export const getDagreLayout = (nodes: Node[], edges: Edge[], direction = 'LR') =
     });
 
     nodes.forEach((node) => {
-        // Estimate node size based on columns
+        // Calculate height based on VISIBLE columns only (PKs and FKs)
         const columns = node.data?.columns || [];
-        const height = Math.max(100, 50 + columns.length * 22);
+        const visibleCount = columns.filter((c: any) => c.isPk || c.isFk).length;
+        // Base height (header ~50px) + row height (28px each) + padding (20px)
+        const height = 50 + (visibleCount * 28) + 20;
         dagreGraph.setNode(node.id, { width: 220, height });
     });
 
@@ -32,7 +34,8 @@ export const getDagreLayout = (nodes: Node[], edges: Edge[], direction = 'LR') =
     const layoutedNodes = nodes.map((node) => {
         const nodeWithPosition = dagreGraph.node(node.id);
         const columns = node.data?.columns || [];
-        const height = Math.max(100, 50 + columns.length * 22);
+        const visibleCount = columns.filter((c: any) => c.isPk || c.isFk).length;
+        const height = 50 + (visibleCount * 28) + 20;
 
         return {
             ...node,
