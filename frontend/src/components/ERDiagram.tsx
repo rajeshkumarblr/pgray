@@ -42,19 +42,22 @@ const TableNode = ({ data, selected }: NodeProps) => {
         <div style={{
             background: '#1e293b',
             border: selected ? '2px solid #3b82f6' : '1px solid #475569',
-            borderRadius: '6px',
-            minWidth: '200px',
+            borderRadius: '8px',
+            minWidth: '180px',
             color: '#e2e8f0',
-            fontSize: '12px',
-            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.5)'
+            fontSize: '13px',
+            boxShadow: '0 4px 12px -2px rgba(0, 0, 0, 0.6)',
+            transition: 'all 0.2s ease'
         }}>
             {/* Header */}
             <div style={{
-                padding: '8px',
+                padding: '10px 12px',
                 borderBottom: '1px solid #334155',
                 background: '#0f172a',
-                borderRadius: '6px 6px 0 0',
+                borderRadius: '8px 8px 0 0',
                 fontWeight: 'bold',
+                fontSize: '14px',
+                letterSpacing: '0.02em',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center'
@@ -68,7 +71,7 @@ const TableNode = ({ data, selected }: NodeProps) => {
                         Show All
                     </button>
                 )}
-                {expanded && columns.length > visibleColumns.length && ( // Only show collapse if we are actually filtering
+                {expanded && columns.length > visibleColumns.length && (
                     <button
                         onClick={(e) => { e.stopPropagation(); setExpanded(false); }}
                         style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '10px' }}
@@ -144,9 +147,7 @@ const ERDiagram: React.FC<ERDiagramProps> = ({ schema, connectionInfo }) => {
 
     const STORAGE_KEY = `pgray_er_layout_${connectionInfo?.database || 'default'}`;
     const [layoutMode, setLayoutMode] = useState<LayoutMode>('auto');
-
-    // --- Hover Tooltip State ---
-    // --- Hover Tooltip State (Removed) ---
+    const [highlightedNode, setHighlightedNode] = useState<string | null>(null);
 
     // --- Graph State ---
     const { nodes: initialNodes, edges: initialEdges } = useMemo(() => {
@@ -352,10 +353,34 @@ const ERDiagram: React.FC<ERDiagramProps> = ({ schema, connectionInfo }) => {
             </div>
 
             <ReactFlow
-                nodes={nodes}
-                edges={edges}
+                nodes={nodes.map(n => ({
+                    ...n,
+                    style: {
+                        ...n.style,
+                        opacity: highlightedNode && highlightedNode !== n.id &&
+                            !edges.some(e => (e.source === highlightedNode && e.target === n.id) || (e.target === highlightedNode && e.source === n.id))
+                            ? 0.25 : 1,
+                        transition: 'opacity 0.2s ease'
+                    }
+                }))}
+                edges={edges.map(e => ({
+                    ...e,
+                    style: {
+                        ...e.style,
+                        stroke: highlightedNode && (e.source === highlightedNode || e.target === highlightedNode)
+                            ? '#3b82f6' : '#475569',
+                        strokeWidth: highlightedNode && (e.source === highlightedNode || e.target === highlightedNode)
+                            ? 2.5 : 1.5,
+                        opacity: highlightedNode && e.source !== highlightedNode && e.target !== highlightedNode
+                            ? 0.15 : 1,
+                        transition: 'all 0.2s ease'
+                    }
+                }))}
                 onNodesChange={onNodesChange}
                 onEdgesChange={onEdgesChange}
+                onNodeMouseEnter={(_, node) => setHighlightedNode(node.id)}
+                onNodeMouseLeave={() => setHighlightedNode(null)}
+                onPaneClick={() => setHighlightedNode(null)}
                 nodeTypes={nodeTypes}
                 fitView
                 minZoom={0.1}

@@ -11,9 +11,9 @@ export const getDagreLayout = (nodes: Node[], edges: Edge[], direction = 'LR') =
     const isHorizontal = direction === 'LR';
     dagreGraph.setGraph({
         rankdir: direction,
-        nodesep: 80,
-        ranksep: 150,
-        edgesep: 50
+        nodesep: 40,
+        ranksep: 70,
+        edgesep: 30
     });
 
     nodes.forEach((node) => {
