@@ -567,6 +567,7 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                             <ERDiagram
                                 schema={filteredSchema}
                                 connectionInfo={connectionInfo}
+                                active={activeTab === 'er'}
                             />
                         )}
                     </div>

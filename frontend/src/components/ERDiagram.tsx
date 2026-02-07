@@ -41,13 +41,13 @@ const TableNode = ({ data, selected }: NodeProps) => {
 
     return (
         <div style={{
-            background: '#1e293b',
+            background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
             border: selected ? '2px solid #3b82f6' : '1px solid #475569',
             borderRadius: '8px',
             minWidth: '220px',
             color: '#e2e8f0',
             fontSize: '14px',
-            boxShadow: '0 4px 12px -2px rgba(0, 0, 0, 0.6)',
+            boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.5)',
             transition: 'all 0.2s ease'
         }}>
             {/* Header */}
@@ -132,14 +132,16 @@ const nodeTypes = {
 interface ERDiagramProps {
     schema: any;
     connectionInfo: any;
+    active?: boolean;
 }
 
-const ERDiagram: React.FC<ERDiagramProps> = ({ schema, connectionInfo }) => {
+const ERDiagram: React.FC<ERDiagramProps> = ({ schema, connectionInfo, active = true }) => {
 
     const STORAGE_KEY = `pgray_er_layout_${connectionInfo?.database || 'default'}`;
     const [layoutMode, setLayoutMode] = useState<LayoutMode>('auto');
     const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(new Set());
     const [forceExpand, setForceExpand] = useState<boolean | null>(null);
+    const [rfInstance, setRfInstance] = useState<any>(null);
 
     // --- Graph State ---
     const { nodes: initialNodes, edges: initialEdges } = useMemo(() => {
@@ -260,6 +262,15 @@ const ERDiagram: React.FC<ERDiagramProps> = ({ schema, connectionInfo }) => {
         setEdges(initialEdges);
     }, [initialNodes, initialEdges, setNodes, setEdges]);
 
+    // Re-center whenever the tab becomes active
+    useEffect(() => {
+        if (active && rfInstance) {
+            // Small timeout to allow DOM to perform layout paint
+            setTimeout(() => {
+                rfInstance.fitView({ padding: 0.2, duration: 800 });
+            }, 50);
+        }
+    }, [active, rfInstance, layoutMode, expandedNodeIds]);
 
     const onNodesChange: OnNodesChange = useCallback(
         (changes) => {
@@ -301,7 +312,7 @@ const ERDiagram: React.FC<ERDiagramProps> = ({ schema, connectionInfo }) => {
     };
 
     return (
-        <div style={{ height: '100%', width: '100%', background: '#0f172a', position: 'relative' }}>
+        <div style={{ height: '100%', width: '100%', background: '#020617', position: 'relative' }}>
             {/* Toolbar */}
             <div style={{ position: 'absolute', top: '10px', right: '10px', zIndex: 10, display: 'flex', gap: '8px', alignItems: 'center' }}>
                 {/* Layout Mode Selector */}
@@ -389,13 +400,14 @@ const ERDiagram: React.FC<ERDiagramProps> = ({ schema, connectionInfo }) => {
                     }
                 }}
                 nodeTypes={nodeTypes}
+                onInit={setRfInstance}
                 fitView
                 fitViewOptions={{ padding: 0.2, includeHiddenNodes: false }}
                 minZoom={0.2}
                 maxZoom={2.0}
                 attributionPosition="bottom-right"
             >
-                <Background color="#1e293b" gap={16} />
+                <Background color="#334155" gap={16} />
                 <Controls style={{ background: '#1e293b', border: '1px solid #475569', fill: '#cbd5e1' }} />
             </ReactFlow>
         </div>
