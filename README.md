@@ -14,7 +14,7 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
     *   **Auto-Fit**: Automatically centers and zooms the graph for the best view.
     *   **ER Diagram**: Interactive Entity-Relationship diagram with **drag-and-drop** layout and **persistent saving**.
     *   **Adaptive Layout Engine**: Smart Auto/Flow/Star layout modes using dagre—Northwind gets hierarchical, OMDB gets radial.
-    *   **Focus Mode**: Hover any table to spotlight its relationships—connected tables stay bright, others fade.
+    *   **Click-to-Expand**: Click any table to expand all columns—layout automatically adjusts to fit.
     *   **Toggle Details**: Global expand/collapse for all table columns (📋 Details → 🔑 Keys Only → 🔄 Auto).
 
 *   **Local-First AI Assistant**:

@@ -1,8 +1,28 @@
 import dagre from 'dagre';
 import { Node, Edge, Position } from 'reactflow';
 
+// Helper to calculate visible column count based on expansion state
+const getVisibleColumnCount = (node: Node, expandedIds: Set<string>): number => {
+    const columns = node.data?.columns || [];
+    const isExpanded = expandedIds.has(node.id);
+    return isExpanded
+        ? columns.length
+        : columns.filter((c: any) => c.isPk || c.isFk).length;
+};
+
+// Calculate node height from visible column count
+const calculateNodeHeight = (visibleCount: number): number => {
+    // Base height (header ~50px) + row height (28px each) + padding (20px)
+    return Math.max(70, 50 + (visibleCount * 28) + 20);
+};
+
 // Strategy 1: Hierarchical Layout using Dagre (Left-to-Right)
-export const getDagreLayout = (nodes: Node[], edges: Edge[], direction = 'LR') => {
+export const getDagreLayout = (
+    nodes: Node[],
+    edges: Edge[],
+    direction = 'LR',
+    expandedIds: Set<string> = new Set()
+) => {
     if (nodes.length === 0) return { nodes, edges };
 
     const dagreGraph = new dagre.graphlib.Graph();
@@ -17,11 +37,8 @@ export const getDagreLayout = (nodes: Node[], edges: Edge[], direction = 'LR') =
     });
 
     nodes.forEach((node) => {
-        // Calculate height based on VISIBLE columns only (PKs and FKs)
-        const columns = node.data?.columns || [];
-        const visibleCount = columns.filter((c: any) => c.isPk || c.isFk).length;
-        // Base height (header ~50px) + row height (28px each) + padding (20px)
-        const height = 50 + (visibleCount * 28) + 20;
+        const visibleCount = getVisibleColumnCount(node, expandedIds);
+        const height = calculateNodeHeight(visibleCount);
         dagreGraph.setNode(node.id, { width: 220, height });
     });
 
@@ -33,9 +50,8 @@ export const getDagreLayout = (nodes: Node[], edges: Edge[], direction = 'LR') =
 
     const layoutedNodes = nodes.map((node) => {
         const nodeWithPosition = dagreGraph.node(node.id);
-        const columns = node.data?.columns || [];
-        const visibleCount = columns.filter((c: any) => c.isPk || c.isFk).length;
-        const height = 50 + (visibleCount * 28) + 20;
+        const visibleCount = getVisibleColumnCount(node, expandedIds);
+        const height = calculateNodeHeight(visibleCount);
 
         return {
             ...node,
@@ -51,8 +67,12 @@ export const getDagreLayout = (nodes: Node[], edges: Edge[], direction = 'LR') =
     return { nodes: layoutedNodes, edges };
 };
 
-// Strategy 2: Star/Radial Layout (existing logic, refactored)
-export const getStarLayout = (nodes: Node[], edges: Edge[]) => {
+// Strategy 2: Star/Radial Layout
+export const getStarLayout = (
+    nodes: Node[],
+    edges: Edge[],
+    expandedIds: Set<string> = new Set()
+) => {
     if (nodes.length === 0) return { nodes, edges };
 
     // 1. Calculate degrees to find center
@@ -114,7 +134,13 @@ export const getStarLayout = (nodes: Node[], edges: Edge[]) => {
     });
 
     // 3. Position assignment with Parent-Aware sorting
-    const R_STEP = 280;
+    // Dynamic radius based on max expanded node size
+    const maxHeight = Math.max(...nodes.map(n => {
+        const visibleCount = getVisibleColumnCount(n, expandedIds);
+        return calculateNodeHeight(visibleCount);
+    }));
+    const R_STEP = Math.max(280, maxHeight + 50);
+
     const placedNodes = new Map<string, { x: number, y: number, angle: number }>();
     placedNodes.set(centerNodeId, { x: 0, y: 0, angle: 0 });
 
@@ -168,7 +194,11 @@ export const getStarLayout = (nodes: Node[], edges: Edge[]) => {
 };
 
 // Smart Auto-Selection
-export const getSmartLayout = (nodes: Node[], edges: Edge[]) => {
+export const getSmartLayout = (
+    nodes: Node[],
+    edges: Edge[],
+    expandedIds: Set<string> = new Set()
+) => {
     if (nodes.length === 0) return { nodes, edges };
 
     // Heuristic: If one node has > 40% of all connections, it's likely a Star schema.
@@ -186,19 +216,26 @@ export const getSmartLayout = (nodes: Node[], edges: Edge[]) => {
     // Star schema: one central node with many connections
     const isStar = totalNodes > 2 && maxConnections > (totalNodes * 0.4);
 
-    return isStar ? getStarLayout(nodes, edges) : getDagreLayout(nodes, edges, 'LR');
+    return isStar
+        ? getStarLayout(nodes, edges, expandedIds)
+        : getDagreLayout(nodes, edges, 'LR', expandedIds);
 };
 
 export type LayoutMode = 'auto' | 'hierarchical' | 'star';
 
-export const applyLayout = (nodes: Node[], edges: Edge[], mode: LayoutMode) => {
+export const applyLayout = (
+    nodes: Node[],
+    edges: Edge[],
+    mode: LayoutMode,
+    expandedIds: Set<string> = new Set()
+) => {
     switch (mode) {
         case 'hierarchical':
-            return getDagreLayout(nodes, edges, 'LR');
+            return getDagreLayout(nodes, edges, 'LR', expandedIds);
         case 'star':
-            return getStarLayout(nodes, edges);
+            return getStarLayout(nodes, edges, expandedIds);
         case 'auto':
         default:
-            return getSmartLayout(nodes, edges);
+            return getSmartLayout(nodes, edges, expandedIds);
     }
 };

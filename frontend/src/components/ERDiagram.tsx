@@ -26,21 +26,18 @@ interface ERDiagramProps {
 
 // --- Custom Table Node ---
 const TableNode = ({ data, selected }: NodeProps) => {
-    const [localExpanded, setLocalExpanded] = useState(false);
-
-    // forceExpand prop overrides local state (null = use local, true/false = override)
-    const forceExpand = data.forceExpand as boolean | null | undefined;
-    const expanded = forceExpand !== null && forceExpand !== undefined ? forceExpand : localExpanded;
+    // Controlled component: expansion state comes from parent
+    const isExpanded = data.forceExpand ?? data.expanded ?? false;
 
     // Columns: { name, type, isPk, isFk }
     const columns = data.columns || [];
 
     // Filter columns based on expanded state
-    const visibleColumns = expanded
+    const visibleColumns = isExpanded
         ? columns
         : columns.filter((c: any) => c.isPk || c.isFk);
 
-    const hasHidden = !expanded && columns.length > visibleColumns.length;
+    const hasHidden = !isExpanded && columns.length > visibleColumns.length;
 
     return (
         <div style={{
@@ -67,23 +64,13 @@ const TableNode = ({ data, selected }: NodeProps) => {
                 alignItems: 'center'
             }}>
                 <span style={{ color: '#60a5fa' }}>{data.label}</span>
-                {forceExpand === null || forceExpand === undefined ? (
-                    hasHidden ? (
-                        <button
-                            onClick={(e) => { e.stopPropagation(); setLocalExpanded(true); }}
-                            style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '11px' }}
-                        >
-                            Show All
-                        </button>
-                    ) : expanded && columns.length > 0 ? (
-                        <button
-                            onClick={(e) => { e.stopPropagation(); setLocalExpanded(false); }}
-                            style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '11px' }}
-                        >
-                            Compact
-                        </button>
-                    ) : null
-                ) : null}
+                <span style={{
+                    color: '#64748b',
+                    fontSize: '10px',
+                    cursor: 'default'
+                }}>
+                    {isExpanded ? `${columns.length} cols` : hasHidden ? `+${columns.length - visibleColumns.length}` : ''}
+                </span>
             </div>
 
             {/* Columns */}
@@ -128,10 +115,9 @@ const TableNode = ({ data, selected }: NodeProps) => {
                 ))}
                 {hasHidden && (
                     <div
-                        onClick={(e) => { e.stopPropagation(); setLocalExpanded(true); }}
-                        style={{ padding: '4px 8px', color: '#64748b', fontSize: '11px', fontStyle: 'italic', cursor: 'pointer', textAlign: 'center' }}
+                        style={{ padding: '4px 8px', color: '#64748b', fontSize: '11px', fontStyle: 'italic', textAlign: 'center' }}
                     >
-                        ... {columns.length - visibleColumns.length} more columns
+                        Click to expand (+{columns.length - visibleColumns.length})
                     </div>
                 )}
             </div>
@@ -152,7 +138,7 @@ const ERDiagram: React.FC<ERDiagramProps> = ({ schema, connectionInfo }) => {
 
     const STORAGE_KEY = `pgray_er_layout_${connectionInfo?.database || 'default'}`;
     const [layoutMode, setLayoutMode] = useState<LayoutMode>('auto');
-    const [highlightedNode, setHighlightedNode] = useState<string | null>(null);
+    const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(new Set());
     const [forceExpand, setForceExpand] = useState<boolean | null>(null);
 
     // --- Graph State ---
@@ -222,10 +208,10 @@ const ERDiagram: React.FC<ERDiagramProps> = ({ schema, connectionInfo }) => {
         // But for initial render, we can use localStorage as cache or just wait.
         // Let's rely on an effect to load positions and apply them.
 
-        // Apply layout based on current mode
-        return applyLayout(nodes, edges, layoutMode);
+        // Apply layout based on current mode and expanded nodes
+        return applyLayout(nodes, edges, layoutMode, expandedNodeIds);
 
-    }, [schema, layoutMode]);
+    }, [schema, layoutMode, expandedNodeIds]);
 
     const [nodes, setNodes] = useNodesState(initialNodes);
     const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
@@ -376,33 +362,32 @@ const ERDiagram: React.FC<ERDiagramProps> = ({ schema, connectionInfo }) => {
             <ReactFlow
                 nodes={nodes.map(n => ({
                     ...n,
-                    data: { ...n.data, forceExpand },
-                    style: {
-                        ...n.style,
-                        opacity: highlightedNode && highlightedNode !== n.id &&
-                            !edges.some(e => (e.source === highlightedNode && e.target === n.id) || (e.target === highlightedNode && e.source === n.id))
-                            ? 0.25 : 1,
-                        transition: 'opacity 0.2s ease'
+                    data: {
+                        ...n.data,
+                        forceExpand,
+                        expanded: expandedNodeIds.has(n.id)
                     }
                 }))}
                 edges={edges.map(e => ({
                     ...e,
                     style: {
                         ...e.style,
-                        stroke: highlightedNode && (e.source === highlightedNode || e.target === highlightedNode)
-                            ? '#3b82f6' : '#475569',
-                        strokeWidth: highlightedNode && (e.source === highlightedNode || e.target === highlightedNode)
-                            ? 2.5 : 1.5,
-                        opacity: highlightedNode && e.source !== highlightedNode && e.target !== highlightedNode
-                            ? 0.15 : 1,
-                        transition: 'all 0.2s ease'
+                        stroke: '#475569',
+                        strokeWidth: 1.5
                     }
                 }))}
                 onNodesChange={onNodesChange}
                 onEdgesChange={onEdgesChange}
-                onNodeMouseEnter={(_, node) => setHighlightedNode(node.id)}
-                onNodeMouseLeave={() => setHighlightedNode(null)}
-                onPaneClick={() => setHighlightedNode(null)}
+                onNodeClick={(_, node) => {
+                    if (forceExpand === null) {
+                        setExpandedNodeIds(prev => {
+                            const next = new Set(prev);
+                            if (next.has(node.id)) next.delete(node.id);
+                            else next.add(node.id);
+                            return next;
+                        });
+                    }
+                }}
                 nodeTypes={nodeTypes}
                 fitView
                 minZoom={0.2}
