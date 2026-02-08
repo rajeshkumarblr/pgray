@@ -78,6 +78,10 @@ interface QueryWorkspaceProps {
     setGoogleApiKey: (key: string) => void;
     onClearHistory: () => void;
     onIndexDatabase: () => void;
+    localModel: string;
+    geminiModel: string;
+    setLocalModel: (m: string) => void;
+    setGeminiModel: (m: string) => void;
 }
 
 const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
@@ -96,7 +100,8 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
     // AI Sidebar Props
     chatHistory, onAIStream, aiLoading, aiStatus,
     activeProvider, setActiveProvider, googleApiKey, setGoogleApiKey,
-    onClearHistory, onIndexDatabase
+    onClearHistory, onIndexDatabase,
+    localModel, geminiModel, setLocalModel, setGeminiModel
 }) => {
 
     // --- AI Sidebar State ---
@@ -352,6 +357,8 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                             onExplainLogic={handleExplainLogic}
                             onTune={handleTuneWrapper}
                             onEditSql={() => { setActiveTab('query'); setQueryMode('code'); }}
+                            connectionInfo={connectionInfo}
+                            model={activeProvider === 'local' ? localModel : geminiModel}
                         />
                     )}
 

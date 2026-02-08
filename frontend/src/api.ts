@@ -267,3 +267,44 @@ export const saveConnectionConfig = async (connection: any) => {
         throw e;
     }
 };
+
+export const streamChat = async (prompt: string, context: any, onChunk: (chunk: string) => void) => {
+    try {
+        const response = await fetch(`${API_URL}/generate_sql_stream`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                prompt,
+                ...context
+            })
+        });
+
+        if (!response.ok) throw new Error("Chat failed");
+
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+        if (!reader) return;
+
+        let rawBuffer = "";
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            const chunk = decoder.decode(value, { stream: true });
+            rawBuffer += chunk;
+
+            const lines = rawBuffer.split('\n');
+            rawBuffer = lines.pop() || "";
+
+            for (const line of lines) {
+                if (!line.trim()) continue;
+                try {
+                    const json = JSON.parse(line);
+                    if (json.response) onChunk(json.response);
+                } catch { }
+            }
+        }
+    } catch (e) {
+        console.error("Stream Chat error", e);
+        throw e;
+    }
+};

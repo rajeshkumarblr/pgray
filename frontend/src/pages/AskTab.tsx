@@ -5,6 +5,7 @@ import { Search, BarChart2, Database, Code, Activity, ArrowRight, Copy, Edit } f
 import ChartViz from '../components/ChartViz';
 import ResultsTable from '../components/ResultsTable';
 import PerformanceDrawer from '../components/PerformanceDrawer';
+import AskChat from '../components/AskChat';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
@@ -27,6 +28,7 @@ interface AskTabProps {
     requiredParams?: any[];
     onRunParameterized?: (values: Record<string, string>) => void;
     // Smart Dropdown Props
+    // Smart Dropdown Props
     savedQueries?: any[];
     recentSearches?: string[];
     onSelectQuery?: (query: any) => void;
@@ -35,6 +37,8 @@ interface AskTabProps {
     onExplainLogic?: () => void;
     onTune?: () => void;
     onEditSql?: () => void;
+    connectionInfo: any;
+    model?: string;
 }
 
 const AskTab: React.FC<AskTabProps> = ({
@@ -58,7 +62,9 @@ const AskTab: React.FC<AskTabProps> = ({
     sqlExplanation,
     onExplainLogic,
     onTune,
-    onEditSql
+    onEditSql,
+    connectionInfo,
+    model
 }) => {
     // Lifted State
     const [activeTab, setActiveTab] = useState<'data' | 'charts' | 'sql'>('data');
@@ -112,6 +118,16 @@ const AskTab: React.FC<AskTabProps> = ({
 
     // Derived: Show dropdown if focused and NOT showing results (Search Home)
     const showDropdown = isFocused && !showResults && ((recentSearches && recentSearches.length > 0) || (savedQueries && savedQueries.length > 0));
+
+    // Auto-Explain Effect
+    React.useEffect(() => {
+        if (showResults && generatedSql && !sqlExplanation && onExplainLogic && !isExecuting && !error) {
+            const timer = setTimeout(() => {
+                onExplainLogic();
+            }, 500);
+            return () => clearTimeout(timer);
+        }
+    }, [showResults, generatedSql, sqlExplanation, onExplainLogic, isExecuting, error]);
 
     // Restore lost definition
     const showParamForm = showResults && requiredParams.length > 0 && !result && !isExecuting && !error;
@@ -285,16 +301,6 @@ const AskTab: React.FC<AskTabProps> = ({
                 </div>
             </motion.div>
 
-            {/* Auto-Explain Effect */}
-            {React.useEffect(() => {
-                if (showResults && generatedSql && !sqlExplanation && onExplainLogic && !isExecuting && !error) {
-                    const timer = setTimeout(() => {
-                        onExplainLogic();
-                    }, 500);
-                    return () => clearTimeout(timer);
-                }
-            }, [showResults, generatedSql, sqlExplanation, isExecuting, error, activeTab, onExplainLogic]) as any}
-
             {/* Results or Parameter Form Area - 3-Tab Architecture */}
             <AnimatePresence>
                 {showResults && (result || error || isExecuting) && (
@@ -422,28 +428,13 @@ const AskTab: React.FC<AskTabProps> = ({
 
                                             {/* RIGHT PANE (25%) */}
                                             <div className="flex-1 flex flex-col min-w-[250px] bg-slate-900">
-                                                <div className="px-4 py-2 border-b border-slate-800 bg-slate-950/30 flex items-center gap-2">
-                                                    <div className="w-2 h-2 rounded-full bg-purple-500"></div>
-                                                    <span className="font-semibold text-slate-300 text-sm">Explanation</span>
-                                                </div>
-                                                <div className="flex-1 p-4 overflow-auto text-sm text-slate-300 leading-relaxed custom-scrollbar whitespace-pre-wrap">
-                                                    {sqlExplanation ? (
-                                                        <div className="prose prose-invert prose-sm max-w-none">
-                                                            {sqlExplanation.split(/(\*\*.*?\*\*)/g).map((part, i) =>
-                                                                part.startsWith('**') && part.endsWith('**')
-                                                                    ? <strong key={i} className="text-white font-bold">{part.slice(2, -2)}</strong>
-                                                                    : part
-                                                            )}
-                                                        </div>
-                                                    ) : (
-                                                        <div className="animate-pulse space-y-3 mt-2">
-                                                            <div className="h-2 bg-slate-800 rounded w-3/4"></div>
-                                                            <div className="h-2 bg-slate-800 rounded w-full"></div>
-                                                            <div className="h-2 bg-slate-800 rounded w-5/6"></div>
-                                                            <div className="h-2 bg-slate-800 rounded w-2/3"></div>
-                                                            <div className="text-xs text-slate-500 text-center mt-4">Analyzing query logic...</div>
-                                                        </div>
-                                                    )}
+                                                <div className="flex-1 flex flex-col bg-slate-900 border-l border-slate-800 relative">
+                                                    <AskChat
+                                                        connectionInfo={connectionInfo}
+                                                        sql={generatedSql || ''}
+                                                        initialExplanation={sqlExplanation}
+                                                        model={model}
+                                                    />
                                                 </div>
                                             </div>
                                         </div>

@@ -765,6 +765,10 @@ Please provide a detailed analysis in the following format:
           setGoogleApiKey={setGoogleApiKey}
           onClearHistory={handleClearHistory}
           onIndexDatabase={handleIndexDatabase}
+          localModel={localModel}
+          geminiModel={geminiModel}
+          setLocalModel={setLocalModel}
+          setGeminiModel={setGeminiModel}
 
           onAppSearch={async (prompt: string) => {
             // Unified NL-to-SQL Search
