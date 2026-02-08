@@ -54,7 +54,7 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
     *   **Clean Startup**: Application always launches in a pristine state ("New Query") to prevent context clutter.
 
 *   **Deep Analytics**:
-    *   **Results Tab**: View actual query result rows immediately.
+    *   **Results & Analysis**: Interactive 3-tab results pane with **Data** grid, **Charts** visualization, and **SQL** logic analysis.
     *   **CSV Export**: One-click download of query results to CSV for external analysis.
     *   **Node Details**: Drill down into specific operators to see Filters, Buffer Usage, and Output columns.
     *   **Diff View**: Compare the AI's suggested query changes against your original code side-by-side.
@@ -104,7 +104,7 @@ Stop rewriting the same complex JOINs.
 ![Clean Editor](screenshots/screenshot_new_query.png)
 Start fresh with a focused environment.
 - **Dual AI Engine**: Choose between **Local AI (Ollama)** for privacy or **Google Gemini** for cloud-powered reasoning.
-- **Natural Language SQL**: Ask "Top 5 movies by revenue" -> See immediate SQL preview in a split-view layout with auto-explanation.
+- **Natural Language SQL**: Ask "Top 5 movies by revenue" -> See immediate SQL preview in a **dedicated SQL tab** with split-view layout and auto-explanation.
 - **Instant Feedback**: Execute queries immediately and see results in the grid view.
 
 ### 4. Centralized Configuration

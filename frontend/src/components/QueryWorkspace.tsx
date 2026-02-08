@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Node } from 'reactflow';
 import SavedQueriesSidebar from './workspace/SavedQueriesSidebar';
 import AIChatSidebar from './AIChatSidebar';
@@ -8,7 +8,9 @@ import BottomPane from './workspace/BottomPane';
 import SimpleEditor from './SimpleEditor';
 import DiffView from './DiffView';
 import PlanNode from './PlanNode';
-import { getSavedQueries, ParameterizedQuery } from '../api';
+import { getSavedQueries, ParameterizedQuery, explainSql } from '../api';
+
+
 import AskTab from '../pages/AskTab';
 import AdminTab from './tabs/AdminTab';
 import DesignTab from './tabs/DesignTab';
@@ -219,11 +221,20 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
     };
 
     // Handler for explaining SQL logic in plain English
-    const handleExplainLogic = () => {
+    const handleExplainLogic = async () => {
         if (!sqlQuery) return;
-        const prompt = `Explain this SQL query in simple plain English...:\n\n${sqlQuery}`;
-        onAIStream(prompt);
-        setSqlExplanation("Analyzing query logic...");
+        setSqlExplanation(null); // Clear previous to trigger loading state in UI
+        try {
+            const res = await explainSql(sqlQuery, schema);
+            if (res && res.response) {
+                setSqlExplanation(res.response);
+            } else if (res && res.explanation) {
+                setSqlExplanation(res.explanation);
+            }
+        } catch (e) {
+            console.error("Failed to explain query", e);
+            setSqlExplanation("Failed to generate explanation. Please try again.");
+        }
     };
 
     const startBottomResize = (e: React.MouseEvent) => {

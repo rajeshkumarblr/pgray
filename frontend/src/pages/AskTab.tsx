@@ -4,7 +4,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Search, BarChart2, Database, Code, Activity, ArrowRight } from 'lucide-react';
 import ChartViz from '../components/ChartViz';
 import ResultsTable from '../components/ResultsTable';
-import PerformanceBadge from '../components/PerformanceBadge';
 import PerformanceDrawer from '../components/PerformanceDrawer';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -43,8 +42,8 @@ const AskTab: React.FC<AskTabProps> = ({
     result,
     error,
     generatedSql,
-    onExplain,
-    explainResult,
+    // onExplain, // Unused in logic, used in PerformanceDrawer below (Wait, PerformanceDrawer uses onTune now)
+    // explainResult,
     onReset,
     promptValue,
     onPromptChange,
@@ -60,7 +59,7 @@ const AskTab: React.FC<AskTabProps> = ({
     onTune
 }) => {
     // Lifted State
-    const [activeTab, setActiveTab] = useState<'data' | 'visuals' | 'sql' | 'analysis'>('data');
+    const [activeTab, setActiveTab] = useState<'data' | 'charts' | 'sql'>('data');
     const [localParamValues, setLocalParamValues] = useState<Record<string, string>>({});
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
@@ -105,19 +104,7 @@ const AskTab: React.FC<AskTabProps> = ({
     // Actually, if we have requiredParams, and we are "showing results" (active), we should show the form FIRST.
     // We can interpret `showResults` as "Active Mode".
     // If `requiredParams.length > 0` and `!result` (or special flag?), show form.
-    // Better: If `requiredParams.length > 0`, show form. 
-    // Wait, if we run it, we get a result. 
-    // Logic: If `requiredParams` exist AND we haven't successfully executed (no result or maybe explicit "awaiting params" state?), show form.
-    // But `result` might be null if execution failed.
-    // Let's assume if `requiredParams` is passed, we show the form UNLESS we are currently executing or have a valid result that matches?
-    // Actually, `QueryWorkspace` controls this. If `QueryWorkspace` passes `requiredParams`, it means "I need these". 
-    // Once executed, `QueryWorkspace` might clear `requiredParams` or we just switch view if `result` is there.
-    // Let's rely on: If `requiredParams.length > 0` show the form.
-    // When the user clicks Run, `QueryWorkspace` will execute.
-    // Does `QueryWorkspace` clear `requiredParams` after execution? Probably not.
-    // We need a way to see "Results" instead of "Form" after execution.
-    // Maybe checking `result` is enough. 
-
+    // ...
     // Dropdown State
     const [isFocused, setIsFocused] = useState(false);
 
@@ -301,131 +288,138 @@ const AskTab: React.FC<AskTabProps> = ({
                 if (showResults && generatedSql && !sqlExplanation && onExplainLogic && !isExecuting && !error) {
                     const timer = setTimeout(() => {
                         onExplainLogic();
-                    }, 500); // Small delay to allow UI to settle
+                    }, 500);
                     return () => clearTimeout(timer);
                 }
-            }, [showResults, generatedSql, sqlExplanation, isExecuting, error]) as any}
+            }, [showResults, generatedSql, sqlExplanation, isExecuting, error, activeTab, onExplainLogic]) as any}
 
-            {/* Results or Parameter Form Area - Split View */}
+            {/* Results or Parameter Form Area - 3-Tab Architecture */}
             <AnimatePresence>
                 {showResults && (result || error || isExecuting) && (
                     <motion.div
-                        className="flex-1 w-full px-6 pb-6 overflow-hidden flex flex-row gap-4"
+                        className="flex-1 w-full px-6 pb-6 overflow-hidden flex flex-col"
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.3, duration: 0.4 }}
                     >
-                        {/* LEFT COLUMN: SQL + Results (70%) */}
-                        <div className="flex-1 flex flex-col min-w-0 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
-
-                            {/* SQL Preview (Collapsible/ReadOnly) */}
-                            {generatedSql && (
-                                <div className="border-b border-slate-800 bg-slate-950/50">
-                                    <div className="w-full">
-                                        <div className="flex items-center justify-between px-4 py-2 bg-slate-900/80 border-b border-slate-800/50">
-                                            <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                                                <Code size={14} className="text-blue-500" />
-                                                Generated SQL
-                                            </div>
-                                            <button
-                                                className="text-xs text-blue-400 hover:text-blue-300"
-                                                onClick={() => navigator.clipboard.writeText(generatedSql)}
-                                            >
-                                                Copy
-                                            </button>
-                                        </div>
-                                        <div className="max-h-[150px] overflow-auto custom-scrollbar">
-                                            <SyntaxHighlighter
-                                                language="sql"
-                                                style={vscDarkPlus}
-                                                customStyle={{ background: 'transparent', margin: 0, padding: '12px', fontSize: '13px' }}
-                                                wrapLongLines={true}
-                                            >
-                                                {generatedSql}
-                                            </SyntaxHighlighter>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Execution State Handling */}
-                            <div className="flex-1 relative overflow-hidden flex flex-col">
-                                {isExecuting ? (
-                                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/50 backdrop-blur-sm z-50">
-                                        <div className="w-12 h-12 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin mb-4" />
-                                        <p className="text-slate-400 animate-pulse font-medium">Running query...</p>
-                                    </div>
-                                ) : error ? (
-                                    <div className="flex-1 flex flex-col items-center justify-center p-10 text-center">
-                                        <div className="bg-red-500/10 p-4 rounded-full mb-4">
-                                            <Activity size={32} className="text-red-500" />
-                                        </div>
-                                        <h3 className="text-lg font-semibold text-slate-200 mb-2">Search Failed</h3>
-                                        <p className="text-slate-400 max-w-md">{error}</p>
-                                    </div>
-                                ) : !result ? (
-                                    <div className="flex-1 flex items-center justify-center text-slate-500">
-                                        Waiting for results...
-                                    </div>
-                                ) : (
-                                    /* Results Table */
-                                    <div className="flex-1 w-full overflow-hidden flex flex-col">
-                                        {/* Result Header Stats */}
-                                        <div className="flex items-center justify-between px-4 py-2 bg-slate-900 border-b border-slate-800">
-                                            <div className="flex items-center gap-4">
-                                                <span className="text-xs text-slate-400">
-                                                    <strong className="text-slate-200">{result.rowCount}</strong> results
-                                                </span>
-                                                {result.executionTime !== undefined && (
-                                                    <span className="text-xs text-slate-400 flex items-center gap-1">
-                                                        <Activity size={12} />
-                                                        {result.executionTime}ms
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <div className="flex gap-2">
-                                                <button
-                                                    onClick={() => setActiveTab('visuals')} // Keep tab state for specific view toggles if needed inside? 
-                                                    // Actually user wanted simplified view. Result Table IS the main view.
-                                                    // Maybe toggle Chart? For now just Table.
-                                                    className="p-1.5 hover:bg-slate-800 rounded text-slate-400"
-                                                    title="View Chart"
-                                                >
-                                                    <BarChart2 size={16} />
-                                                </button>
-                                            </div>
-                                        </div>
-                                        <div className="flex-1 overflow-auto">
-                                            <ResultsTable data={result} />
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
+                        {/* TAB BAR */}
+                        <div className="flex items-center gap-4 mb-2 border-b border-slate-800 px-2">
+                            {[
+                                { id: 'data', label: 'Data', icon: Database },
+                                { id: 'charts', label: 'Charts', icon: BarChart2 },
+                                { id: 'sql', label: 'SQL', icon: Code },
+                            ].map(tab => {
+                                const Icon = tab.icon;
+                                const isActive = activeTab === tab.id;
+                                return (
+                                    <button
+                                        key={tab.id}
+                                        onClick={() => setActiveTab(tab.id as any)}
+                                        className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-all ${isActive
+                                            ? 'border-blue-500 text-blue-400 bg-slate-900/50 rounded-t-lg'
+                                            : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/30 rounded-t-lg'
+                                            }`}
+                                    >
+                                        <Icon size={14} />
+                                        {tab.label}
+                                    </button>
+                                );
+                            })}
                         </div>
 
-                        {/* RIGHT COLUMN: Explanation Sidebar (30%) */}
-                        <div className="w-[350px] min-w-[300px] flex flex-col bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
-                            <div className="px-4 py-3 border-b border-slate-800 bg-slate-950/30 flex items-center gap-2">
-                                <Activity size={16} className="text-purple-400" />
-                                <span className="font-semibold text-slate-200 text-sm">Query Logic</span>
-                            </div>
-
-                            <div className="flex-1 p-4 overflow-auto bg-slate-900/50">
-                                {sqlExplanation ? (
-                                    <div className="prose prose-invert prose-sm max-w-none">
-                                        <div className="text-slate-300 leading-relaxed whitespace-pre-wrap text-sm">
-                                            {sqlExplanation}
+                        {/* CONTENT AREA */}
+                        <div className="flex-1 w-full bg-slate-900 border border-slate-800 rounded-b-xl rounded-tr-xl overflow-hidden shadow-xl relative">
+                            {isExecuting ? (
+                                <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/50 backdrop-blur-sm z-50">
+                                    <div className="w-12 h-12 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin mb-4" />
+                                    <p className="text-slate-400 animate-pulse font-medium">Running query...</p>
+                                </div>
+                            ) : error ? (
+                                <div className="flex flex-col items-center justify-center h-full text-center p-8">
+                                    <Activity size={32} className="text-red-500 mb-4" />
+                                    <h3 className="text-lg font-semibold text-slate-200">Search Failed</h3>
+                                    <p className="text-slate-400 max-w-md">{error}</p>
+                                </div>
+                            ) : !result ? (
+                                <div className="flex items-center justify-center h-full text-slate-500">Waiting for results...</div>
+                            ) : (
+                                <div className="h-full w-full overflow-hidden">
+                                    {activeTab === 'data' && (
+                                        <div className="h-full w-full flex flex-col">
+                                            {/* Stats Header */}
+                                            <div className="px-4 py-2 border-b border-slate-800 text-xs text-slate-400 flex justify-between bg-slate-900/80">
+                                                <span>{result.rowCount} results found</span>
+                                                {result.executionTime && <span>{result.executionTime}ms</span>}
+                                            </div>
+                                            <div className="flex-1 overflow-auto bg-slate-900">
+                                                <ResultsTable data={result} />
+                                            </div>
                                         </div>
-                                    </div>
-                                ) : (
-                                    <div className="flex flex-col gap-3 animate-pulse">
-                                        <div className="h-4 bg-slate-800 rounded w-3/4"></div>
-                                        <div className="h-4 bg-slate-800 rounded w-full"></div>
-                                        <div className="h-4 bg-slate-800 rounded w-5/6"></div>
-                                        <div className="h-4 bg-slate-800 rounded w-2/3"></div>
-                                    </div>
-                                )}
-                            </div>
+                                    )}
+                                    {activeTab === 'charts' && (
+                                        <div className="h-full w-full p-4 overflow-hidden bg-slate-900 flex flex-col">
+                                            <ChartViz data={result.rows} columns={result.columns} />
+                                        </div>
+                                    )}
+                                    {activeTab === 'sql' && (
+                                        <div className="flex w-full h-full">
+                                            {/* LEFT PANE (75%) */}
+                                            <div className="flex-[3] flex flex-col min-w-0 border-r border-slate-800 bg-[#1e1e1e]">
+                                                <div className="flex items-center justify-between px-4 py-2 bg-[#252526] border-b border-[#333]">
+                                                    <span className="text-xs text-slate-400 font-mono flex items-center gap-2">
+                                                        <Code size={12} /> GENERATED SQL
+                                                    </span>
+                                                    <div className="flex gap-2">
+                                                        <button onClick={() => navigator.clipboard.writeText(generatedSql || '')} className="text-xs text-slate-400 hover:text-white transition-colors">Copy</button>
+                                                        {onTune && (
+                                                            <button
+                                                                onClick={onTune}
+                                                                className="flex items-center gap-1 text-xs bg-blue-600 hover:bg-blue-500 text-white px-2 py-0.5 rounded transition-colors shadow"
+                                                            >
+                                                                <Activity size={10} /> Fine Tune
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div className="flex-1 overflow-auto custom-scrollbar">
+                                                    <SyntaxHighlighter
+                                                        language="sql"
+                                                        style={vscDarkPlus}
+                                                        customStyle={{ margin: 0, height: '100%', background: 'transparent', padding: '1rem' }}
+                                                        wrapLongLines={true}
+                                                        showLineNumbers={true}
+                                                    >
+                                                        {generatedSql || ''}
+                                                    </SyntaxHighlighter>
+                                                </div>
+                                            </div>
+
+                                            {/* RIGHT PANE (25%) */}
+                                            <div className="flex-1 flex flex-col min-w-[250px] bg-slate-900">
+                                                <div className="px-4 py-2 border-b border-slate-800 bg-slate-950/30 flex items-center gap-2">
+                                                    <div className="w-2 h-2 rounded-full bg-purple-500"></div>
+                                                    <span className="font-semibold text-slate-300 text-sm">Explanation</span>
+                                                </div>
+                                                <div className="flex-1 p-4 overflow-auto text-sm text-slate-300 leading-relaxed custom-scrollbar whitespace-pre-wrap">
+                                                    {sqlExplanation ? (
+                                                        <div className="prose prose-invert prose-sm max-w-none">
+                                                            {sqlExplanation}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="animate-pulse space-y-3 mt-2">
+                                                            <div className="h-2 bg-slate-800 rounded w-3/4"></div>
+                                                            <div className="h-2 bg-slate-800 rounded w-full"></div>
+                                                            <div className="h-2 bg-slate-800 rounded w-5/6"></div>
+                                                            <div className="h-2 bg-slate-800 rounded w-2/3"></div>
+                                                            <div className="text-xs text-slate-500 text-center mt-4">Analyzing query logic...</div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
 
                     </motion.div>
@@ -441,7 +435,7 @@ const AskTab: React.FC<AskTabProps> = ({
                     duration: result?.executionTime || 0,
                     rowCount: result?.rowCount || 0
                 }}
-                onTune={onExplain}
+                onTune={onTune}
             />
         </div>
     );
