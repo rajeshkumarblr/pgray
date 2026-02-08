@@ -351,6 +351,7 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                             sqlExplanation={sqlExplanation}
                             onExplainLogic={handleExplainLogic}
                             onTune={handleTuneWrapper}
+                            onEditSql={() => { setActiveTab('query'); setQueryMode('code'); }}
                         />
                     )}
 

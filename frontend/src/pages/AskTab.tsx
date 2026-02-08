@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, BarChart2, Database, Code, Activity, ArrowRight } from 'lucide-react';
+import { Search, BarChart2, Database, Code, Activity, ArrowRight, Copy, Edit } from 'lucide-react';
 import ChartViz from '../components/ChartViz';
 import ResultsTable from '../components/ResultsTable';
 import PerformanceDrawer from '../components/PerformanceDrawer';
@@ -34,6 +34,7 @@ interface AskTabProps {
     sqlExplanation?: string | null;
     onExplainLogic?: () => void;
     onTune?: () => void;
+    onEditSql?: () => void;
 }
 
 const AskTab: React.FC<AskTabProps> = ({
@@ -56,7 +57,8 @@ const AskTab: React.FC<AskTabProps> = ({
     onSelectQuery,
     sqlExplanation,
     onExplainLogic,
-    onTune
+    onTune,
+    onEditSql
 }) => {
     // Lifted State
     const [activeTab, setActiveTab] = useState<'data' | 'charts' | 'sql'>('data');
@@ -370,13 +372,28 @@ const AskTab: React.FC<AskTabProps> = ({
                                                         <Code size={12} /> GENERATED SQL
                                                     </span>
                                                     <div className="flex gap-2">
-                                                        <button onClick={() => navigator.clipboard.writeText(generatedSql || '')} className="text-xs text-slate-400 hover:text-white transition-colors">Copy</button>
+                                                        <button
+                                                            onClick={() => navigator.clipboard.writeText(generatedSql || '')}
+                                                            className="p-1 text-slate-400 hover:text-white transition-colors"
+                                                            title="Copy SQL"
+                                                        >
+                                                            <Copy size={14} />
+                                                        </button>
+                                                        {onEditSql && (
+                                                            <button
+                                                                onClick={onEditSql}
+                                                                className="p-1 text-slate-400 hover:text-white transition-colors"
+                                                                title="Edit in Query Editor"
+                                                            >
+                                                                <Edit size={14} />
+                                                            </button>
+                                                        )}
                                                         {onTune && (
                                                             <button
                                                                 onClick={onTune}
                                                                 className="flex items-center gap-1 text-xs bg-blue-600 hover:bg-blue-500 text-white px-2 py-0.5 rounded transition-colors shadow"
                                                             >
-                                                                <Activity size={10} /> Fine Tune
+                                                                <Activity size={10} /> Tune
                                                             </button>
                                                         )}
                                                     </div>
@@ -388,6 +405,15 @@ const AskTab: React.FC<AskTabProps> = ({
                                                         customStyle={{ margin: 0, height: '100%', background: 'transparent', padding: '1rem' }}
                                                         wrapLongLines={true}
                                                         showLineNumbers={true}
+                                                        lineNumberStyle={{
+                                                            userSelect: 'none',
+                                                            color: '#64748b',
+                                                            borderRight: '1px solid #334155',
+                                                            paddingRight: '1rem',
+                                                            marginRight: '1rem',
+                                                            textAlign: 'right',
+                                                            minWidth: '2em'
+                                                        }}
                                                     >
                                                         {generatedSql || ''}
                                                     </SyntaxHighlighter>
@@ -403,7 +429,11 @@ const AskTab: React.FC<AskTabProps> = ({
                                                 <div className="flex-1 p-4 overflow-auto text-sm text-slate-300 leading-relaxed custom-scrollbar whitespace-pre-wrap">
                                                     {sqlExplanation ? (
                                                         <div className="prose prose-invert prose-sm max-w-none">
-                                                            {sqlExplanation}
+                                                            {sqlExplanation.split(/(\*\*.*?\*\*)/g).map((part, i) =>
+                                                                part.startsWith('**') && part.endsWith('**')
+                                                                    ? <strong key={i} className="text-white font-bold">{part.slice(2, -2)}</strong>
+                                                                    : part
+                                                            )}
                                                         </div>
                                                     ) : (
                                                         <div className="animate-pulse space-y-3 mt-2">

@@ -9,7 +9,7 @@ import { parsePlanToFlow } from './utils/planLayout';
 import QueryWorkspace from './components/QueryWorkspace';
 import Toast from './components/Toast';
 import SaveSessionModal from './components/SaveSessionModal';
-import { analyzeQuery, saveQueryFinal, generateSql } from './api';
+import { analyzeQuery, saveQueryFinal, generateSql, warmupModel } from './api';
 
 
 function App() {
@@ -179,6 +179,12 @@ function App() {
     })();
     return () => { cancelled = true; };
   }, []);
+
+  // Warmup Effect
+  useEffect(() => {
+    // Fire and forget warmup for faster first response
+    warmupModel(activeProvider === 'local' ? localModel : geminiModel);
+  }, []); // Run once on mount
 
   // --- Handlers ---
 
