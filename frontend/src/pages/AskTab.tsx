@@ -296,127 +296,133 @@ const AskTab: React.FC<AskTabProps> = ({
                 </div>
             </motion.div>
 
-            {/* Results or Parameter Form Area */}
+            {/* Auto-Explain Effect */}
+            {React.useEffect(() => {
+                if (showResults && generatedSql && !sqlExplanation && onExplainLogic && !isExecuting && !error) {
+                    const timer = setTimeout(() => {
+                        onExplainLogic();
+                    }, 500); // Small delay to allow UI to settle
+                    return () => clearTimeout(timer);
+                }
+            }, [showResults, generatedSql, sqlExplanation, isExecuting, error]) as any}
+
+            {/* Results or Parameter Form Area - Split View */}
             <AnimatePresence>
                 {showResults && (result || error || isExecuting) && (
                     <motion.div
-                        className="flex-1 w-full px-6 pb-6 overflow-hidden flex flex-col"
+                        className="flex-1 w-full px-6 pb-6 overflow-hidden flex flex-row gap-4"
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.3, duration: 0.4 }}
                     >
-                        <div className="flex flex-col h-full overflow-hidden">
+                        {/* LEFT COLUMN: SQL + Results (70%) */}
+                        <div className="flex-1 flex flex-col min-w-0 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
 
-                            {/* Tabs Header */}
-                            <div className="flex items-center gap-1 mb-4 border-b border-slate-800 pb-1">
-                                {[
-                                    { id: 'data', label: 'Data', icon: Database },
-                                    { id: 'visuals', label: 'Visuals', icon: BarChart2 },
-                                    { id: 'sql', label: 'SQL', icon: Code },
-                                    { id: 'analysis', label: 'Analysis', icon: Activity },
-                                ].map(tab => {
-                                    const Icon = tab.icon;
-                                    const isActive = activeTab === tab.id;
-                                    return (
-                                        <button
-                                            key={tab.id}
-                                            onClick={() => setActiveTab(tab.id as any)}
-                                            className={`flex items-center gap-2 px-4 py-2 rounded-t-lg transition-all ${isActive ? 'bg-slate-800 text-blue-400 border-b-2 border-blue-500' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'}`}
-                                        >
-                                            <Icon size={16} />
-                                            <span>{tab.label}</span>
-                                        </button>
-                                    );
-                                })}
-                                <div className="flex-1" />
-                                {result && result.executionTime !== undefined && (
-                                    <PerformanceBadge
-                                        durationMs={result.executionTime}
-                                        rowCount={result.rowCount || 0}
-                                        onClick={() => setIsDrawerOpen(true)}
-                                    />
-                                )}
-                                <button className="px-3 py-1.5 text-sm text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 rounded-lg transition-colors">
-                                    Export
-                                </button>
-                            </div>
+                            {/* SQL Preview (Collapsible/ReadOnly) */}
+                            {generatedSql && (
+                                <div className="border-b border-slate-800 bg-slate-950/50">
+                                    <div className="w-full">
+                                        <div className="flex items-center justify-between px-4 py-2 bg-slate-900/80 border-b border-slate-800/50">
+                                            <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                                                <Code size={14} className="text-blue-500" />
+                                                Generated SQL
+                                            </div>
+                                            <button
+                                                className="text-xs text-blue-400 hover:text-blue-300"
+                                                onClick={() => navigator.clipboard.writeText(generatedSql)}
+                                            >
+                                                Copy
+                                            </button>
+                                        </div>
+                                        <div className="max-h-[150px] overflow-auto custom-scrollbar">
+                                            <SyntaxHighlighter
+                                                language="sql"
+                                                style={vscDarkPlus}
+                                                customStyle={{ background: 'transparent', margin: 0, padding: '12px', fontSize: '13px' }}
+                                                wrapLongLines={true}
+                                            >
+                                                {generatedSql}
+                                            </SyntaxHighlighter>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
 
-                            {/* Tab Content */}
-                            <div className="flex-1 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-2xl relative">
+                            {/* Execution State Handling */}
+                            <div className="flex-1 relative overflow-hidden flex flex-col">
                                 {isExecuting ? (
-                                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/80 backdrop-blur-sm z-50">
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/50 backdrop-blur-sm z-50">
                                         <div className="w-12 h-12 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin mb-4" />
-                                        <p className="text-slate-400 animate-pulse">Thinking...</p>
+                                        <p className="text-slate-400 animate-pulse font-medium">Running query...</p>
                                     </div>
                                 ) : error ? (
-                                    <div className="p-10 text-center">
-                                        <div className="text-red-400 text-lg mb-2">Search Failed</div>
-                                        <p className="text-slate-500">{error}</p>
+                                    <div className="flex-1 flex flex-col items-center justify-center p-10 text-center">
+                                        <div className="bg-red-500/10 p-4 rounded-full mb-4">
+                                            <Activity size={32} className="text-red-500" />
+                                        </div>
+                                        <h3 className="text-lg font-semibold text-slate-200 mb-2">Search Failed</h3>
+                                        <p className="text-slate-400 max-w-md">{error}</p>
                                     </div>
                                 ) : !result ? (
-                                    <div className="p-10 text-center text-slate-500">
-                                        Ready to explore.
+                                    <div className="flex-1 flex items-center justify-center text-slate-500">
+                                        Waiting for results...
                                     </div>
                                 ) : (
-                                    <div className="h-full w-full overflow-auto">
-                                        {activeTab === 'data' && (
-                                            <div className="h-full">
-                                                <ResultsTable
-                                                    data={result}
-                                                />
+                                    /* Results Table */
+                                    <div className="flex-1 w-full overflow-hidden flex flex-col">
+                                        {/* Result Header Stats */}
+                                        <div className="flex items-center justify-between px-4 py-2 bg-slate-900 border-b border-slate-800">
+                                            <div className="flex items-center gap-4">
+                                                <span className="text-xs text-slate-400">
+                                                    <strong className="text-slate-200">{result.rowCount}</strong> results
+                                                </span>
+                                                {result.executionTime !== undefined && (
+                                                    <span className="text-xs text-slate-400 flex items-center gap-1">
+                                                        <Activity size={12} />
+                                                        {result.executionTime}ms
+                                                    </span>
+                                                )}
                                             </div>
-                                        )}
-                                        {activeTab === 'visuals' && (
-                                            <div className="h-full p-6">
-                                                <ChartViz data={result.rows} columns={result.columns} />
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={() => setActiveTab('visuals')} // Keep tab state for specific view toggles if needed inside? 
+                                                    // Actually user wanted simplified view. Result Table IS the main view.
+                                                    // Maybe toggle Chart? For now just Table.
+                                                    className="p-1.5 hover:bg-slate-800 rounded text-slate-400"
+                                                    title="View Chart"
+                                                >
+                                                    <BarChart2 size={16} />
+                                                </button>
                                             </div>
-                                        )}
-                                        {activeTab === 'sql' && (
-                                            <div className="h-full p-4 overflow-auto">
-                                                <SyntaxHighlighter language="sql" style={vscDarkPlus} customStyle={{ background: 'transparent', margin: 0 }}>
-                                                    {generatedSql || "-- No SQL generated"}
-                                                </SyntaxHighlighter>
-                                            </div>
-                                        )}
-                                        {activeTab === 'analysis' && (
-                                            <div className="h-full flex flex-col p-4 overflow-hidden">
-                                                {/* Header with Fine Tune button */}
-                                                <div className="flex justify-between items-center mb-4">
-                                                    <h3 className="text-lg font-semibold text-slate-200">Query Logic Explanation</h3>
-                                                    {onTune && (
-                                                        <button
-                                                            onClick={onTune}
-                                                            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium transition-all shadow-lg flex items-center gap-2"
-                                                        >
-                                                            <Activity size={16} />
-                                                            Fine Tune Query
-                                                        </button>
-                                                    )}
-                                                </div>
+                                        </div>
+                                        <div className="flex-1 overflow-auto">
+                                            <ResultsTable data={result} />
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
 
-                                                {/* Explanation Content */}
-                                                <div className="flex-1 overflow-auto">
-                                                    {sqlExplanation ? (
-                                                        <div className="prose prose-invert max-w-none">
-                                                            <div className="p-4 bg-slate-800/50 rounded-lg border border-slate-700 text-slate-300 leading-relaxed whitespace-pre-wrap">
-                                                                {sqlExplanation}
-                                                            </div>
-                                                        </div>
-                                                    ) : (
-                                                        <div className="h-full flex flex-col items-center justify-center text-slate-500 gap-4">
-                                                            <p className="text-sm">Get a plain English explanation of what this query does</p>
-                                                            <button
-                                                                onClick={onExplainLogic}
-                                                                className="px-6 py-3 bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700 shadow-xl transition-all flex items-center gap-2"
-                                                            >
-                                                                <Code size={18} />
-                                                                Explain Query Logic
-                                                            </button>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        )}
+                        {/* RIGHT COLUMN: Explanation Sidebar (30%) */}
+                        <div className="w-[350px] min-w-[300px] flex flex-col bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
+                            <div className="px-4 py-3 border-b border-slate-800 bg-slate-950/30 flex items-center gap-2">
+                                <Activity size={16} className="text-purple-400" />
+                                <span className="font-semibold text-slate-200 text-sm">Query Logic</span>
+                            </div>
+
+                            <div className="flex-1 p-4 overflow-auto bg-slate-900/50">
+                                {sqlExplanation ? (
+                                    <div className="prose prose-invert prose-sm max-w-none">
+                                        <div className="text-slate-300 leading-relaxed whitespace-pre-wrap text-sm">
+                                            {sqlExplanation}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col gap-3 animate-pulse">
+                                        <div className="h-4 bg-slate-800 rounded w-3/4"></div>
+                                        <div className="h-4 bg-slate-800 rounded w-full"></div>
+                                        <div className="h-4 bg-slate-800 rounded w-5/6"></div>
+                                        <div className="h-4 bg-slate-800 rounded w-2/3"></div>
                                     </div>
                                 )}
                             </div>

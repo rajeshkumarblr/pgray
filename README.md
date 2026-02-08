@@ -104,7 +104,7 @@ Stop rewriting the same complex JOINs.
 ![Clean Editor](screenshots/screenshot_new_query.png)
 Start fresh with a focused environment.
 - **Dual AI Engine**: Choose between **Local AI (Ollama)** for privacy or **Google Gemini** for cloud-powered reasoning.
-- **Natural Language SQL**: Ask "Top 5 movies by revenue" and watch the SQL stream into the editor.
+- **Natural Language SQL**: Ask "Top 5 movies by revenue" -> See immediate SQL preview in a split-view layout with auto-explanation.
 - **Instant Feedback**: Execute queries immediately and see results in the grid view.
 
 ### 4. Centralized Configuration

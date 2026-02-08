@@ -117,11 +117,12 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
     // Auto-Trigger Explain Plan Logic
     useEffect(() => {
         // If user switches to Plan mode AND has SQL AND (no plan yet)
-        // Or if sql changed (we can check against last explained sql if we track it, but for now simple check)
+        // Or if sql changed (we can check against last explained sql if we track it, but for now
+        // Auto-refresh Plan when switching - add sqlQuery to deps
         if (activeTab === 'query' && queryMode === 'plan' && sqlQuery && !explainResult) {
             onTune();
         }
-    }, [activeTab, queryMode, explainResult]); // Removed sqlQuery dep to avoid loop if explain result updates? No, need to re-explain if SQL changes. But onTune triggers explain which sets result.
+    }, [activeTab, queryMode, explainResult, sqlQuery]); // Removed sqlQuery dep to avoid loop if explain result updates? No, need to re-explain if SQL changes. But onTune triggers explain which sets result.
     // If sqlQuery changes, explainResult is NOT automatically cleared in App.tsx?
     // App.tsx: setExecutionResult(null) is called on execute. But what about explain?
     // If I change SQL text, explainResult becomes stale. I should probably clear explainResult on SQL change in App.tsx ideally.
@@ -317,6 +318,7 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                             isExecuting={isExecuting}
                             result={executionResult}
                             error={execError || null}
+                            generatedSql={sqlQuery} // Pass SQL for Split View
                             // Mapping props
                             promptValue={searchPrompt}
                             onPromptChange={setSearchPrompt}
@@ -414,6 +416,7 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
 
                                             <div style={{ flex: 1, position: 'relative', display: 'flex' }}>
                                                 <SimpleEditor
+                                                    key={loadingSavedQueries ? 'loading' : (sessionTitle || 'new')}
                                                     value={sqlQuery}
                                                     onChange={setSqlQuery}
                                                     onExecute={handleExecuteWrapper}
@@ -490,7 +493,7 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                                         </>
                                     ) : (
                                         /* PLAN MODE - Custom Layout */
-                                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+                                        <div className="flex-1 h-full min-h-0 relative" style={{ display: 'flex', flexDirection: 'column' }}>
                                             <QueryTuneTab
                                                 activeTab={tuneTabMode}
                                                 setActiveTab={setTuneTabMode}
