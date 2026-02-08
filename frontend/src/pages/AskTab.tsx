@@ -71,10 +71,12 @@ const AskTab: React.FC<AskTabProps> = ({
     const [localParamValues, setLocalParamValues] = useState<Record<string, string>>({});
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
-    // Reset local params when requiredParams change
+    // Reset local params when requiredParams change (Deep compare to avoid infinite loop)
     React.useEffect(() => {
-        setLocalParamValues({});
-    }, [requiredParams]);
+        if (requiredParams && requiredParams.length > 0) {
+            setLocalParamValues({});
+        }
+    }, [JSON.stringify(requiredParams)]);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -119,15 +121,18 @@ const AskTab: React.FC<AskTabProps> = ({
     // Derived: Show dropdown if focused and NOT showing results (Search Home)
     const showDropdown = isFocused && !showResults && ((recentSearches && recentSearches.length > 0) || (savedQueries && savedQueries.length > 0));
 
-    // Auto-Explain Effect
+    // Auto-Explain Effect (Stabilized)
+    const explainRef = React.useRef(onExplainLogic);
+    React.useEffect(() => { explainRef.current = onExplainLogic; }, [onExplainLogic]);
+
     React.useEffect(() => {
-        if (showResults && generatedSql && !sqlExplanation && onExplainLogic && !isExecuting && !error) {
+        if (showResults && generatedSql && !sqlExplanation && !isExecuting && !error) {
             const timer = setTimeout(() => {
-                onExplainLogic();
+                explainRef.current?.();
             }, 500);
             return () => clearTimeout(timer);
         }
-    }, [showResults, generatedSql, sqlExplanation, onExplainLogic, isExecuting, error]);
+    }, [showResults, generatedSql, sqlExplanation, isExecuting, error]); // Removed onExplainLogic dependency
 
     // Restore lost definition
     const showParamForm = showResults && requiredParams.length > 0 && !result && !isExecuting && !error;
@@ -366,8 +371,10 @@ const AskTab: React.FC<AskTabProps> = ({
                                         </div>
                                     )}
                                     {activeTab === 'charts' && (
-                                        <div className="h-full w-full p-4 overflow-hidden bg-slate-900 flex flex-col">
-                                            <ChartViz data={result.rows} columns={result.columns} />
+                                        <div className="flex-1 w-full p-4 overflow-hidden bg-slate-900 flex flex-col min-h-0">
+                                            <div className="relative w-full h-full min-h-[400px]">
+                                                <ChartViz data={result.rows} columns={result.columns} />
+                                            </div>
                                         </div>
                                     )}
                                     {activeTab === 'sql' && (

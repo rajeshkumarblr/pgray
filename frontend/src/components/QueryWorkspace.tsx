@@ -226,7 +226,7 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
     };
 
     // Handler for explaining SQL logic in plain English
-    const handleExplainLogic = async () => {
+    const handleExplainLogic = useCallback(async () => {
         if (!sqlQuery) return;
         setSqlExplanation(null); // Clear previous to trigger loading state in UI
         try {
@@ -240,7 +240,7 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
             console.error("Failed to explain query", e);
             setSqlExplanation("Failed to generate explanation. Please try again.");
         }
-    };
+    }, [sqlQuery, schema]);
 
     const startBottomResize = (e: React.MouseEvent) => {
         e.preventDefault();

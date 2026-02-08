@@ -167,7 +167,7 @@ const ChartViz: React.FC<ChartVizProps> = ({ data, columns }) => {
 
     return (
         <div className="w-full h-full min-h-[300px] bg-slate-900/50 p-4 rounded-lg border border-slate-700 flex flex-col">
-            <ResponsiveContainer width="100%" height="100%" minHeight={300}>
+            <ResponsiveContainer width="100%" height="100%" minHeight={300} debounce={50}>
                 <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.5} />
                     <XAxis
