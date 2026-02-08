@@ -24,23 +24,29 @@ def format_schema_ddl(schema: dict) -> str:
     ddl_statements = []
     
     for table_name, table_data in schema.items():
-        columns = table_data if isinstance(table_data, list) else table_data.get("columns", [])
-        fks = [] if isinstance(table_data, list) else table_data.get("fks", [])
+        # Ensure we work with dicts
+        if isinstance(table_data, list):
+             # Legacy format handling? Assume list is columns?
+             columns = table_data
+             fks = []
+        else:
+             columns = table_data.get("columns", [])
+             fks = table_data.get("fks", [])
         
         col_defs = []
-        # Columns
+        # Columns (Quote names)
         for col in columns:
-            col_defs.append(f"  {col['name']} {col['type']}")
+            col_defs.append(f"  \"{col['name']}\" {col['type']}")
             
-        # Primary Key (heuristic: if 'id' exists)
+        # Primary Key (heuristic)
         if any(c['name'] == 'id' for c in columns):
-            col_defs.append("  PRIMARY KEY (id)")
+            col_defs.append("  PRIMARY KEY (\"id\")")
             
         # Foreign Keys
         for fk in fks:
-            col_defs.append(f"  FOREIGN KEY ({fk['column']}) REFERENCES {fk['foreign_table']}({fk['foreign_column']})")
+            col_defs.append(f"  FOREIGN KEY (\"{fk['column']}\") REFERENCES \"{fk['foreign_table']}\"(\"{fk['foreign_column']}\")")
             
-        create_stmt = f"CREATE TABLE {table_name} (\n" + ",\n".join(col_defs) + "\n);"
+        create_stmt = f"CREATE TABLE \"{table_name}\" (\n" + ",\n".join(col_defs) + "\n);"
         ddl_statements.append(create_stmt)
         
     return "\n\n".join(ddl_statements)
@@ -124,6 +130,9 @@ def generate_sql(prompt: str, schema_context: str = None, schema_data: dict = No
             "### Task\n"
             f"{history_text}"
             f"Current Request: {prompt}\n\n"
+            "CRITICAL:\n"
+            "1. Do not assume column names based on your training data. You MUST strictly use the column names provided in the CREATE TABLE definitions above. If a column is not in the schema, do not hallucinate it.\n"
+            "2. DO NOT use backticks (`). Use double quotes (\") for identifiers if needed (e.g. \"Order Details\").\n\n"
             "### Output\n"
             "Return ONLY the SQL code block. No conversational text.\n"
             "```sql\n"
@@ -738,3 +747,51 @@ async def generate_gemini_stream(prompt: str, model: str, api_key: str):
     except Exception as e:
         logger.error(f"Gemini stream failed: {e}")
         yield json.dumps({"error": str(e)}) + "\n"
+
+def fix_sql_query(sql: str, error: str, schema_context: str = None, schema_data: dict = None, model: str = "qwen2.5-coder") -> str:
+    """
+    Repairs a failed SQL query using the error message and schema.
+    """
+    if schema_data:
+        schema_context = format_schema_ddl(schema_data)
+    elif not schema_context:
+        schema_context = "-- No schema provided"
+
+    prompt = (
+        f"The following SQL query failed validation:\n\n```sql\n{sql}\n```\n\n"
+        f"Error: {error}\n\n"
+        "Correct the SQL query to resolve this error. Use the provided schema strictly.\n"
+        "CRITICAL: DO NOT use backticks (`). Use double quotes (\") for identifiers if needed (e.g. \"table_name\").\n\n"
+        "### Database Schema\n"
+        f"{schema_context}\n\n"
+        "### Output\n"
+        "Return ONLY the FIXED SQL code block. No conversational text.\n"
+    )
+
+    try:
+        payload = {
+            "model": model, 
+            "prompt": prompt,
+            "stream": False,
+            "options": { "temperature": 0.1 } # Lower temp for fixes
+        }
+        
+        logger.info(f"Fixing SQL...")
+        response = requests.post(OLLAMA_URL, json=payload, timeout=60)
+        response.raise_for_status()
+        data = response.json()
+        ai_response = data.get("response", "")
+        
+        # Extract SQL using Regex
+        import re
+        match = re.search(r"```sql\s*(.*?)\s*```", ai_response, re.DOTALL | re.IGNORECASE)
+        if match:
+            return match.group(1).strip()
+        
+        # Fallback
+        clean_sql = ai_response.replace("```sql", "").replace("```", "").strip()
+        return clean_sql
+
+    except Exception as e:
+        logger.error(f"Failed to fix SQL: {e}")
+        return sql # Return original if fix fails

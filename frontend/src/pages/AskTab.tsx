@@ -348,104 +348,128 @@ const AskTab: React.FC<AskTabProps> = ({
                                     <div className="w-12 h-12 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin mb-4" />
                                     <p className="text-slate-400 animate-pulse font-medium">Running query...</p>
                                 </div>
-                            ) : error ? (
-                                <div className="flex flex-col items-center justify-center h-full text-center p-8">
-                                    <Activity size={32} className="text-red-500 mb-4" />
-                                    <h3 className="text-lg font-semibold text-slate-200">Search Failed</h3>
-                                    <p className="text-slate-400 max-w-md">{error}</p>
-                                </div>
-                            ) : !result ? (
-                                <div className="flex items-center justify-center h-full text-slate-500">Waiting for results...</div>
                             ) : (
-                                <div className="h-full w-full overflow-hidden">
-                                    {activeTab === 'data' && (
-                                        <div className="h-full w-full flex flex-col">
-                                            {/* Stats Header */}
-                                            <div className="px-4 py-2 border-b border-slate-800 text-xs text-slate-400 flex justify-between bg-slate-900/80">
-                                                <span>{result.rowCount} results found</span>
-                                                {result.executionTime && <span>{result.executionTime}ms</span>}
-                                            </div>
-                                            <div className="flex-1 overflow-auto bg-slate-900">
-                                                <ResultsTable data={result} />
-                                            </div>
+                                <div className="h-full w-full overflow-hidden flex flex-col">
+                                    {(error && activeTab !== 'sql') ? (
+                                        <div className="flex flex-col items-center justify-center h-full text-center p-8">
+                                            <Activity size={32} className="text-red-500 mb-4" />
+                                            <h3 className="text-lg font-semibold text-slate-200">Search Failed</h3>
+                                            <p className="text-slate-400 max-w-md mb-4">{error}</p>
+                                            <button
+                                                onClick={() => setActiveTab('sql')}
+                                                className="text-blue-400 hover:text-blue-300 hover:underline text-sm flex items-center gap-2 px-4 py-2 bg-slate-800 rounded-lg transition-colors border border-slate-700"
+                                            >
+                                                <Code size={14} /> View Generated SQL
+                                            </button>
                                         </div>
-                                    )}
-                                    {activeTab === 'charts' && (
-                                        <div className="flex-1 w-full p-4 overflow-hidden bg-slate-900 flex flex-col min-h-0">
-                                            <div className="relative w-full h-full min-h-[400px]">
-                                                <ChartViz data={result.rows} columns={result.columns} />
-                                            </div>
-                                        </div>
-                                    )}
-                                    {activeTab === 'sql' && (
-                                        <div className="flex w-full h-full">
-                                            {/* LEFT PANE (75%) */}
-                                            <div className="flex-[3] flex flex-col min-w-0 border-r border-slate-800 bg-[#1e1e1e]">
-                                                <div className="flex items-center justify-between px-4 py-2 bg-[#252526] border-b border-[#333]">
-                                                    <span className="text-xs text-slate-400 font-mono flex items-center gap-2">
-                                                        <Code size={12} /> GENERATED SQL
-                                                    </span>
-                                                    <div className="flex gap-2">
-                                                        <button
-                                                            onClick={() => navigator.clipboard.writeText(generatedSql || '')}
-                                                            className="p-1 text-slate-400 hover:text-white transition-colors"
-                                                            title="Copy SQL"
-                                                        >
-                                                            <Copy size={14} />
-                                                        </button>
-                                                        {onEditSql && (
-                                                            <button
-                                                                onClick={onEditSql}
-                                                                className="p-1 text-slate-400 hover:text-white transition-colors"
-                                                                title="Edit in Query Editor"
-                                                            >
-                                                                <Edit size={14} />
-                                                            </button>
-                                                        )}
-                                                        {onTune && (
-                                                            <button
-                                                                onClick={onTune}
-                                                                className="flex items-center gap-1 text-xs bg-blue-600 hover:bg-blue-500 text-white px-2 py-0.5 rounded transition-colors shadow"
-                                                            >
-                                                                <Activity size={10} /> Tune
-                                                            </button>
-                                                        )}
+                                    ) : (
+                                        <>
+                                            {activeTab === 'data' && (
+                                                !result ? (
+                                                    <div className="flex items-center justify-center h-full text-slate-500">Waiting for results...</div>
+                                                ) : (
+                                                    <div className="h-full w-full flex flex-col">
+                                                        <div className="px-4 py-2 border-b border-slate-800 text-xs text-slate-400 flex justify-between bg-slate-900/80">
+                                                            <span>{result.rowCount} results found</span>
+                                                            {result.executionTime && <span>{result.executionTime}ms</span>}
+                                                        </div>
+                                                        <div className="flex-1 overflow-auto bg-slate-900">
+                                                            <ResultsTable data={result} />
+                                                        </div>
+                                                    </div>
+                                                )
+                                            )}
+                                            {activeTab === 'charts' && (
+                                                !result ? (
+                                                    <div className="flex items-center justify-center h-full text-slate-500">Waiting for results...</div>
+                                                ) : (
+                                                    <div className="flex-1 w-full p-4 overflow-hidden bg-slate-900 flex flex-col min-h-0">
+                                                        <div className="relative w-full h-full min-h-[400px]">
+                                                            <ChartViz data={result.rows} columns={result.columns} />
+                                                        </div>
+                                                    </div>
+                                                )
+                                            )}
+                                            {activeTab === 'sql' && (
+                                                <div className="flex w-full h-full flex-col">
+                                                    {error && (
+                                                        <div className="bg-red-500/10 border-b border-red-500/20 p-3 text-sm text-red-200 flex items-center gap-2">
+                                                            <Activity size={14} className="text-red-400" />
+                                                            {error}
+                                                        </div>
+                                                    )}
+                                                    <div className="flex-1 flex overflow-hidden">
+
+                                                        {/* LEFT PANE (75%) */}
+                                                        <div className="flex-[3] flex flex-col min-w-0 border-r border-slate-800 bg-[#1e1e1e]">
+                                                            <div className="flex items-center justify-between px-4 py-2 bg-[#252526] border-b border-[#333]">
+                                                                <span className="text-xs text-slate-400 font-mono flex items-center gap-2">
+                                                                    <Code size={12} /> GENERATED SQL
+                                                                </span>
+                                                                <div className="flex gap-2">
+                                                                    <button
+                                                                        onClick={() => navigator.clipboard.writeText(generatedSql || '')}
+                                                                        className="p-1 text-slate-400 hover:text-white transition-colors"
+                                                                        title="Copy SQL"
+                                                                    >
+                                                                        <Copy size={14} />
+                                                                    </button>
+                                                                    {onEditSql && (
+                                                                        <button
+                                                                            onClick={onEditSql}
+                                                                            className="p-1 text-slate-400 hover:text-white transition-colors"
+                                                                            title="Edit in Query Editor"
+                                                                        >
+                                                                            <Edit size={14} />
+                                                                        </button>
+                                                                    )}
+                                                                    {onTune && (
+                                                                        <button
+                                                                            onClick={onTune}
+                                                                            className="flex items-center gap-1 text-xs bg-blue-600 hover:bg-blue-500 text-white px-2 py-0.5 rounded transition-colors shadow"
+                                                                        >
+                                                                            <Activity size={10} /> Tune
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                            <div className="flex-1 overflow-auto custom-scrollbar">
+                                                                <SyntaxHighlighter
+                                                                    language="sql"
+                                                                    style={vscDarkPlus}
+                                                                    customStyle={{ margin: 0, height: '100%', background: 'transparent', padding: '1rem' }}
+                                                                    wrapLongLines={true}
+                                                                    showLineNumbers={true}
+                                                                    lineNumberStyle={{
+                                                                        userSelect: 'none',
+                                                                        color: '#64748b',
+                                                                        borderRight: '1px solid #334155',
+                                                                        paddingRight: '1rem',
+                                                                        marginRight: '1rem',
+                                                                        textAlign: 'right',
+                                                                        minWidth: '2em'
+                                                                    }}
+                                                                >
+                                                                    {generatedSql || ''}
+                                                                </SyntaxHighlighter>
+                                                            </div>
+                                                        </div>
+
+                                                        {/* RIGHT PANE (25%) */}
+                                                        <div className="flex-1 flex flex-col min-w-[250px] bg-slate-900">
+                                                            <div className="flex-1 flex flex-col bg-slate-900 border-l border-slate-800 relative">
+                                                                <AskChat
+                                                                    connectionInfo={connectionInfo}
+                                                                    sql={generatedSql || ''}
+                                                                    initialExplanation={sqlExplanation}
+                                                                    model={model}
+                                                                />
+                                                            </div>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                                <div className="flex-1 overflow-auto custom-scrollbar">
-                                                    <SyntaxHighlighter
-                                                        language="sql"
-                                                        style={vscDarkPlus}
-                                                        customStyle={{ margin: 0, height: '100%', background: 'transparent', padding: '1rem' }}
-                                                        wrapLongLines={true}
-                                                        showLineNumbers={true}
-                                                        lineNumberStyle={{
-                                                            userSelect: 'none',
-                                                            color: '#64748b',
-                                                            borderRight: '1px solid #334155',
-                                                            paddingRight: '1rem',
-                                                            marginRight: '1rem',
-                                                            textAlign: 'right',
-                                                            minWidth: '2em'
-                                                        }}
-                                                    >
-                                                        {generatedSql || ''}
-                                                    </SyntaxHighlighter>
-                                                </div>
-                                            </div>
-
-                                            {/* RIGHT PANE (25%) */}
-                                            <div className="flex-1 flex flex-col min-w-[250px] bg-slate-900">
-                                                <div className="flex-1 flex flex-col bg-slate-900 border-l border-slate-800 relative">
-                                                    <AskChat
-                                                        connectionInfo={connectionInfo}
-                                                        sql={generatedSql || ''}
-                                                        initialExplanation={sqlExplanation}
-                                                        model={model}
-                                                    />
-                                                </div>
-                                            </div>
-                                        </div>
+                                            )}
+                                        </>
                                     )}
                                 </div>
                             )}

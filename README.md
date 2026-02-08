@@ -83,6 +83,11 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
     *   **Performance Badge**: Visual ⚡/⚠️/🐢 indicator shows query speed (Green < 200ms, Yellow < 1s, Red > 1s) in both Search and Editor results.
     *   **Performance Drawer**: Click the badge to reveal a slide-over panel showing the SQL, execution time, and a "Tune & Fix" button for deeper analysis.
     *   **Graceful Timeouts**: Extended timeouts (90s) accommodate complex AI-generated queries without premature failures.
+    
+*   **Auto-Healing SQL**:
+    *   **Self-Correction**: Automatically detects SQL errors (e.g., "Column not found") during execution and uses AI to fix them instantly.
+    *   **Robust Generation**: Hardened prompts prevent common hallucinations like MySQL backticks, ensuring clean PostgreSQL syntax.
+    *   **Transparent Feedback**: If auto-fixing fails, users can inspect the problematic SQL code directly via a "View SQL" action.
 
     
 ## Visual Tour

@@ -9,7 +9,7 @@ import { parsePlanToFlow } from './utils/planLayout';
 import QueryWorkspace from './components/QueryWorkspace';
 import Toast from './components/Toast';
 import SaveSessionModal from './components/SaveSessionModal';
-import { analyzeQuery, saveQueryFinal, generateSql, warmupModel } from './api';
+import { analyzeQuery, saveQueryFinal, generateSql, warmupModel, fixSql } from './api';
 
 
 function App() {
@@ -817,7 +817,43 @@ Please provide a detailed analysis in the following format:
                   };
                   setExecutionResult(transformed);
                 } catch (execErr: any) {
-                  setExecError(execErr.response?.data?.detail || execErr.message || "Execution Failed");
+                  // AUTO-HEALING: Try to fix SQL once
+                  const originalError = execErr.response?.data?.detail || execErr.message || "Execution Failed";
+                  console.warn("SQL Failed, attempting auto-fix:", originalError);
+                  setExecError(`Fixing query... Error: ${originalError}`);
+
+                  try {
+                    const fixedRes = await fixSql(generatedSql, originalError, schema, activeProvider === 'local' ? localModel : geminiModel);
+                    if (fixedRes && fixedRes.fixed_sql) {
+                      const fixedSql = fixedRes.fixed_sql;
+                      console.log("SQL Fixed:", fixedSql);
+                      setSqlQuery(fixedSql);
+
+                      // Retry Execution
+                      const retryRes = await executeQuery(connectionInfo, fixedSql, 50);
+                      // Transform new API format (Duplicate logic, but safe)
+                      const transformedRetry = {
+                        rows: retryRes.data?.map((r: any) => {
+                          if (Array.isArray(r)) {
+                            const arr = [...r];
+                            (arr as any)._id = crypto.randomUUID();
+                            return arr;
+                          }
+                          return { ...r, _id: crypto.randomUUID() };
+                        }) || [],
+                        columns: retryRes.meta?.columns || [],
+                        rowCount: retryRes.meta?.row_count || 0,
+                        executionTime: retryRes.meta?.duration_ms || 0
+                      };
+                      setExecutionResult(transformedRetry);
+                      setExecError(null); // Clear error on success
+                    } else {
+                      throw execErr; // Fix returned nothing useful
+                    }
+                  } catch (fixErr) {
+                    console.error("Auto-fix failed:", fixErr);
+                    setExecError(originalError); // Show original error
+                  }
                 }
               } else {
                 setExecError("Could not generate SQL from prompt.");

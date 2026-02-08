@@ -145,6 +145,11 @@ export const explainSql = async (query: string, schema_data: any, model: string 
     return response.data;
 };
 
+export const fixSql = async (sql: string, error: string, schema_data: any, model: string = "qwen2.5-coder") => {
+    const response = await api.post('/fix_sql', { sql, error, schema_data, model });
+    return response.data;
+};
+
 export const getConnectionConfig = async () => {
     try {
         const response = await axios.get(`${API_BASE_URL}/api/config/connection`);

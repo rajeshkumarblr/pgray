@@ -514,3 +514,24 @@ async def get_er_layout_endpoint(connection_json: Optional[str] = Query(None)):
         return {"status": "success", "layout": layout}
     except Exception as e:
          raise HTTPException(status_code=500, detail=str(e))
+
+class FixSqlRequest(BaseModel):
+    sql: str
+    error: str
+    schema_data: Optional[dict] = None
+    model: str = "qwen2.5-coder"
+
+@app.post("/api/fix_sql")
+async def fix_sql_endpoint(request: FixSqlRequest):
+    from app.ai import fix_sql_query
+    try:
+        fixed_sql = fix_sql_query(
+            sql=request.sql,
+            error=request.error,
+    schema_context=None,
+            schema_data=request.schema_data,
+            model=request.model
+        )
+        return {"status": "success", "fixed_sql": fixed_sql}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
