@@ -218,17 +218,15 @@ def explain_sql_query(query: str, schema_context: str = None, schema_data: dict 
         schema_context = "-- No schema provided"
 
     prompt = (
-        "You are an expert SQL Tutor. Explain the following SQL query clearly and concisely to a user.\n"
-        "Focus on the logical flow: what tables are joined, what filters are applied, and what the result represents.\n\n"
+        "You are a concise Data Analyst.\n"
+        "Provide a single short paragraph (2-3 sentences max) explaining the business logic of this query.\n"
+        "Do NOT mention specific SQL keywords (like JOIN, GROUP BY) unless critical.\n"
+        "Do NOT provide a line-by-line breakdown.\n"
+        "End with: 'Let me know if you want a detailed breakdown.'\n\n"
         "### Database Schema\n"
         f"{schema_context}\n\n"
         "### SQL Query\n"
-        f"```sql\n{query}\n```\n\n"
-        "### Instructions\n"
-        "- Provide a summary of what the query does.\n"
-        "- Explain key parts (Joins, WHERE clauses).\n"
-        "- Do NOT reproduce the code, just explain the logic.\n"
-        "- Use bullet points for clarity.\n"
+        f"```sql\n{query}\n```"
     )
 
     payload = {

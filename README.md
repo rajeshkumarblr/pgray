@@ -74,6 +74,7 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
     *   **Distraction-Free**: Sidebars automatically hide when searching to give you a full-width canvas.
     *   **Smart Dropdown**: "Google-style" search hub shows **Recent Searches** (session-based) and **Saved Queries** instant access.
     *   **Starter Chips**: One-click discovery chips (e.g., "Top 5 Products") help you explore the dataset immediately.
+    *   **Context-Aware History**: `Ask Tab` suggestions now intelligently surface your **Recent Searches** for quick follow-up, marked with a history icon.
     *   **Chain-of-Thought AI**: The AI now uses a "Reasoning First" strategy (Subject -> Metrics -> SQL) to ensure high accuracy and avoid lazy aggregations.
 
 *   **Production Safety**:

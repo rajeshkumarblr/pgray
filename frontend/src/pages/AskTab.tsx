@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, BarChart2, Database, Code, Activity, ArrowRight, Copy, Edit } from 'lucide-react';
+import { Search, BarChart2, Database, Code, Activity, ArrowRight, Copy, Edit, History } from 'lucide-react';
 import ChartViz from '../components/ChartViz';
 import ResultsTable from '../components/ResultsTable';
 import PerformanceDrawer from '../components/PerformanceDrawer';
@@ -284,16 +284,17 @@ const AskTab: React.FC<AskTabProps> = ({
                         )}
                     </AnimatePresence>
 
-                    {/* Suggestions (Only on Initial) */}
+                    {/* Suggestions / History */}
                     {!showResults && (
-                        <div className="flex flex-wrap gap-2 justify-center mt-4">
-                            {['Top 5 customers', 'Revenue by year', 'Products out of stock'].map(s => (
+                        <div className="flex flex-wrap gap-2 justify-center mt-4 max-w-2xl px-4">
+                            {(recentSearches && recentSearches.length > 0 ? recentSearches.slice(0, 6) : ['Top 5 customers', 'Revenue by year', 'Products out of stock']).map((s, i) => (
                                 <button
-                                    key={s}
+                                    key={`sugg-${i}`}
                                     onClick={() => { onPromptChange(s); onShowResults(true); onSearch(s); }}
-                                    className="px-4 py-2 bg-slate-800/50 hover:bg-slate-700 border border-slate-700 rounded-full text-sm text-slate-400 hover:text-white transition-colors"
+                                    className="flex items-center gap-2 px-4 py-2 bg-slate-800/50 hover:bg-slate-700 border border-slate-700 rounded-full text-sm text-slate-400 hover:text-white transition-colors"
                                 >
-                                    {s}
+                                    {recentSearches?.includes(s) && <History size={12} className="text-blue-400" />}
+                                    <span>{s}</span>
                                 </button>
                             ))}
                         </div>

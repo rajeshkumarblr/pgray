@@ -8,9 +8,7 @@ import {
     CartesianGrid,
     Tooltip,
     Legend,
-    ResponsiveContainer,
-    LineChart,
-    Line
+    ResponsiveContainer
 } from 'recharts';
 
 interface ChartVizProps {
@@ -25,20 +23,34 @@ const getSeriesColor = (index: number) => {
 };
 
 const ChartViz: React.FC<ChartVizProps> = ({ data, columns }) => {
-    if (!data || data.length === 0 || !columns) {
-        return <div className="p-10 text-slate-500 text-center">No data to visualize</div>;
-    }
+    if (!data || data.length === 0) return <div className="p-8 text-center text-slate-500 text-sm">No data to visualize</div>;
+
+    // Normalize Data (Handle Array of Arrays)
+    const normalizedData = useMemo(() => {
+        if (Array.isArray(data[0])) {
+            return data.map((row: any) => {
+                const obj: any = {};
+                columns.forEach((col, i) => {
+                    obj[col] = Array.isArray(row) ? row[i] : row[col]; // Handle mixed or just use index
+                });
+                return obj;
+            });
+        }
+        return data;
+    }, [data, columns]);
 
     // 1. Analyze Columns
     const colMeta = useMemo(() => {
+        if (!normalizedData || normalizedData.length === 0) return { valIdx: -1, xIdx: -1, seriesIdx: -1, types: [] };
+
         const types = columns.map(() => ({ isNum: true, distinct: new Set() }));
 
         // Scan up to 50 rows
-        const limit = Math.min(data.length, 50);
+        const limit = Math.min(normalizedData.length, 50);
         for (let i = 0; i < limit; i++) {
-            const row = data[i];
-            columns.forEach((_, cIdx) => {
-                const val = row[cIdx];
+            const row = normalizedData[i];
+            columns.forEach((col, cIdx) => {
+                const val = row[col]; // Access by column name now
                 if (val !== null && val !== undefined) {
                     if (typeof val !== 'number') {
                         // Check if it's a numeric string? For charts, stick to strict numbers or maybe predictable formats
@@ -101,60 +113,52 @@ const ChartViz: React.FC<ChartVizProps> = ({ data, columns }) => {
         }
 
         return { valIdx, xIdx, seriesIdx, types };
-    }, [data, columns]);
+    }, [normalizedData, columns]);
 
 
-    // 2. Transform Data
+    // 2. Prepare Data for Recharts
     const { chartData, seriesKeys, xKey } = useMemo(() => {
         const { valIdx, xIdx, seriesIdx } = colMeta;
-
         if (valIdx === -1 || xIdx === -1) return { chartData: [], seriesKeys: [], xKey: '' };
 
         const xCol = columns[xIdx];
-        const valCol = columns[valIdx]; // Default Y key if no pivot
+        const valCol = columns[valIdx];
+        const seriesCol = seriesIdx !== -1 ? columns[seriesIdx] : null;
 
-        // PIVOT MODE: If we have a series column
-        if (seriesIdx !== -1 && seriesIdx !== undefined) {
-            const map = new Map<string, any>();
-            const seriesSet = new Set<string>();
+        // PIVOT MODE
+        if (seriesCol) {
+            const groups: Record<string, any> = {};
+            const allSeries = new Set<string>();
 
-            data.forEach(row => {
-                const xVal = row[xIdx];
-                const sVal = row[seriesIdx]; // e.g. "Electronics"
-                const yVal = row[valIdx];
+            normalizedData.forEach((row: any) => {
+                const xVal = row[xCol];
+                const sVal = row[seriesCol];
+                const yVal = row[valCol];
 
                 const key = String(xVal);
-                if (!map.has(key)) {
-                    map.set(key, { [xCol]: xVal }); // Init with X value
+                if (!groups[key]) {
+                    groups[key] = { [xCol]: xVal };
                 }
-                const entry = map.get(key);
 
-                // Clean series name (handle nulls)
-                const sName = sVal === null ? 'Unknown' : String(sVal);
-                entry[sName] = yVal;
-                seriesSet.add(sName);
+                const sName = sVal == null ? 'Unknown' : String(sVal);
+                groups[key][sName] = yVal;
+                allSeries.add(sName);
             });
 
             return {
-                chartData: Array.from(map.values()),
-                seriesKeys: Array.from(seriesSet),
+                chartData: Object.values(groups),
+                seriesKeys: Array.from(allSeries),
                 xKey: xCol
             };
         }
 
-        // STANDARD MODE: Simple X/Y
-        const simpleData = data.map(row => ({
-            [xCol]: row[xIdx],
-            [valCol]: row[valIdx]
-        }));
-
+        // STANDARD MODE
         return {
-            chartData: simpleData,
-            seriesKeys: [valCol], // Just one series
+            chartData: normalizedData,
+            seriesKeys: [valCol],
             xKey: xCol
         };
-
-    }, [data, columns, colMeta]);
+    }, [normalizedData, colMeta, columns]);
 
 
     if (chartData.length === 0) {
@@ -167,11 +171,12 @@ const ChartViz: React.FC<ChartVizProps> = ({ data, columns }) => {
                 <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.5} />
                     <XAxis
-                        dataKey={xKey}
-                        stroke="#94a3b8"
-                        fontSize={12}
+                        dataKey={xKey || ''}
+                        axisLine={false}
                         tickLine={false}
-                        axisLine={{ stroke: '#475569' }}
+                        tick={{ fill: '#94a3b8', fontSize: 11 }}
+                        dy={10}
+                        interval="preserveStartEnd"
                     />
                     <YAxis
                         stroke="#94a3b8"

@@ -66,7 +66,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({ data }) => {
                     </thead>
                     <tbody>
                         {data.rows.map((row, rowIdx) => (
-                            <tr key={rowIdx} className="hover:bg-slate-800/50 transition-colors group">
+                            <tr key={(row as any)._id || rowIdx} className="hover:bg-slate-800/50 transition-colors group">
                                 {row.map((cell, cellIdx) => {
                                     const isNum = colTypes[cellIdx] === 'number';
                                     return (

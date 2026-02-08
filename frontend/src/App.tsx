@@ -803,7 +803,14 @@ Please provide a detailed analysis in the following format:
                   const execRes = await executeQuery(connectionInfo, generatedSql, 50);
                   // Transform new API format
                   const transformed = {
-                    rows: execRes.data,
+                    rows: execRes.data?.map((r: any) => {
+                      if (Array.isArray(r)) {
+                        const arr = [...r];
+                        (arr as any)._id = crypto.randomUUID();
+                        return arr;
+                      }
+                      return { ...r, _id: crypto.randomUUID() };
+                    }) || [],
                     columns: execRes.meta?.columns || [],
                     rowCount: execRes.meta?.row_count || 0,
                     executionTime: execRes.meta?.duration_ms || 0
