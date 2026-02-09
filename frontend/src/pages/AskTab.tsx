@@ -587,8 +587,8 @@ const AskTab: React.FC<AskTabProps> = ({
                                                         </div>
 
                                                         {/* RIGHT PANE (25%) */}
-                                                        <div className="flex-1 flex flex-col min-w-[250px] bg-slate-900">
-                                                            <div className="flex-1 flex flex-col bg-slate-900 border-l border-slate-800 relative">
+                                                        <div className="flex-1 flex flex-col min-w-[250px] bg-slate-900 min-h-0">
+                                                            <div className="flex-1 flex flex-col bg-slate-900 border-l border-slate-800 relative min-h-0">
                                                                 <AskChat
                                                                     connectionInfo={connectionInfo}
                                                                     sql={generatedSql || ''}

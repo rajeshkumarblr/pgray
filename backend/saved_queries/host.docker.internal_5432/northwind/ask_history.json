@@ -48,5 +48,20 @@
     "prompt": "Show the cumulative monthly sales revenue for 'Beverages', 'Confections', and 'Seafood' categories throughout 1997",
     "sql": "SELECT \n    o.order_date::date AS order_month,\n    SUM(od.unit_price * od.quantity) AS total_revenue\nFROM \n    products p\nJOIN \n    categories c ON p.category_id = c.category_id\nJOIN \n    order_details od ON p.product_id = od.product_id\nJOIN \n    orders o ON od.order_id = o.order_id\nWHERE \n    c.category_name IN ('Beverages', 'Confections', 'Seafood')\n    AND EXTRACT(YEAR FROM o.order_date) = 1997\nGROUP BY \n    o.order_date::date\nORDER BY \n    o.order_date::date;",
     "timestamp": 1770630589.002827
+  },
+  {
+    "prompt": "products that sold maximum in 1996 for each category",
+    "sql": "SELECT \n    c.category_name,\n    p.product_name,\n    SUM(od.quantity) AS total_quantity_sold\nFROM \n    products p\nJOIN \n    order_details od ON p.product_id = od.product_id\nJOIN \n    orders o ON od.order_id = o.order_id\nJOIN \n    categories c ON p.category_id = c.category_id\nWHERE \n    EXTRACT(YEAR FROM o.order_date) = 1996\nGROUP BY \n    c.category_name, p.product_name\nORDER BY \n    total_quantity_sold DESC;",
+    "timestamp": 1770661516.0254886
+  },
+  {
+    "prompt": "products that sold maximum in 1996 for each category",
+    "sql": "SELECT \n    c.category_name,\n    p.product_name,\n    SUM(od.quantity) AS total_quantity_sold\nFROM \n    products p\nJOIN \n    order_details od ON p.product_id = od.product_id\nJOIN \n    orders o ON od.order_id = o.order_id\nJOIN \n    categories c ON p.category_id = c.category_id\nWHERE \n    EXTRACT(YEAR FROM o.order_date) = 1996\nGROUP BY \n    c.category_name, p.product_name\nORDER BY \n    total_quantity_sold DESC;",
+    "timestamp": 1770661713.641176
+  },
+  {
+    "prompt": "products that sold maximum in 1996 for each category",
+    "sql": "SELECT \n    c.category_name,\n    p.product_name,\n    SUM(od.quantity) AS total_quantity_sold\nFROM \n    products p\nJOIN \n    order_details od ON p.product_id = od.product_id\nJOIN \n    orders o ON od.order_id = o.order_id\nJOIN \n    categories c ON p.category_id = c.category_id\nWHERE \n    EXTRACT(YEAR FROM o.order_date) = 1996\nGROUP BY \n    c.category_name, p.product_name\nORDER BY \n    total_quantity_sold DESC;",
+    "timestamp": 1770661737.947494
   }
 ]

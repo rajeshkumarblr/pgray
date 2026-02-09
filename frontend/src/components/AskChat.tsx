@@ -58,7 +58,28 @@ const AskChat: React.FC<AskChatProps> = ({ connectionInfo, sql, initialExplanati
 
         try {
             // Context Builder
-            const fullPrompt = `Context: The user is asking about this SQL Query:\n\`\`\`sql\n${sql}\n\`\`\`\n\nUser Question: ${input}`;
+            // Inject hidden guidance for short queries to prevent code dumps
+            let adjustedInput = input;
+            if (input.length < 50 && (input.toLowerCase().includes('detail') || input.toLowerCase().includes('explain') || input.toLowerCase().includes('what'))) {
+                adjustedInput += " (Explain the logic in plain English. Do NOT show the SQL code.)";
+            }
+
+            const fullPrompt = `You are a helpful SQL Explainer Assistant. 
+            Your goal is to explain the SQL query in plain English, breaking down the logic for a non-technical user.
+            
+            Context:
+            The user is asking about this SQL Query:
+            \`\`\`sql
+            ${sql}
+            \`\`\`
+            
+            Instructions:
+            1. **Interpret "More details" as "Explain logic":** If the user asks for "details", "more info", or "explain", provide a detailed breakdown of the JOINs, WHERE clauses, and Aggregations used.
+            2. **NO CODE DUMPS:** Do NOT output the SQL query again. The user can already see it. Only output SQL if explicitly asked to "modify" or "rewrite" the query.
+            3. **Plain English:** Use natural language. Instead of saying "WHERE total > 100", say "filters for orders with a total greater than 100".
+            4. **Direct Answer:** Address the user's specific question first.
+
+            User Question: ${adjustedInput}`;
 
             await streamChat(
                 fullPrompt,
