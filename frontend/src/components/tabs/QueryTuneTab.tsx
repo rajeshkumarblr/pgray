@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactFlow, { Background, Controls, Node, Edge } from 'reactflow';
 import 'reactflow/dist/style.css';
+import { X } from 'lucide-react';
 
 interface QueryTuneTabProps {
     activeTab: 'visual' | 'text' | 'compare';
@@ -26,6 +27,7 @@ interface QueryTuneTabProps {
     onAnalyzeNode?: (node: any) => void;
     onCompare?: () => void;
     baselineMetrics?: { planning: number, execution: number } | null;
+    onClose?: () => void;
 }
 
 const QueryTuneTab: React.FC<QueryTuneTabProps> = ({
@@ -38,7 +40,8 @@ const QueryTuneTab: React.FC<QueryTuneTabProps> = ({
     onRefreshPlan,
     onAnalyzeNode,
     onCompare,
-    baselineMetrics
+    baselineMetrics,
+    onClose
 }) => {
     // Internal Ref for the flow wrapper
     const flowWrapperRef = React.useRef<HTMLDivElement>(null);
@@ -83,16 +86,15 @@ const QueryTuneTab: React.FC<QueryTuneTabProps> = ({
 
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#334155', overflow: 'hidden' }} onClick={() => setMenu(null)}>
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0f172a', overflow: 'hidden' }} onClick={() => setMenu(null)}>
             {/* Header / Tabs */}
             <div style={{ display: 'flex', background: '#0f172a', borderBottom: '1px solid #475569', alignItems: 'center' }}>
 
                 <div onClick={() => setActiveTab('visual')} style={{ padding: '8px 20px', cursor: 'pointer', color: activeTab === 'visual' ? '#e2e8f0' : '#64748b', borderBottom: activeTab === 'visual' ? '2px solid #3b82f6' : 'none', fontWeight: activeTab === 'visual' ? 600 : 500, fontSize: '13px' }}>Visual Plan</div>
                 <div onClick={() => setActiveTab('text')} style={{ padding: '8px 20px', cursor: 'pointer', color: activeTab === 'text' ? '#e2e8f0' : '#64748b', borderBottom: activeTab === 'text' ? '2px solid #3b82f6' : 'none', fontWeight: activeTab === 'text' ? 600 : 500, fontSize: '13px' }}>Text Plan</div>
-                <div onClick={() => setActiveTab('compare')} style={{ padding: '8px 20px', cursor: 'pointer', color: activeTab === 'compare' ? '#e2e8f0' : '#64748b', borderBottom: activeTab === 'compare' ? '2px solid #3b82f6' : 'none', fontWeight: activeTab === 'compare' ? 600 : 500, fontSize: '13px' }}>Compare</div>
 
                 {/* Metrics Display */}
-                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '15px', paddingRight: '20px', fontSize: '12px', color: '#94a3b8' }}>
+                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '15px', paddingRight: '10px', fontSize: '12px', color: '#94a3b8' }}>
                     {explainResult && explainResult[0] && (
                         <>
                             {explainResult[0]['Planning Time'] !== undefined && (
@@ -143,6 +145,23 @@ const QueryTuneTab: React.FC<QueryTuneTabProps> = ({
                     >
                         ⚡ Refresh
                     </button>
+
+                    {onClose && (
+                        <button
+                            onClick={onClose}
+                            style={{
+                                background: 'transparent',
+                                border: 'none',
+                                color: '#94a3b8',
+                                cursor: 'pointer',
+                                marginLeft: '10px',
+                                display: 'flex',
+                                alignItems: 'center'
+                            }}
+                        >
+                            <X size={16} />
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -164,7 +183,7 @@ const QueryTuneTab: React.FC<QueryTuneTabProps> = ({
                                     instance.fitView({ padding: 0.2 });
                                 }}
                                 fitView
-                                style={{ background: '#334155' }}
+                                style={{ background: '#0f172a' }}
                                 proOptions={{ hideAttribution: true }}
                             >
                                 <Background color="#475569" gap={20} />

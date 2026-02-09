@@ -1,25 +1,17 @@
 import React from 'react';
-import ReactFlow, { Background, Controls, Node, Edge } from 'reactflow';
-import 'reactflow/dist/style.css';
 import InsightsTab from './InsightsTab';
 import ResultsTable from '../ResultsTable';
-import NodeDetailsPanel from '../NodeDetailsPanel';
 import QueryParametersPanel from './QueryParametersPanel';
 import PerformanceBadge from '../PerformanceBadge';
 import { Maximize2, Minimize2 } from 'lucide-react';
 
 interface BottomPaneProps {
-    activeTab: 'results' | 'details' | 'insights' | 'visualplan';
-    setActiveTab: (tab: 'results' | 'details' | 'insights' | 'visualplan') => void;
+    activeTab: 'results' | 'insights';
+    setActiveTab: (tab: 'results' | 'insights') => void;
 
     // Results Props
     executionResult: any;
     execError?: string | null;
-
-    // Details Props
-    selectedNode: any;
-    fullPlan: any;
-    onCloseDetails: () => void;
 
     // Insights Props
     insights: any[];
@@ -41,54 +33,16 @@ interface BottomPaneProps {
     connectionInfo: any;
     metaParams?: any[];
     onExecuteQuery: () => void;
-
-    // Visual Plan Props
-    nodes?: Node[];
-    edges?: Edge[];
-    onNodesChange?: any;
-    onNodeClick?: any;
-    onPaneClick?: any;
-    nodeTypes?: any;
-    explainLoading?: boolean;
-    explainError?: string;
-    onRefreshPlan?: () => void;
-    onAnalyzeNode?: (node: any) => void;
 }
 
 const BottomPane: React.FC<BottomPaneProps> = ({
     activeTab, setActiveTab,
     executionResult, execError,
-    selectedNode, fullPlan, onCloseDetails,
     insights, onRunInsight, insightResults,
     height, isExpanded, onToggleExpand,
     isMaximized, onToggleMaximize,
-    sqlQuery, paramValues, onParamChange, connectionInfo, metaParams, onExecuteQuery,
-    nodes = [], edges = [], onNodesChange, onNodeClick, onPaneClick, nodeTypes,
-    explainLoading, explainError, onRefreshPlan, onAnalyzeNode
+    sqlQuery, paramValues, onParamChange, connectionInfo, metaParams, onExecuteQuery
 }) => {
-    // Ref for Visual Plan context menu
-    const flowWrapperRef = React.useRef<HTMLDivElement>(null);
-    const [menu, setMenu] = React.useState<{ x: number, y: number, node: any } | null>(null);
-
-    const onNodeContextMenu = React.useCallback(
-        (event: React.MouseEvent, node: Node) => {
-            event.preventDefault();
-            const pane = flowWrapperRef.current?.getBoundingClientRect();
-            if (!pane) return;
-            setMenu({
-                x: event.clientX - pane.left,
-                y: event.clientY - pane.top,
-                node: node,
-            });
-        },
-        [flowWrapperRef]
-    );
-
-    const onPaneClickWrapper = React.useCallback((event: any) => {
-        setMenu(null);
-        if (onPaneClick) onPaneClick(event);
-    }, [onPaneClick]);
-
     // Compute actual height based on maximize state
     const computedHeight = isMaximized ? '100%' : (isExpanded ? `${height}px` : '35px');
 
@@ -123,18 +77,6 @@ const BottomPane: React.FC<BottomPaneProps> = ({
                         style={tabStyle('results') as React.CSSProperties}
                     >
                         Results {executionResult ? `(${executionResult.rowCount})` : ''}
-                    </button>
-                    <button
-                        onClick={() => { setActiveTab('visualplan'); if (!isExpanded) onToggleExpand(); }}
-                        style={tabStyle('visualplan') as React.CSSProperties}
-                    >
-                        Visual Plan
-                    </button>
-                    <button
-                        onClick={() => { setActiveTab('details'); if (!isExpanded) onToggleExpand(); }}
-                        style={tabStyle('details') as React.CSSProperties}
-                    >
-                        Node Details
                     </button>
                     <button
                         onClick={() => { setActiveTab('insights'); if (!isExpanded) onToggleExpand(); }}
@@ -232,133 +174,6 @@ const BottomPane: React.FC<BottomPaneProps> = ({
                                     </div>
                                 )}
                             </div>
-                        </div>
-                    )}
-
-                    {activeTab === 'visualplan' && (
-                        <div ref={flowWrapperRef} style={{ height: '100%', width: '100%', position: 'relative' }} onClick={() => setMenu(null)}>
-                            {/* Visual Plan Header */}
-                            {fullPlan && fullPlan[0] && (
-                                <div style={{
-                                    position: 'absolute', top: '10px', right: '10px', zIndex: 10,
-                                    display: 'flex', alignItems: 'center', gap: '15px', fontSize: '12px', color: '#94a3b8',
-                                    background: '#0f172a', padding: '6px 12px', borderRadius: '6px', border: '1px solid #334155'
-                                }}>
-                                    {fullPlan[0]['Planning Time'] !== undefined && (
-                                        <span>
-                                            Planning: <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{fullPlan[0]['Planning Time'].toFixed(2)}ms</span>
-                                        </span>
-                                    )}
-                                    {(fullPlan[0]['Execution Time'] !== undefined || fullPlan[0]['Total Runtime'] !== undefined) && (
-                                        <span>
-                                            Execution: <span style={{ color: '#e2e8f0', fontWeight: 600 }}>
-                                                {(fullPlan[0]['Execution Time'] || fullPlan[0]['Total Runtime']).toFixed(2)}ms
-                                            </span>
-                                        </span>
-                                    )}
-                                    {onRefreshPlan && (
-                                        <button
-                                            onClick={onRefreshPlan}
-                                            style={{
-                                                background: '#1e293b', border: '1px solid #475569', color: '#4ade80',
-                                                fontSize: '10px', padding: '2px 8px', borderRadius: '4px', cursor: 'pointer'
-                                            }}
-                                        >
-                                            ⚡ Refresh
-                                        </button>
-                                    )}
-                                </div>
-                            )}
-
-                            <ReactFlow
-                                nodes={nodes}
-                                edges={edges}
-                                nodeTypes={nodeTypes}
-                                onNodesChange={onNodesChange}
-                                onNodeClick={onNodeClick}
-                                onNodeContextMenu={onNodeContextMenu}
-                                onPaneClick={onPaneClickWrapper}
-                                fitView
-                                style={{ background: '#334155', height: '100%' }}
-                                proOptions={{ hideAttribution: true }}
-                            >
-                                <Background color="#475569" gap={20} />
-                                <Controls />
-                            </ReactFlow>
-
-                            {/* Context Menu */}
-                            {menu && (
-                                <div
-                                    style={{
-                                        position: 'absolute', top: menu.y, left: menu.x, zIndex: 100,
-                                        background: '#1e293b', border: '1px solid #475569', borderRadius: '4px',
-                                        padding: '4px 0', boxShadow: '0 4px 6px rgba(0,0,0,0.3)', minWidth: '150px'
-                                    }}
-                                >
-                                    <div
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            if (onAnalyzeNode) onAnalyzeNode(menu.node);
-                                            setMenu(null);
-                                        }}
-                                        style={{
-                                            padding: '8px 12px', fontSize: '13px', color: '#e2e8f0', cursor: 'pointer',
-                                            display: 'flex', alignItems: 'center', gap: '8px'
-                                        }}
-                                        onMouseEnter={(e) => (e.currentTarget.style.background = '#334155')}
-                                        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                                    >
-                                        ⚡ Analyze Node
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Loading Overlay */}
-                            {explainLoading && (
-                                <div style={{
-                                    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                                    background: 'rgba(15, 23, 42, 0.7)',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 20
-                                }}>
-                                    <div style={{ color: '#60a5fa', fontWeight: 'bold' }}>Analyzing Plan...</div>
-                                </div>
-                            )}
-
-                            {/* Empty State */}
-                            {!explainLoading && nodes.length === 0 && !explainError && (
-                                <div style={{
-                                    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10, pointerEvents: 'none'
-                                }}>
-                                    <div style={{
-                                        background: '#1e293b', border: '1px solid #334155', padding: '20px', borderRadius: '8px',
-                                        textAlign: 'center', color: '#94a3b8'
-                                    }}>
-                                        <div style={{ fontSize: '24px', marginBottom: '10px' }}>⚡</div>
-                                        <div>Run EXPLAIN ANALYZE to see the visual plan.</div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Error Overlay */}
-                            {explainError && (
-                                <div style={{
-                                    position: 'absolute', top: '20px', left: '50%', transform: 'translateX(-50%)',
-                                    background: '#fee2e2', color: '#b91c1c', padding: '10px 20px', borderRadius: '8px', zIndex: 30
-                                }}>
-                                    Error: {explainError}
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {activeTab === 'details' && (
-                        <div style={{ height: '100%', overflow: 'hidden' }}>
-                            <NodeDetailsPanel
-                                selectedNode={selectedNode}
-                                onClose={onCloseDetails}
-                                fullPlan={fullPlan}
-                            />
                         </div>
                     )}
 

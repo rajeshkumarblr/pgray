@@ -98,7 +98,7 @@ const AskChat: React.FC<AskChatProps> = ({ connectionInfo, sql, initialExplanati
             {/* Header */}
             <div className="p-3 border-b border-slate-800 bg-slate-950/50 flex items-center gap-2">
                 <Sparkles size={14} className="text-purple-400" />
-                <span className="text-sm font-medium text-slate-300">Data Assistant</span>
+                <span className="text-sm font-medium text-slate-300">SQL assistant</span>
             </div>
 
             {/* Messages */}

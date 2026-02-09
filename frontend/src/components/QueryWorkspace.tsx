@@ -8,6 +8,7 @@ import BottomPane from './workspace/BottomPane';
 import SimpleEditor from './SimpleEditor';
 import DiffView from './DiffView';
 import PlanNode from './PlanNode';
+import NodeDetailsPanel from './NodeDetailsPanel';
 import { getSavedQueries, ParameterizedQuery, explainSql } from '../api';
 
 
@@ -15,7 +16,7 @@ import AskTab from '../pages/AskTab';
 import AdminTab from './tabs/AdminTab';
 import DesignTab from './tabs/DesignTab';
 import QueryTuneTab from './tabs/QueryTuneTab';
-import { Sparkles, Code, GitBranch, Settings } from 'lucide-react';
+import { Sparkles, Code, GitBranch, Settings, MessageSquare, Info } from 'lucide-react';
 
 
 const nodeTypes = { planNode: PlanNode };
@@ -106,35 +107,29 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
 
     // --- AI Sidebar State ---
     const [aiSidebarWidth, setAiSidebarWidth] = useState(400);
-
+    const [activeRightTab, setActiveRightTab] = useState<'chat' | 'details'>('chat');
 
 
     // --- Local State ---
     const [savedQueries, setSavedQueries] = useState<ParameterizedQuery[]>([]);
-    const [activeBottomTab, setActiveBottomTab] = useState<'results' | 'details' | 'insights' | 'visualplan'>('results');
+    const [activeBottomTab, setActiveBottomTab] = useState<'results' | 'insights'>('results');
     const [bottomExpanded, setBottomExpanded] = useState(false);
     const [bottomHeight, setBottomHeight] = useState(300);
     const [isBottomMaximized, setIsBottomMaximized] = useState(false);
     const [tuneTabMode, setTuneTabMode] = useState<'visual' | 'text' | 'compare'>('visual');
     const [paramValues, setParamValues] = useState<Record<string, string>>({});
 
-    // Query Mode Switcher (Code | Plan)
-    const [queryMode, setQueryMode] = useState<'code' | 'plan'>('code');
+    // Split View State
+    const [showPlan, setShowPlan] = useState(false);
+    const [planWidth, setPlanWidth] = useState(600); // Default width for Plan pane
 
     // Auto-Trigger Explain Plan Logic
     useEffect(() => {
-        // If user switches to Plan mode AND has SQL AND (no plan yet)
-        // Or if sql changed (we can check against last explained sql if we track it, but for now
-        // Auto-refresh Plan when switching - add sqlQuery to deps
-        if (activeTab === 'query' && queryMode === 'plan' && sqlQuery && !explainResult) {
+        // If user opens Plan view AND has SQL AND (no plan yet)
+        if (activeTab === 'query' && showPlan && sqlQuery && !explainResult) {
             onTune();
         }
-    }, [activeTab, queryMode, explainResult, sqlQuery]); // Removed sqlQuery dep to avoid loop if explain result updates? No, need to re-explain if SQL changes. But onTune triggers explain which sets result.
-    // If sqlQuery changes, explainResult is NOT automatically cleared in App.tsx?
-    // App.tsx: setExecutionResult(null) is called on execute. But what about explain?
-    // If I change SQL text, explainResult becomes stale. I should probably clear explainResult on SQL change in App.tsx ideally.
-    // But here, if I switch to Plan, I want to see the plan for CURRENT sql.
-    // Let's assume onTune handles it.
+    }, [activeTab, showPlan, explainResult, sqlQuery]);
 
     // Lifted Search State
     const [searchPrompt, setSearchPrompt] = useState('');
@@ -146,10 +141,6 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
 
     // SQL Explanation State for Search Tab
     const [sqlExplanation, setSqlExplanation] = useState<string | null>(null);
-
-
-
-
 
     // --- Load Saved Queries ---
     const [loadingSavedQueries, setLoadingSavedQueries] = useState(false);
@@ -177,8 +168,7 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
         loadSavedQueries();
     }, [loadSavedQueries, queriesRefreshTrigger]);
 
-    // Auto-collapse bottom pane logic - simplified or removed?
-    // Let's keep it but update for new tabs
+    // Auto-collapse bottom pane logic
     useEffect(() => {
         if (!['query', 'ask'].includes(activeTab)) {
             setBottomExpanded(false);
@@ -210,19 +200,25 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
         }
     };
 
-
-
     const handleExecuteWrapper = () => {
         onExecute(sqlQuery, paramValues);
         setActiveBottomTab('results');
         setBottomExpanded(true);
     };
 
-    // Handler for opening Visual Plan in Mode
+    // Handler for opening Visual Plan
     const handleTuneWrapper = () => {
         setActiveTab('query');
-        setQueryMode('plan');
-        // Effect will trigger onTune if needed
+        setShowPlan(true); // Open Plan Pane
+        onTune(); // Trigger Plan
+    };
+
+    // Handler for throwing away plan
+    const handleTogglePlan = () => {
+        setShowPlan(!showPlan);
+        if (!showPlan && !explainResult) {
+            onTune(); // Auto tune if opening
+        }
     };
 
     // Handler for explaining SQL logic in plain English
@@ -284,6 +280,36 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
         document.addEventListener('mouseup', onMouseUp);
     };
 
+    // Plan Pane Resize
+    const startPlanResize = (e: React.MouseEvent) => {
+        e.preventDefault();
+        const startX = e.clientX;
+        const startWidth = planWidth;
+
+        const onMouseMove = (moveEvent: MouseEvent) => {
+            // Dragging left increases width
+            const newWidth = startWidth + (startX - moveEvent.clientX);
+            if (newWidth >= 300 && newWidth <= 1200) {
+                setPlanWidth(newWidth);
+            }
+        };
+
+        const onMouseUp = () => {
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+        };
+
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+    };
+
+    // Node Click Handler Wrapper
+    const handleNodeClickWrapper = (e: React.MouseEvent, node: Node) => {
+        if (onNodeClick) onNodeClick(e, node);
+        setActiveRightTab('details'); // Switch right tab to details
+    };
+
+
     // Tab Style Helper
     const tabStyle = (tab: 'ask' | 'query' | 'design' | 'admin') => ({
         padding: '10px 20px',
@@ -298,6 +324,23 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
         gap: '8px',
         userSelect: 'none' as any,
         transition: 'all 0.15s ease'
+    });
+
+    // Right Sidebar Tab Style
+    const rightTabStyle = (tab: 'chat' | 'details') => ({
+        flex: 1,
+        padding: '8px',
+        textAlign: 'center' as const,
+        cursor: 'pointer',
+        color: activeRightTab === tab ? '#e2e8f0' : '#94a3b8',
+        borderBottom: activeRightTab === tab ? '2px solid #3b82f6' : '1px solid #334155',
+        background: activeRightTab === tab ? '#0f172a' : '#1e293b',
+        fontSize: '12px',
+        fontWeight: activeRightTab === tab ? 600 : 500,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '6px'
     });
 
 
@@ -359,7 +402,6 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                             onEditSql={(sql) => {
                                 if (sql) setSqlQuery(sql);
                                 setActiveTab('query');
-                                setQueryMode('code');
                             }}
                             connectionInfo={connectionInfo}
                             model={activeProvider === 'local' ? localModel : geminiModel}
@@ -367,215 +409,203 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                     )}
 
                     {activeTab === 'query' && (
-                        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-                            {/* Mode Switcher */}
-                            <div style={{ display: 'flex', justifyContent: 'center', padding: '8px', background: '#0f172a', borderBottom: '1px solid #1e293b' }}>
-                                <div style={{ display: 'flex', background: '#1e293b', borderRadius: '6px', padding: '2px', border: '1px solid #334155' }}>
-                                    <button
-                                        onClick={() => setQueryMode('code')}
-                                        style={{
-                                            padding: '4px 20px',
-                                            borderRadius: '4px',
-                                            background: queryMode === 'code' ? '#3b82f6' : 'transparent',
-                                            color: queryMode === 'code' ? 'white' : '#94a3b8',
-                                            fontSize: '13px',
-                                            fontWeight: 500,
-                                            border: 'none',
-                                            cursor: 'pointer',
-                                            transition: 'all 0.15s ease'
-                                        }}
-                                    >
-                                        Code
-                                    </button>
-                                    <button
-                                        onClick={() => setQueryMode('plan')}
-                                        style={{
-                                            padding: '4px 20px',
-                                            borderRadius: '4px',
-                                            background: queryMode === 'plan' ? '#3b82f6' : 'transparent',
-                                            color: queryMode === 'plan' ? 'white' : '#94a3b8',
-                                            fontSize: '13px',
-                                            fontWeight: 500,
-                                            border: 'none',
-                                            cursor: 'pointer',
-                                            transition: 'all 0.15s ease'
-                                        }}
-                                    >
-                                        Plan
-                                    </button>
-                                </div>
-                            </div>
+                        <div style={{ display: 'flex', flexDirection: 'row', height: '100%', overflow: 'hidden' }}>
 
-                            <div style={{ flex: 1, display: 'flex', flexDirection: 'row', minHeight: 0, overflow: 'hidden' }}>
-                                {/* Left Sidebar (Saved Queries) - Only in Code mode to maximize space in Plan? 
-                                    Let's Keep it consistent for now, but user said "Render Circuit Board Full Screen (flex-1)". 
-                                    I will hide it in Plan mode.
-                                */}
-                                {queryMode === 'code' && (
-                                    <SavedQueriesSidebar
-                                        connectionInfo={connectionInfo}
-                                        onSelectQuery={handleSelectSavedQuery}
-                                        queries={savedQueries}
-                                        loading={loadingSavedQueries}
-                                        onReload={loadSavedQueries}
-                                        activeQueryName={sessionTitle}
-                                    />
-                                )}
+                            {/* Left Sidebar (Saved Queries) */}
+                            <SavedQueriesSidebar
+                                connectionInfo={connectionInfo}
+                                onSelectQuery={handleSelectSavedQuery}
+                                queries={savedQueries}
+                                loading={loadingSavedQueries}
+                                onReload={loadSavedQueries}
+                                activeQueryName={sessionTitle}
+                            />
 
-                                {/* Main Area */}
-                                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
-                                    {queryMode === 'code' ? (
-                                        <>
-                                            <EditorToolbar
+                            {/* Center Area (Code/Plan + BottomPane) */}
+                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
+
+                                {/* Top Content: Split View (Code | Plan) */}
+                                <div style={{ flex: 1, display: 'flex', flexDirection: 'row', minHeight: 0, overflow: 'hidden' }}>
+                                    {/* Left Split: Code Editor */}
+                                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
+                                        <EditorToolbar
+                                            onExecute={handleExecuteWrapper}
+                                            isExecuting={isExecuting}
+                                            onStop={() => { }}
+                                            onClear={onReset}
+                                            onFormat={() => { }}
+                                            onSave={onSaveSession}
+                                            onExplain={() => { /* explain text */ }}
+                                            onVisualize={() => { /* visualize results */ }}
+                                            onAskAI={handleExplainLogic}
+                                            showPlan={showPlan}
+                                            onTogglePlan={handleTogglePlan}
+                                        />
+
+                                        <div style={{ flex: 1, position: 'relative', display: 'flex' }}>
+                                            <SimpleEditor
+                                                value={sqlQuery}
+                                                onChange={setSqlQuery}
                                                 onExecute={handleExecuteWrapper}
-                                                isExecuting={isExecuting}
-                                                onStop={() => { }}
-                                                onClear={onReset}
-                                                onFormat={() => { }}
-                                                onSave={onSaveSession}
-                                                onExplain={handleTuneWrapper} // Map "Explain" to Plan Mode
-                                                onAskAI={handleExplainLogic}
+                                                style={{ height: '100%', flex: 1 }}
                                             />
-
-                                            <div style={{ flex: 1, position: 'relative', display: 'flex' }}>
-                                                <SimpleEditor
-                                                    value={sqlQuery}
-                                                    onChange={setSqlQuery}
-                                                    onExecute={handleExecuteWrapper}
-                                                    style={{ height: '100%', flex: 1 }}
-                                                />
-                                                {/* Diff View Overlay */}
-                                                {showDiff && (
-                                                    <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: '50%', background: '#0f172a', borderLeft: '1px solid #334155', zIndex: 10 }}>
-                                                        <DiffView
-                                                            oldCode={diffBaseQuery}
-                                                            newCode={sqlQuery}
-                                                            onClose={() => setShowDiff(false)}
-                                                        />
-                                                    </div>
-                                                )}
-                                            </div>
-
-                                            {/* Bottom Pane (Results) */}
-                                            {/* Maximize logic handling */}
-                                            {!isBottomMaximized && (
-                                                <div
-                                                    onMouseDown={startBottomResize}
-                                                    style={{
-                                                        height: '5px',
-                                                        cursor: 'row-resize',
-                                                        background: '#1e293b',
-                                                        borderTop: '1px solid #334155',
-                                                        display: 'flex',
-                                                        justifyContent: 'center',
-                                                        alignItems: 'center'
-                                                    }}
-                                                >
-                                                    <div style={{ width: '30px', height: '2px', background: '#475569', borderRadius: '2px' }} />
+                                            {/* Diff View Overlay */}
+                                            {showDiff && (
+                                                <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: '50%', background: '#0f172a', borderLeft: '1px solid #334155', zIndex: 10 }}>
+                                                    <DiffView
+                                                        oldCode={diffBaseQuery}
+                                                        newCode={sqlQuery}
+                                                        onClose={() => setShowDiff(false)}
+                                                    />
                                                 </div>
                                             )}
-
-                                            <BottomPane
-                                                activeTab={activeBottomTab}
-                                                setActiveTab={setActiveBottomTab}
-                                                executionResult={executionResult}
-                                                execError={execError}
-                                                selectedNode={selectedNode}
-                                                fullPlan={explainResult}
-                                                onCloseDetails={() => setSelectedNode(null)}
-                                                height={bottomHeight}
-                                                isExpanded={bottomExpanded}
-                                                onToggleExpand={() => setBottomExpanded(!bottomExpanded)}
-                                                isMaximized={isBottomMaximized}
-                                                onToggleMaximize={() => setIsBottomMaximized(!isBottomMaximized)}
-                                                insights={insights}
-                                                onRunInsight={onRunInsight}
-                                                insightResults={insightResults}
-                                                sqlQuery={sqlQuery}
-                                                paramValues={paramValues}
-                                                onParamChange={setParamValues}
-                                                connectionInfo={connectionInfo}
-                                                metaParams={[]} // Fix param defs if needed
-                                                onExecuteQuery={handleExecuteWrapper}
-                                                // Visual Plan Props (Moved to Plan Mode, but keeping here for 'visualplan' tab consistency if user uses bottom pane)
-                                                // Wait, user said "Move Visual Plan ... to Top-Level Sub-Tab".
-                                                // So I should probably REMOVE 'visualplan' from BottomPane?
-                                                // Or keep it as legacy/alternative?
-                                                // Let's pass the props anyway to avoid breaking BottomPane if it still has the tab.
-                                                nodes={nodes}
-                                                edges={edges}
-                                                onNodesChange={onNodesChange}
-                                                onNodeClick={onNodeClick}
-                                                onPaneClick={onPaneClick}
-                                                nodeTypes={nodeTypes}
-                                                explainLoading={loadingExplain}
-                                                explainError={explainError}
-                                                onRefreshPlan={onTune}
-                                                onAnalyzeNode={onAnalyzeNode}
-                                            />
-                                        </>
-                                    ) : (
-                                        /* PLAN MODE - Custom Layout */
-                                        <div className="flex-1 h-full min-h-0 relative" style={{ display: 'flex', flexDirection: 'column' }}>
-                                            <QueryTuneTab
-                                                activeTab={tuneTabMode}
-                                                setActiveTab={setTuneTabMode}
-                                                nodes={nodes} edges={edges}
-                                                onNodesChange={onNodesChange}
-                                                onNodeClick={onNodeClick}
-                                                onPaneClick={onPaneClick}
-                                                selectedNode={selectedNode}
-                                                explainResult={explainResult}
-                                                explainText={explainText}
-                                                loading={loadingExplain}
-                                                error={explainError}
-                                                setReactFlowInstance={() => { }}
-                                                nodeTypes={nodeTypes}
-                                                onAnalyzeNode={onAnalyzeNode}
-                                                onRefreshPlan={onTune}
-                                                onCompare={onCompare}
-                                                baselineMetrics={baselineMetrics}
-                                            />
                                         </div>
+                                    </div>
+
+                                    {/* Right Split: Plan (Conditional) */}
+                                    {showPlan && (
+                                        <>
+                                            {/* Resize Handle */}
+                                            <div
+                                                onMouseDown={startPlanResize}
+                                                style={{
+                                                    width: '5px',
+                                                    cursor: 'col-resize',
+                                                    background: '#1e293b',
+                                                    borderLeft: '1px solid #334155',
+                                                    display: 'flex',
+                                                    justifyContent: 'center',
+                                                    alignItems: 'center',
+                                                    zIndex: 20
+                                                }}
+                                            >
+                                                <div style={{ width: '2px', height: '30px', background: '#475569', borderRadius: '2px' }} />
+                                            </div>
+
+                                            <div style={{ width: `${planWidth}px`, flexShrink: 0, display: 'flex', flexDirection: 'column', background: '#0f172a' }}>
+                                                <QueryTuneTab
+                                                    activeTab={tuneTabMode}
+                                                    setActiveTab={setTuneTabMode}
+                                                    nodes={nodes} edges={edges}
+                                                    onNodesChange={onNodesChange}
+                                                    onNodeClick={handleNodeClickWrapper}
+                                                    onPaneClick={onPaneClick}
+                                                    selectedNode={selectedNode}
+                                                    explainResult={explainResult}
+                                                    explainText={explainText}
+                                                    loading={loadingExplain}
+                                                    error={explainError}
+                                                    setReactFlowInstance={() => { }}
+                                                    nodeTypes={nodeTypes}
+                                                    onAnalyzeNode={onAnalyzeNode}
+                                                    onRefreshPlan={onTune}
+                                                    onCompare={onCompare}
+                                                    baselineMetrics={baselineMetrics}
+                                                    onClose={() => setShowPlan(false)}
+                                                />
+                                            </div>
+                                        </>
                                     )}
                                 </div>
 
-                                {/* Right: AI Assistant (Always visible in Query Tab) */}
-                                <div
-                                    onMouseDown={startAISidebarResize}
-                                    style={{
-                                        width: '5px',
-                                        cursor: 'col-resize',
-                                        background: '#1e293b',
-                                        borderLeft: '1px solid #334155',
-                                        display: 'flex',
-                                        justifyContent: 'center',
-                                        alignItems: 'center'
-                                    }}
-                                >
-                                    <div style={{ width: '2px', height: '30px', background: '#475569', borderRadius: '2px' }} />
+                                {/* Bottom Pane (Results) - Now Full Width within Center Area */}
+                                {!isBottomMaximized && (
+                                    <div
+                                        onMouseDown={startBottomResize}
+                                        style={{
+                                            height: '5px',
+                                            cursor: 'row-resize',
+                                            background: '#1e293b',
+                                            borderTop: '1px solid #334155',
+                                            display: 'flex',
+                                            justifyContent: 'center',
+                                            alignItems: 'center'
+                                        }}
+                                    >
+                                        <div style={{ width: '30px', height: '2px', background: '#475569', borderRadius: '2px' }} />
+                                    </div>
+                                )}
+
+                                <BottomPane
+                                    activeTab={activeBottomTab}
+                                    setActiveTab={setActiveBottomTab}
+                                    executionResult={executionResult}
+                                    execError={execError}
+                                    height={bottomHeight}
+                                    isExpanded={bottomExpanded}
+                                    onToggleExpand={() => setBottomExpanded(!bottomExpanded)}
+                                    isMaximized={isBottomMaximized}
+                                    onToggleMaximize={() => setIsBottomMaximized(!isBottomMaximized)}
+                                    insights={insights}
+                                    onRunInsight={onRunInsight}
+                                    insightResults={insightResults}
+                                    sqlQuery={sqlQuery}
+                                    paramValues={paramValues}
+                                    onParamChange={setParamValues}
+                                    connectionInfo={connectionInfo}
+                                    metaParams={[]}
+                                    onExecuteQuery={handleExecuteWrapper}
+                                />
+
+                            </div>
+
+                            {/* Right Sidebar: AI Assistant / Node Details */}
+                            <div
+                                onMouseDown={startAISidebarResize}
+                                style={{
+                                    width: '5px',
+                                    cursor: 'col-resize',
+                                    background: '#1e293b',
+                                    borderLeft: '1px solid #334155',
+                                    display: 'flex',
+                                    justifyContent: 'center',
+                                    alignItems: 'center'
+                                }}
+                            >
+                                <div style={{ width: '2px', height: '30px', background: '#475569', borderRadius: '2px' }} />
+                            </div>
+
+                            <div style={{ width: `${aiSidebarWidth}px`, height: '100%', flexShrink: 0, display: 'flex', flexDirection: 'column', background: '#0f172a', borderLeft: '1px solid #334155' }}>
+                                {/* Right Tabs */}
+                                <div style={{ display: 'flex', borderBottom: '1px solid #334155' }}>
+                                    <div onClick={() => setActiveRightTab('chat')} style={rightTabStyle('chat')}>
+                                        <MessageSquare size={14} /> AI Chat
+                                    </div>
+                                    <div onClick={() => setActiveRightTab('details')} style={rightTabStyle('details')}>
+                                        <Info size={14} /> Details
+                                    </div>
                                 </div>
 
-                                <div style={{ width: `${aiSidebarWidth}px`, height: '100%', flexShrink: 0 }}>
-                                    <AIChatSidebar
-                                        messages={chatHistory}
-                                        onSend={onAIStream}
-                                        loading={aiLoading}
-                                        aiState={aiStatus}
-                                        title={queryMode === 'plan' ? "Plan Assistant" : "Query Assistant"}
-                                        onRunSql={(sql) => { setSqlQuery(sql); }}
-                                        onClose={() => { }}
-                                        selectedModel={activeProvider}
-                                        onModelChange={setActiveProvider}
-                                        googleApiKey={googleApiKey}
-                                        onSetGoogleApiKey={setGoogleApiKey}
-                                        onOpenSettings={onOpenSettings}
-                                        onClearHistory={onClearHistory}
-                                        onIndexDatabase={onIndexDatabase}
-                                        connectionInfo={connectionInfo}
-                                    />
+                                <div style={{ flex: 1, overflow: 'hidden' }}>
+                                    {activeRightTab === 'chat' && (
+                                        <AIChatSidebar
+                                            messages={chatHistory}
+                                            onSend={onAIStream}
+                                            loading={aiLoading}
+                                            aiState={aiStatus}
+                                            title={showPlan ? "Plan Assistant" : "Query Assistant"}
+                                            onRunSql={(sql) => { setSqlQuery(sql); }}
+                                            onClose={() => { }}
+                                            selectedModel={activeProvider}
+                                            onModelChange={setActiveProvider}
+                                            googleApiKey={googleApiKey}
+                                            onSetGoogleApiKey={setGoogleApiKey}
+                                            onOpenSettings={onOpenSettings}
+                                            onClearHistory={onClearHistory}
+                                            onIndexDatabase={onIndexDatabase}
+                                            connectionInfo={connectionInfo}
+                                        />
+                                    )}
+                                    {activeRightTab === 'details' && (
+                                        <NodeDetailsPanel
+                                            selectedNode={selectedNode}
+                                            onClose={() => setSelectedNode(null)}
+                                            fullPlan={explainResult}
+                                        />
+                                    )}
                                 </div>
                             </div>
+
                         </div>
                     )}
 

@@ -41,6 +41,9 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
     *   **Design Studio**: Integrated Schema Browser and Interactive ER Diagram in a unified view.
     *   **Admin Dashboard**: Centralized server configuration and health monitoring.
     *   **Resizable Panes**: Customize the width of the AI Assistant sidebar.
+    *   **Unified Dark Theme**: Seamless `slate-900` background across Editor, Visual Plan, and Ask Tab for a cohesive look.
+    *   **Full-Width Results**: Bottom pane now spans the full width of the workspace for better data visibility.
+    *   **Tabbed Sidebar**: Right sidebar now houses both the **SQL Assistant** and **Node Details** in a clean, tabbed interface.
     *   **Database Selector**: Toolbar shows current database with quick-switch dropdown.
 
 *   **Session Management**:

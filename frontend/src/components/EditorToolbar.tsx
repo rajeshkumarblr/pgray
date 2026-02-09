@@ -14,6 +14,8 @@ interface EditorToolbarProps {
     onVisualize?: () => void;
     onAskAI: () => void;
     onOpenSettings?: () => void;
+    showPlan?: boolean;
+    onTogglePlan?: () => void;
 }
 
 const EditorToolbar: React.FC<EditorToolbarProps> = ({
@@ -21,7 +23,8 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
     onExecute, isExecuting, onStop,
     onClear, onFormat, onSave,
     onExplain, onVisualize,
-    onAskAI, onOpenSettings
+    onAskAI, onOpenSettings,
+    showPlan, onTogglePlan
 }) => {
 
     // Configurable styles constants
@@ -73,11 +76,15 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
 
             {/* Group 3: Analysis */}
             <div className="flex items-center gap-1">
-                <button onClick={onExplain} className={BUTTON_CLASS} title="Explain Plan">
-                    <Search size={ICON_SIZE} />
+                <button
+                    onClick={onTogglePlan}
+                    className={`${BUTTON_CLASS} ${showPlan ? 'text-blue-400 bg-slate-800' : ''}`}
+                    title="Toggle Plan View"
+                >
+                    <BarChart size={ICON_SIZE} className={showPlan ? "fill-current" : ""} />
                 </button>
-                <button onClick={onVisualize} className={BUTTON_CLASS} title="Visualize Results">
-                    <BarChart size={ICON_SIZE} />
+                <button onClick={onExplain} className={BUTTON_CLASS} title="Explain Plan (Text)">
+                    <Search size={ICON_SIZE} />
                 </button>
             </div>
 

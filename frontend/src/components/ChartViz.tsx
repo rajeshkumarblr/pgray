@@ -18,7 +18,10 @@ interface ChartVizProps {
 
 // HSL Color Generator for distinct series
 const getSeriesColor = (index: number) => {
-    const hue = (index * 137.508) % 360; // Golden Angle approximation
+    if (index === 0) return '#3b82f6'; // blue-500
+    if (index === 1) return '#10b981'; // emerald-500
+    // for subsequent series, just generate distinct colors
+    const hue = ((index + 1) * 137.508) % 360;
     return `hsl(${hue}, 70%, 50%)`;
 };
 
