@@ -3,7 +3,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
-from app.models import ConnectionRequest, ExplainRequest, QueryRequest, GenerateSqlRequest, ExplainSqlRequest, ConnectionInfo
+from app.models import ConnectionRequest, ExplainRequest, QueryRequest, GenerateSqlRequest, ExplainSqlRequest, ConnectionInfo, SaveAskRequest
 from app.connection import test_connection
 from app.explain import execute_explain, execute_query_results
 from app.history import init_db, add_history_item, get_history_items
@@ -109,11 +109,39 @@ async def get_databases_endpoint(request: ConnectionRequest):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@app.post("/api/ask/history")
+async def get_ask_history_endpoint(request: ConnectionRequest):
+    try:
+        from app.ask_history import get_recent_asks
+        asks = get_recent_asks(request.connection.model_dump())
+        return {"status": "success", "asks": asks}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/ask/success")
+async def save_ask_success_endpoint(request: SaveAskRequest):
+    try:
+        from app.ask_history import save_ask_success
+        save_ask_success(request.connection.model_dump(), request.prompt, request.sql)
+        return {"status": "success"}
+    except Exception as e:
+         raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/generate_sql")
 def generate_sql_endpoint(request: GenerateSqlRequest):
     try:
+        if request.connection:
+            from app.ask_history import find_cached_sql
+            cached_sql = find_cached_sql(request.connection.model_dump(), request.prompt)
+            if cached_sql:
+                return {
+                    "status": "success",
+                    "sql": cached_sql,
+                    "prompt": request.prompt,
+                    "cached": True
+                }
+
         from app.ai import generate_sql
-        # Pass model from request to generate_sql
         result = generate_sql(
             request.prompt, 
             request.schema_context, 
@@ -126,7 +154,8 @@ def generate_sql_endpoint(request: GenerateSqlRequest):
         return {
             "status": "success", 
             "sql": result.get("sql"), 
-            "prompt": result.get("prompt")
+            "prompt": result.get("prompt"),
+            "cached": False
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

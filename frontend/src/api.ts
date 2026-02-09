@@ -9,7 +9,7 @@ export const api = axios.create({
     headers: {
         'Content-Type': 'application/json',
     },
-    timeout: 90000, // 90s timeout (increased for local LLM)
+    timeout: 0, // No timeout to prevent premature cancellation
 });
 
 export interface ParamDef {
@@ -261,6 +261,25 @@ export const autocomplete = async (connection: any, term: string, table?: string
     } catch (e) {
         console.error("Autocomplete failed:", e);
         return [];
+    }
+};
+
+export const getAskHistory = async (connection: any) => {
+    try {
+        const response = await api.post('/ask/history', { connection });
+        return response.data.asks;
+    } catch (e) {
+        console.error("Failed to fetch ask history", e);
+        return [];
+    }
+};
+
+export const saveAskSuccess = async (connection: any, prompt: string, sql: string) => {
+    // Fire and forget
+    try {
+        await api.post('/ask/success', { connection, prompt, sql });
+    } catch (e) {
+        console.error("Failed to save ask success", e);
     }
 };
 

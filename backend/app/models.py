@@ -44,3 +44,8 @@ class ExplainSqlRequest(BaseModel):
     schema_data: Optional[dict] = None
     model: Optional[str] = "qwen2.5-coder"
     apiKey: Optional[str] = None
+
+class SaveAskRequest(BaseModel):
+    connection: ConnectionInfo
+    prompt: str
+    sql: str

@@ -69,6 +69,7 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
     *   **Visual Badges**: Distinct badges (TBL/COL) help identify suggestion types at a glance.
     *   **Inline AI Diff**: Automatically highlights lines changed by the AI assistant directly in the editor, making it easy to spot modifications.
     *   **Integrated Parameters**: "Query Parameters" panel lives within the Results pane for a seamless Edit -> Run -> Tune workflow.
+    *   **Robust Layout Engine**: Flex-based architecture ensuring editor visibility across all container sizes.
 
 *   **Clean Search ("Zen Mode")**:
     *   **Distraction-Free**: Sidebars automatically hide when searching to give you a full-width canvas.
@@ -83,6 +84,7 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
     *   **Performance Badge**: Visual ⚡/⚠️/🐢 indicator shows query speed (Green < 200ms, Yellow < 1s, Red > 1s) in both Search and Editor results.
     *   **Performance Drawer**: Click the badge to reveal a slide-over panel showing the SQL, execution time, and a "Tune & Fix" button for deeper analysis.
     *   **Graceful Timeouts**: Extended timeouts (90s) accommodate complex AI-generated queries without premature failures.
+    *   **Connection Resilience**: Intelligent timeouts (`connect_timeout=10`) handle cold starts and network latency gracefully.
     
 *   **Auto-Healing SQL**:
     *   **Self-Correction**: Automatically detects SQL errors (e.g., "Column not found") during execution and uses AI to fix them instantly.

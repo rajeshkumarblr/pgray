@@ -356,7 +356,11 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                             sqlExplanation={sqlExplanation}
                             onExplainLogic={handleExplainLogic}
                             onTune={handleTuneWrapper}
-                            onEditSql={() => { setActiveTab('query'); setQueryMode('code'); }}
+                            onEditSql={(sql) => {
+                                if (sql) setSqlQuery(sql);
+                                setActiveTab('query');
+                                setQueryMode('code');
+                            }}
                             connectionInfo={connectionInfo}
                             model={activeProvider === 'local' ? localModel : geminiModel}
                         />
@@ -435,10 +439,10 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
 
                                             <div style={{ flex: 1, position: 'relative', display: 'flex' }}>
                                                 <SimpleEditor
-                                                    key={loadingSavedQueries ? 'loading' : (sessionTitle || 'new')}
                                                     value={sqlQuery}
                                                     onChange={setSqlQuery}
                                                     onExecute={handleExecuteWrapper}
+                                                    style={{ height: '100%', flex: 1 }}
                                                 />
                                                 {/* Diff View Overlay */}
                                                 {showDiff && (

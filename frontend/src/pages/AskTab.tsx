@@ -6,7 +6,7 @@ import ChartViz from '../components/ChartViz';
 import ResultsTable from '../components/ResultsTable';
 import PerformanceDrawer from '../components/PerformanceDrawer';
 import AskChat from '../components/AskChat';
-import { generateSql, executeQuery, fixSql } from '../api'; // Import API functions
+import { generateSql, executeQuery, fixSql, getAskHistory, saveAskSuccess } from '../api'; // Import API functions
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
@@ -37,7 +37,7 @@ interface AskTabProps {
     sqlExplanation?: string | null;
     onExplainLogic?: () => void;
     onTune?: () => void;
-    onEditSql?: () => void;
+    onEditSql?: (sql?: string) => void;
     connectionInfo: any;
     model?: string;
 }
@@ -71,6 +71,20 @@ const AskTab: React.FC<AskTabProps> = ({
     const [activeTab, setActiveTab] = useState<'data' | 'charts' | 'sql'>('data');
     const [localParamValues, setLocalParamValues] = useState<Record<string, string>>({});
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+    const [suggestions, setSuggestions] = useState<string[]>([]);
+
+    // Fetch History on Mount/Connection Change
+    React.useEffect(() => {
+        if (connectionInfo) {
+            getAskHistory(connectionInfo).then((asks: string[]) => {
+                if (asks && asks.length > 0) {
+                    setSuggestions(asks);
+                } else {
+                    setSuggestions(['Top 5 customers', 'Revenue by year', 'Products out of stock']);
+                }
+            });
+        }
+    }, [connectionInfo]);
 
 
     // Local State for Frontend-Driven Execution
@@ -122,6 +136,8 @@ const AskTab: React.FC<AskTabProps> = ({
             try {
                 const execRes = await executeQuery(connectionInfo, sql, 50);
                 setLocalResult(transformResult(execRes));
+                // SUCCESS! Save history
+                saveAskSuccess(connectionInfo, term, sql);
             } catch (execErr: any) {
                 // Enhanced Error Extraction
                 let originalError = execErr.message || "Unknown error";
@@ -152,6 +168,8 @@ const AskTab: React.FC<AskTabProps> = ({
                             const retryRes = await executeQuery(connectionInfo, fixedSql, 50);
                             setLocalResult(transformResult(retryRes));
                             setLocalError(null);
+                            // RETRY SUCCESS! Save history
+                            saveAskSuccess(connectionInfo, term, fixedSql);
                         } else {
                             console.error("Auto-Fix returned empty SQL");
                             throw new Error("AI could not fix the query");
@@ -168,7 +186,15 @@ const AskTab: React.FC<AskTabProps> = ({
             }
 
         } catch (e: any) {
-            setLocalError(e.message || "Search failed");
+            console.error("Search Execution Error:", e);
+            let msg = e.message || "Search failed";
+            if (e.code === 'ECONNABORTED') {
+                msg = "Request timed out (Network issue)";
+            }
+            if (e.response?.data?.detail) {
+                msg = e.response.data.detail;
+            }
+            setLocalError(msg);
         } finally {
             setLocalIsExecuting(false);
         }
@@ -397,13 +423,13 @@ const AskTab: React.FC<AskTabProps> = ({
                     {/* Suggestions / History */}
                     {!showResults && (
                         <div className="flex flex-wrap gap-2 justify-center mt-4 max-w-2xl px-4">
-                            {(recentSearches && recentSearches.length > 0 ? recentSearches.slice(0, 6) : ['Top 5 customers', 'Revenue by year', 'Products out of stock']).map((s, i) => (
+                            {(suggestions.length > 0 ? suggestions : (recentSearches && recentSearches.length > 0 ? recentSearches.slice(0, 6) : ['Top 5 customers', 'Revenue by year', 'Products out of stock'])).map((s, i) => (
                                 <button
                                     key={`sugg-${i}`}
                                     onClick={() => { onPromptChange(s); onShowResults(true); onSearch(s); }}
                                     className="flex items-center gap-2 px-4 py-2 bg-slate-800/50 hover:bg-slate-700 border border-slate-700 rounded-full text-sm text-slate-400 hover:text-white transition-colors"
                                 >
-                                    {recentSearches?.includes(s) && <History size={12} className="text-blue-400" />}
+                                    {(suggestions.includes(s) || (recentSearches && recentSearches.includes(s))) && <History size={12} className="text-blue-400" />}
                                     <span>{s}</span>
                                 </button>
                             ))}
@@ -521,7 +547,7 @@ const AskTab: React.FC<AskTabProps> = ({
                                                                     </button>
                                                                     {onEditSql && (
                                                                         <button
-                                                                            onClick={onEditSql}
+                                                                            onClick={() => onEditSql(generatedSql)}
                                                                             className="p-1 text-slate-400 hover:text-white transition-colors"
                                                                             title="Edit in Query Editor"
                                                                         >
