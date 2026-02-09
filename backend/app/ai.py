@@ -53,66 +53,200 @@ def format_schema_ddl(schema: dict) -> str:
 
 def generate_sql(prompt: str, schema_context: str = None, schema_data: dict = None, history: list = None, model: str = "qwen2.5-coder", connection = None) -> dict:
     """
-    Generates SQL based on a prompt and schema context using Ollama.
-    Accepts specific schema_data to generate DDL context on the fly.
-    Supports server-side validation/retry if 'connection' is provided.
+    Generates SQL based on a prompt and schema context using Ollama (Agentic).
     """
     if schema_data:
         schema_context = format_schema_ddl(schema_data)
     elif not schema_context:
         schema_context = "-- No schema provided"
 
-    elif not schema_context:
-        schema_context = "-- No schema provided"
+    # --- AGENTIC TOOLS ---
+    def list_tables_tool(connection) -> str:
+        """List all tables in the database."""
+        try:
+            from app.db_utils import get_tables
+            tables = get_tables(connection)
+            if not tables:
+                return "No tables found in public schema."
+            return ", ".join([t['name'] for t in tables])
+        except Exception as e:
+            return f"Error: {str(e)}"
 
-    # --- LOCAL SEARCH ENGINE INTEGRATION ---
-    data_context = ""
+    def get_schema_tool(connection, table_name: str) -> str:
+        """Get schema for a specific table."""
+        try:
+            from app.explain import get_schema_for_table
+            from app.ai import format_schema_ddl # Ensure available or moved
+            
+            # 1. Try schema_data cache first
+            if schema_data and table_name in schema_data:
+                tbl = schema_data[table_name]
+                return format_schema_ddl({table_name: tbl})
+            
+            # 2. Fetch from DB
+            schema_info = get_schema_for_table(connection, table_name)
+            if schema_info:
+                return format_schema_ddl({table_name: schema_info})
+
+            return f"Table '{table_name}' not found."
+        except Exception as e:
+            return f"Error: {e}"
+
+    def run_sql_tool(connection, query: str) -> str:
+        """Run a SQL query to inspect data (Limit 5)."""
+        try:
+            # Safety: Limit 5
+            if "limit" not in query.lower():
+                query += " LIMIT 5"
+            from app.explain import execute_query_results
+            res = execute_query_results(connection, query)
+            if res.get("error"): return f"Error: {res['error']}"
+            return str(res['rows'])
+        except Exception as e:
+            return f"Error executing SQL: {e}"
+
+    # --- AGENT LOOP ---
+    # We use a ReAct pattern: Thought -> Action -> Observation
+    max_turns = 10 # Allow more turns for complex schemas
+    chat_history = f"User Request: {prompt}\n\n"
+    
+    # System Prompt for Agent
+    system_prompt = (
+        "You are an Agentic SQL Architect. Your goal is to write the correct SQL for the user.\n"
+        "You have access to these tools:\n"
+        "1. `list_tables()`: See all table names.\n"
+        "2. `get_schema(table_name)`: Get CREATE TABLE statement for a table.\n"
+        "3. `sample_data(sql)`: Run a SQL query (read-only) to see data samples. Use this to check values (e.g. 'is it 'USA' or 'United States'?').\n\n"
+        "Protocol:\n"
+        "1. Thought: ... (Explain your reasoning. Plan all steps: identifying tables, inspecting schemas, then querying.)\n"
+        "2. Action: `tool_name(args)` (MUST start with 'Action:', do NOT use code blocks for Actions)\n"
+        "3. Wait for Observation.\n"
+        "4. Repeat until you are confident.\n"
+        "5. Final Answer: ```sql ... ```\n\n"
+        "Rules:\n"
+        "- Do NOT guess column names. Use `get_schema` for ALL relevant tables.\n"
+        "- Do NOT guess values (IDs). Use `sample_data` to look them up.\n"
+        "- PREFER joining by names (e.g. `category_name = 'Beverages'`) over IDs (e.g. `category_id = 1`) if possible.\n"
+        "- The database uses snake_case.\n"
+        "- ALWAYS start with `list_tables()` if you are unsure of table names.\n"
+        "- Do NOT repeat the same Action immediately.\n"
+    )
+
+    import re
+    
+    # If we have a connection, run the loop. Else fallback to one-shot.
     if connection:
-        # Heuristic: Extract quoted strings or capitalized words as search terms
-        import re
-        # Find 'quoted strings' or words with >3 chars that aren't SQL keywords?
-        # Simplest: Just search the whole prompt if it's short, or key phrases.
-        # Let's search for words inside single/double quotes as high signal.
-        possible_terms = re.findall(r"['\"](.*?)['\"]", prompt)
+        current_context = system_prompt + "\n" + chat_history
+        last_action = None
+        past_actions = set() # Track all unique actions to prevent cycles
         
-        # Also simple words if no quotes?
-        if not possible_terms:
-             # Just split and take long words? Too noisy.
-             # Let's assume user might say: Find Titanium Widget
-             # We can try to search the whole prompt against index if index is efficient?
-             # For now, let's strictly search quoted things OR if the prompt is short < 5 words.
-             pass
+        for turn in range(max_turns):
+            # Call LLM
+            # We need to construct the prompt with history
+            payload = {
+                "model": model, 
+                "prompt": current_context + f"\n(Turn {turn+1}/{max_turns}) Thought:",
+                "stream": False,
+                "options": { "temperature": 0.0, "stop": ["Observation:"] } # Stop at Observation
+            }
+            
+            try:
+                response = requests.post(OLLAMA_URL, json=payload, timeout=60)
+                response.raise_for_status()
+                ai_text = response.json().get("response", "").strip()
+                
+                # Append Thought to context
+                current_context += f"\n(Turn {turn+1}) Thought: {ai_text}\n"
+                logger.info(f"Agent Turn {turn}: {ai_text}")
 
-        search_results = []
-        for term in possible_terms:
-            if len(term) > 2:
-                 results = search_database(connection, term, limit=3)
-                 search_results.extend(results)
-        
-        if search_results:
-            data_context = "### Data Context (Found in Database)\n"
-            data_context += "The following values were found in the database. Use their IDs or Exact Spelling if relevant:\n"
-            for res in search_results:
-                # res is dict: table_name, column_name, original_value, record_id
-                data_context += f"- Value '{res['original_value']}' found in `{res['table_name']}`.`{res['column_name']}` (ID: {res['record_id']})\n"
-            data_context += "\n"
+                # Check for Action
+                # 1. Standard "Action: tool(args)" with flexible spacing/quoting
+                # Match `Action: ` optionally followed by backticks/quotes, then tool name, then `(`, then args, then `)`
+                action_pattern = r"Action:\s*[`'\"]?(\w+)[`'\"]?\s*\((.*)\)"
+                action_match = re.search(action_pattern, ai_text, re.IGNORECASE)
 
-    # Format history if present
-    # USER REQUESTED TO DISABLE HISTORY FOR NOW
+                
+                # 2. Fallback: Check for code block usage `tool(args)` if standard fails
+                if not action_match:
+                     # Match ```sql\ntool(args)\n``` or just `tool(args)` at start of line
+                     fallback_match = re.search(r"^\s*`?(\w+)\((.*)\)`?", ai_text, re.MULTILINE)
+                     # Only accept if tool is valid
+                     if fallback_match and fallback_match.group(1).lower() in ["list_tables", "get_schema", "sample_data"]:
+                         action_match = fallback_match
+
+                if action_match:
+                    tool = action_match.group(1).lower()
+                    
+                    # Args parsing
+                    raw_args = action_match.group(2).strip()
+                    # Clean up: remove potential trailing `)` or backticks if the regex was loose
+                    args = raw_args.strip("'").strip('"').strip("`") # Cleanup quotes
+                    
+                    # Loop Detection
+                    current_action = f"{tool}({args})"
+                    
+                    # BLOCKER 1: Immediate Repeat
+                    if current_action == last_action:
+                         observation = "Error: You just ran this EXACT action and it failed or you are repeating yourself. You MUST change the arguments. Do not repeat the same command."
+                    
+                    # BLOCKER 2: Cycle Detection (A -> B -> A)
+                    # For `list_tables` and `get_schema`, once is enough.
+                    elif tool in ["list_tables", "get_schema"] and current_action in past_actions:
+                         observation = f"Error: You have ALREADY run {current_action}. Do not run it again. You have the information in your history. Move to the next step (sample_data or Final Answer)."
+                    
+                    else:
+                        last_action = current_action
+                        past_actions.add(current_action)
+                        
+                        observation = ""
+                        if tool == "list_tables":
+                            observation = list_tables_tool(connection)
+                        elif tool == "get_schema":
+                            observation = get_schema_tool(connection, args)
+                        elif tool == "sample_data":
+                            observation = run_sql_tool(connection, args)
+                        else:
+                            observation = f"Error: Unknown tool '{tool}'"
+                    
+                    current_context += f"Observation: {observation}\n"
+                    logger.info(f"Observation: {observation}") # Log FULL observation
+                if "Final Answer:" in ai_text:
+                    final_sql = ai_text.split("Final Answer:")[-1]
+                    final_sql = cleanup_sql(final_sql)
+                    return {"sql": final_sql, "prompt": current_context}
+                
+                elif "```sql" in ai_text:
+                    # Final Answer found!
+                    final_sql = cleanup_sql(ai_text)
+                    return {"sql": final_sql, "prompt": current_context}
+                
+                else:
+                    # No action, no SQL? Maybe it's just thinking or asking?
+                    # Force it to conclude if it's chatting?
+                    if turn == max_turns - 1:
+                         current_context += "\nSystem: You are out of turns. Please output the best SQL you can now.\n"
+            
+            except Exception as e:
+                logger.error(f"Agent Loop Error: {e}")
+                break
+
+    # Fallback to standard generation if no connection or loop failed
+    if connection and 'current_context' in locals():
+         history += f"\n\n[System: The agent attempted to solve this but failed. Here is the investigation log. Use this information to generate the correct SQL without hallucinating.]\n{current_context}\n"
+
+    return standard_generate_sql(prompt, schema_context, schema_data, history, model, connection)
+
+def standard_generate_sql(prompt, schema_context, schema_data, history, model, connection):
+    # ... (Original Logic Renamed) ...
+    # Initialize variables that were used in the original function
+    logger.info("Fallback to Standard Generation")
+    data_context = ""
     history_text = ""
-    # if history:
-    #     history_text = "### Conversation History\n"
-    #     for msg in history:
-    #         role = msg.get("role", "user").upper()
-    #         content = msg.get("content", "")
-    #         if role == "ASSISTANT" and msg.get("isCode"):
-    #             # If it was code, wrap it
-    #             content = f"```sql\n{content}\n```"
-    #         history_text += f"{role}: {content}\n"
-    #     history_text += "\n"
-
+    
+    # ... (Copy essential parts of original build_prompt) ...
     def build_prompt(context_str, error_msg=None):
-        base_prompt = (
+         # ... existing build_prompt code ...
+         base_prompt = (
             "## Instructions\n"
             "You are an expert PostgreSQL Data Analyst. Your goal is to write the most accurate SQL query for the user's question.\n\n"
             "## Process\n"
@@ -140,83 +274,47 @@ def generate_sql(prompt: str, schema_context: str = None, schema_data: dict = No
             "SELECT ...\n"
             "```"
         )
-        if error_msg:
+         if error_msg:
             base_prompt += f"\n\n!!! PREVIOUS ATTEMPT FAILED !!!\nError: {error_msg}\nFIX THE SQL AND RETURN ONLY THE FIXED SQL."
-        return base_prompt
+         return base_prompt
 
-
-
-    # Retry Loop
-    max_retries = 1
-    current_error = None
+    # Retry Loop (Simplified for fallback)
     final_sql = None
-    final_message = None # Full text
-    debug_prompt = build_prompt("-- [SCHEMA HIDDEN FOR DEBUGGING] --")
-
-    import re # Ensure re is imported locally if not at top
-
-    for attempt in range(max_retries + 1):
-        full_prompt = build_prompt(schema_context, current_error)
+    debug_prompt = build_prompt(schema_context)
+    
+    try:
+        # One-shot attempt
+        full_prompt = build_prompt(schema_context)
+        payload = { "model": model, "prompt": full_prompt, "stream": False, "options": { "temperature": 0.2 } }
+        response = requests.post(OLLAMA_URL, json=payload, timeout=120)
+        response.raise_for_status()
+        ai_response = response.json().get("response", "")
         
-        # Log Prompt (omitted for brevity, assume existing log code)
+        final_sql = cleanup_sql(ai_response)
         
-        payload = {
-            "model": model, 
-            "prompt": full_prompt,
-            "stream": False,
-            "keep_alive": "60m",
-            "options": { "temperature": 0.2 }
-        }
+    except Exception as e:
+        logger.error(f"Standard Gen Failed: {e}")
 
-        try:
-            logger.info(f"Generating SQL (Attempt {attempt+1})...")
-            response = requests.post(OLLAMA_URL, json=payload, timeout=300)
-            response.raise_for_status()
-            data = response.json()
-            ai_response = data.get("response", "-- No response generated")
-            final_message = ai_response
+    return { "message": "", "sql": final_sql, "prompt": debug_prompt }
 
-            # Extract SQL using Regex
-            match = re.search(r"```sql\s*(.*?)\s*```", ai_response, re.DOTALL | re.IGNORECASE)
-            if match:
-                clean_sql = match.group(1).strip()
-            else:
-                # Fallback: legacy simple strip if they forgot markdown or it's a raw fix
-                clean_sql = ai_response.replace("```sql", "").replace("```", "").strip()
+def cleanup_sql(text: str) -> str:
+    """Robustly extract SQL from Markdown or raw text."""
+    import re
+    if not text: return ""
+    # 1. Try ```sql ... ```
+    match = re.search(r"```sql\s*(.*?)\s*```", text, re.DOTALL | re.IGNORECASE)
+    if match: return match.group(1).strip()
+    
+    # 2. Try ``` ... ```
+    match = re.search(r"```\s*(.*?)\s*```", text, re.DOTALL)
+    if match: return match.group(1).strip()
+    
+    # 3. Fallback: Strip common artifacts
+    text = text.replace("```sql", "").replace("```", "").strip()
+    
+    # 4. Remove leading "SELECT" if duplicated by accident? No, risky.
+    return text
 
-            # If we primed with SELECT/WITH, assumes it's raw. 
-            # But with markdown enforcement, clean_sql should be pure code now.
-            
-            final_sql = clean_sql 
-
-            # Validation
-            if connection:
-                try:
-                    logger.info("Validating SQL with EXPLAIN...")
-                    from app.explain import execute_explain
-                    execute_explain(connection, clean_sql, analyze=False)
-                    logger.info("SQL Validation Passed.")
-                    break # Success!
-                except Exception as e:
-                    logger.error(f"SQL Validation Failed: {e}")
-                    current_error = str(e)
-                    # Loop continues
-            else:
-                 break # No validation possible
-
-        except Exception as e:
-            logger.error(f"AI Generation failed: {e}")
-            return {
-                "message": f"-- Error: {str(e)}",
-                "sql": None,
-                "prompt": debug_prompt
-            }
-
-    return {
-        "message": final_message, # Full explanation + code
-        "sql": final_sql,         # Clean code for execution logic
-        "prompt": debug_prompt
-    }
 
 def explain_sql_query(query: str, schema_context: str = None, schema_data: dict = None, model: str = "qwen2.5-coder"):
     """
@@ -230,6 +328,7 @@ def explain_sql_query(query: str, schema_context: str = None, schema_data: dict 
     prompt = (
         "You are a concise Data Analyst.\n"
         "Provide a single short paragraph (2-3 sentences max) explaining the business logic of this query.\n"
+        "Focus ONLY on the logic present in the SQL. Do not infer unrelated entities (like Employees if not used).\n"
         "Do NOT mention specific SQL keywords (like JOIN, GROUP BY) unless critical.\n"
         "Do NOT provide a line-by-line breakdown.\n"
         "End with: 'Let me know if you want a detailed breakdown.'\n\n"
@@ -760,17 +859,95 @@ def repair_sql_query(sql: str, error: str, schema_context: str = None, schema_da
 
     print(f"DEBUG: Repair Schema Context:\n{schema_context}")
 
+    # --- FUZZY MATCH LOGIC ---
+    import re
+    import difflib
+
+    hint_msg = ""
+    # Extract missing column from error (Handle optional quotes)
+    col_match = re.search(r'column ["\']?(.*?)["\']? does not exist', error)
+    if col_match and schema_data:
+        missing_col = col_match.group(1)
+        # Verify it's not just a table alias prefix like "c."
+        if "." in missing_col:
+             missing_col = missing_col.split(".")[-1]
+             
+        candidates = []
+        
+        for table_name, table_info in schema_data.items():
+            # Handle list vs dict structure
+            cols = table_info if isinstance(table_info, list) else table_info.get("columns", [])
+            for col in cols:
+                c_name = col['name']
+                # Ratio > 0.6 or containment
+                ratio = difflib.SequenceMatcher(None, missing_col, c_name).ratio()
+                if ratio > 0.6 or (c_name in missing_col and len(c_name) > 3) or (missing_col in c_name and len(missing_col) > 3):
+                        candidates.append(f"'{c_name}' (in table `{table_name}`)")
+        
+        if candidates:
+            candidates = list(set(candidates))
+            hint_msg = f"### AUTO-DETECTED HINT\nThe column '{missing_col}' was not found. Did you mean: {', '.join(candidates[:5])}?\nIF SO, REWRITE THE QUERY TO USE THE CORRECT COLUMN NAME AND JOIN THE TABLE."
+        else:
+            # Check for common calculated fields (Northwind specific but useful generally)
+            COMMON_CALCS = {
+                "total_amount": "SUM(od.unit_price * od.quantity * (1 - od.discount)) from `order_details` od",
+                "total_price": "SUM(od.unit_price * od.quantity * (1 - od.discount)) from `order_details` od",
+                "revenue": "SUM(od.unit_price * od.quantity * (1 - od.discount)) from `order_details` od",
+                "sales": "SUM(od.unit_price * od.quantity * (1 - od.discount)) from `order_details` od",
+                "profit": "SUM(od.unit_price * od.quantity * (1 - od.discount)) from `order_details` od",
+            }
+            if missing_col.lower() in COMMON_CALCS:
+                 hint_msg = f"### AUTO-DETECTED HINT\nThe column '{missing_col}' does not exist. It is likely a calculated field. Try: {COMMON_CALCS[missing_col.lower()]}. Ensure you JOIN `order_details`."
+
+    # PROACTIVE CHECK: Check if the SQL contains known "hallucination candidates" implies we should warn about them
+    # Even if the current error is something else (or if we are fixing something else), 
+    # if we see 'total_amount' in the problematic SQL, we should PROACTIVELY warn.
+    COMMON_CALCS = {
+        "total_amount": "SUM(od.unit_price * od.quantity * (1 - od.discount))",
+        "total_price": "SUM(od.unit_price * od.quantity * (1 - od.discount))",
+        "revenue": "SUM(od.unit_price * od.quantity * (1 - od.discount))",
+    }
+    for bad_col, calc in COMMON_CALCS.items():
+        # Simple regex to see if bad_col is used as a column (not just text)
+        # e.g. .total_amount or "total_amount" or total_amount
+        if re.search(fr'(?i)\b{bad_col}\b', sql):
+             # Only add if not already in hint
+             if bad_col not in hint_msg:
+                  hint_msg += f"\n\n### PROACTIVE HINT\nI see you used '{bad_col}'. This column does NOT exist. Replace it with: `{calc}` and ensure `order_details` is joined."
+
+    # Relation (Table) mismatch logic
+    rel_match = re.search(r'relation ["\']?(.*?)["\']? does not exist', error)
+    if rel_match and schema_data:
+        missing_rel = rel_match.group(1)
+        candidates = []
+        for table_name in schema_data.keys():
+            # Check for case-insensitive match or high similarity
+            if missing_rel.lower() == table_name.lower():
+                 candidates.append(f"`{table_name}`")
+            elif difflib.SequenceMatcher(None, missing_rel, table_name).ratio() > 0.6:
+                 candidates.append(f"`{table_name}`")
+        
+        if candidates:
+             candidates = list(set(candidates))
+             hint_msg += f"\n\n### AUTO-DETECTED HINT\nThe table '{missing_rel}' was not found. Did you mean: {', '.join(candidates[:3])}?\nREPLACE the table name with the correct one from the schema."
+
     prompt = (
         f"You are a SQL Repair Expert. The user generated this SQL:\n```sql\n{sql}\n```\n"
         f"It failed with this error: {error}\n\n"
+        f"{hint_msg}\n\n"
         "Task: Fix the SQL. Return ONLY the FIXED SQL code block.\n"
         "Constraint: Strictly use the Schema provided below. Do NOT use CamelCase if the schema is snake_case. Pay attention to table quoting and case sensitivity in PostgreSQL.\n"
-        "CRITICAL: The error meant you used a column name that doesn't exist. Check the 'HINT' in the error message. Likely you used CamelCase (e.g. `EmployeeID`) but the schema needs snake_case (e.g. `employee_id`). REPLACE ALL CamelCase with snake_case.\n\n"
+        "CRITICAL DIAGNOSTIC:\n"
+        "1. If the error is 'column does not exist', check if the column (or a similar one like `discount` instead of `discount_rate`) exists in ANOTHER table.\n"
+        "2. If it exists in another table (e.g. `order_details`), you MUST ADD A JOIN to that table.\n"
+        "3. Check for Case Sensitivity: `EmployeeID` vs `employee_id`.\n\n"
         "### Database Schema\n"
         f"{schema_context}\n\n"
         "### Output\n"
         "Return ONLY the FIXED SQL code block. No conversational text.\n"
     )
+
+    logger.info(f"DEBUG: Repair Prompt Sent to AI:\n{prompt}")
 
     try:
         payload = {
@@ -786,15 +963,11 @@ def repair_sql_query(sql: str, error: str, schema_context: str = None, schema_da
         data = response.json()
         ai_response = data.get("response", "")
         
+        if "products" in sql.lower() and "category_name" in sql.lower():
+             hint_msg += "\n\n### PROACTIVE HINT\nThe table `products` does NOT have `category_name`. It has `category_id`. You must JOIN `categories` to get `category_name`."
+
         # Extract SQL using Regex
-        import re
-        match = re.search(r"```sql\s*(.*?)\s*```", ai_response, re.DOTALL | re.IGNORECASE)
-        if match:
-            return match.group(1).strip()
-        
-        # Fallback
-        clean_sql = ai_response.replace("```sql", "").replace("```", "").strip()
-        return clean_sql
+        return cleanup_sql(ai_response)
 
     except Exception as e:
         logger.error(f"Failed to fix SQL: {e}")

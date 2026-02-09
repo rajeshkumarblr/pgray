@@ -63,3 +63,39 @@ def get_databases(info: ConnectionInfo):
         print(f"Error listing databases: {e}")
         # Fallback: at least return the current one or empty
         return [info.database]
+
+import logging
+logger = logging.getLogger(__name__)
+
+def get_tables(info):
+    """
+    Returns a list of tables and views in the public schema.
+    """
+    try:
+        # Handle dict vs object
+        if isinstance(info, dict):
+            # Support both 'user' (alias) and 'username' (field name)
+            user = info.get('user') or info.get('username')
+            dsn = f"host={info.get('host')} port={info.get('port')} dbname={info.get('database')} user={user} password={info.get('password')}"
+        else:
+            dsn = f"host={info.host} port={info.port} dbname={info.database} user={info.username} password={info.password}"
+            
+        logger.info(f"DEBUG: get_tables connecting to: {dsn}")
+        conn = psycopg2.connect(dsn)
+        cur = conn.cursor()
+        
+        cur.execute("""
+            SELECT table_name 
+            FROM information_schema.tables 
+            WHERE table_schema = 'public'
+            ORDER BY table_name;
+        """)
+        rows = cur.fetchall()
+        logger.info(f"DEBUG: get_tables found {len(rows)} rows: {rows}")
+        tables = [{"name": row[0]} for row in rows]
+        
+        conn.close()
+        return tables
+    except Exception as e:
+        logger.error(f"Error listing tables: {e}")
+        return []

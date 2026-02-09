@@ -87,7 +87,26 @@ def execute_explain(info: ConnectionInfo, query: str, analyze: bool = True, para
 
 def execute_query_results(info: ConnectionInfo, query: str, limit: int = 1000, params: dict = None):
     try:
-        dsn = f"host={info.host} port={info.port} dbname={info.database} user={info.username} password={info.password} connect_timeout=10"
+        if isinstance(info, dict):
+            # Map dict keys (user/username mapping might be needed)
+            # app/models.py ConnectionRequest uses 'user' usually? 
+            # ConnectionInfo uses 'username'.
+            # backend/app/ai.py passes request.connection.model_dump().
+            # model_dump() uses field names: host, port, database, username, password.
+            # Wait, verify ConnectionInfo model fields.
+            host = info.get('host')
+            port = info.get('port')
+            database = info.get('database')
+            username = info.get('username') or info.get('user')
+            password = info.get('password')
+        else:
+            host = info.host
+            port = info.port
+            database = info.database
+            username = info.username
+            password = info.password
+            
+        dsn = f"host={host} port={port} dbname={database} user={username} password={password} connect_timeout=10"
         conn = psycopg2.connect(dsn)
 
         # Ensure unqualified table names resolve in the selected schema
@@ -161,7 +180,15 @@ def get_schema_tree(info: ConnectionInfo):
     }
     """
     try:
-        dsn = f"host={info.host} port={info.port} dbname={info.database} user={info.username} password={info.password}"
+        if isinstance(info, dict):
+            # Support both 'user' (alias) and 'username' (field name)
+            user = info.get('user') or info.get('username')
+            dsn = f"host={info.get('host')} port={info.get('port')} dbname={info.get('database')} user={user} password={info.get('password')}"
+            target_schema = info.get('schema_name') or info.get('schema') or 'public'
+        else:
+            dsn = f"host={info.host} port={info.port} dbname={info.database} user={info.username} password={info.password}"
+            target_schema = getattr(info, 'schema_name', None) or getattr(info, 'schema', None) or 'public'
+            
         conn = psycopg2.connect(dsn)
         
         target_schema = getattr(info, 'schema_name', None) or 'public'
@@ -286,6 +313,18 @@ def get_schema_tree(info: ConnectionInfo):
     except Exception as e:
         print(f"Schema fetch failed: {e}")
         raise e
+
+def get_schema_for_table(info: ConnectionInfo, table_name: str):
+    """
+    Returns the schema definition (columns, fks) for a single table.
+    Reuses get_schema_tree for consistency.
+    """
+    try:
+        full_schema = get_schema_tree(info)
+        return full_schema.get(table_name)
+    except Exception as e:
+        print(f"Error fetching schema for {table_name}: {e}")
+        return None
 
 def get_pg_settings(info: ConnectionInfo):
     """

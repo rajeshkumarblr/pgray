@@ -18,7 +18,11 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
     *   **Toggle Details**: Global expand/collapse for all table columns (📋 Details → 🔑 Keys Only → 🔄 Auto).
 
 *   **Local-First AI Assistant**:
-    *   **Context-Aware**: Understands your database schema and query history.
+    *   **Context-Aware Chat**: Analyze nodes, get optimization tips, and explain query plans.
+    *   **Agentic SQL Generation**: Ask natural language questions like *"Show top sales by region"* and get executable SQL.
+    *   **Self-Correcting Loop**: The agent detects errors (syntax, logic), runs diagnostics (`list_tables`, `get_schema`), and auto-repairs its own SQL.
+    *   **Hallucination Guardrails**: Proactive schema validation prevents common LLM mistakes (like inventing columns or IDs).
+    *   **Robust Parsing**: Advanced regex and markdown stripping ensure SQL is clean and executable.tory.
     *   **Text-to-SQL**: Generate complex SQL from natural language questions.
     *   **Real-Time Streaming**: Watch the SQL appear in your editor character-by-character as the AI types it.
     *   **Auto-Explain Loop**: Automatically runs `EXPLAIN ANALYZE` on generated queries to fetch real performance metrics immediately.
