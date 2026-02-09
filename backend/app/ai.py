@@ -130,9 +130,10 @@ def generate_sql(prompt: str, schema_context: str = None, schema_data: dict = No
             "### Task\n"
             f"{history_text}"
             f"Current Request: {prompt}\n\n"
-            "CRITICAL:\n"
-            "1. Do not assume column names based on your training data. You MUST strictly use the column names provided in the CREATE TABLE definitions above. If a column is not in the schema, do not hallucinate it.\n"
-            "2. DO NOT use backticks (`). Use double quotes (\") for identifiers if needed (e.g. \"Order Details\").\n\n"
+            "CRITICAL: Do not assume column names based on your training data. You MUST strictly use the column names provided in the CREATE TABLE definitions above.\n"
+            "CRITICAL: This database uses snake_case (e.g. `order_id`, `customer_name`). DO NOT use CamelCase (e.g. `OrderID`, `CustomerName`). If you use CamelCase, the query WILL FAIL.\n"
+            "If a column is not in the schema, do not hallucinate it.\n"
+            "DO NOT use backticks (`). Use double quotes (\") for identifiers if needed (e.g. \"Order Details\").\n\n"
             "### Output\n"
             "Return ONLY the SQL code block. No conversational text.\n"
             "```sql\n"
@@ -748,7 +749,7 @@ async def generate_gemini_stream(prompt: str, model: str, api_key: str):
         logger.error(f"Gemini stream failed: {e}")
         yield json.dumps({"error": str(e)}) + "\n"
 
-def fix_sql_query(sql: str, error: str, schema_context: str = None, schema_data: dict = None, model: str = "qwen2.5-coder") -> str:
+def repair_sql_query(sql: str, error: str, schema_context: str = None, schema_data: dict = None, model: str = "qwen2.5-coder") -> str:
     """
     Repairs a failed SQL query using the error message and schema.
     """
@@ -757,11 +758,14 @@ def fix_sql_query(sql: str, error: str, schema_context: str = None, schema_data:
     elif not schema_context:
         schema_context = "-- No schema provided"
 
+    print(f"DEBUG: Repair Schema Context:\n{schema_context}")
+
     prompt = (
-        f"The following SQL query failed validation:\n\n```sql\n{sql}\n```\n\n"
-        f"Error: {error}\n\n"
-        "Correct the SQL query to resolve this error. Use the provided schema strictly.\n"
-        "CRITICAL: DO NOT use backticks (`). Use double quotes (\") for identifiers if needed (e.g. \"table_name\").\n\n"
+        f"You are a SQL Repair Expert. The user generated this SQL:\n```sql\n{sql}\n```\n"
+        f"It failed with this error: {error}\n\n"
+        "Task: Fix the SQL. Return ONLY the FIXED SQL code block.\n"
+        "Constraint: Strictly use the Schema provided below. Do NOT use CamelCase if the schema is snake_case. Pay attention to table quoting and case sensitivity in PostgreSQL.\n"
+        "CRITICAL: The error meant you used a column name that doesn't exist. Check the 'HINT' in the error message. Likely you used CamelCase (e.g. `EmployeeID`) but the schema needs snake_case (e.g. `employee_id`). REPLACE ALL CamelCase with snake_case.\n\n"
         "### Database Schema\n"
         f"{schema_context}\n\n"
         "### Output\n"

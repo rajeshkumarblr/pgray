@@ -519,16 +519,22 @@ class FixSqlRequest(BaseModel):
     sql: str
     error: str
     schema_data: Optional[dict] = None
+    connection: Optional[ConnectionInfo] = None
     model: str = "qwen2.5-coder"
 
 @app.post("/api/fix_sql")
 async def fix_sql_endpoint(request: FixSqlRequest):
-    from app.ai import fix_sql_query
+    from app.ai import repair_sql_query
     try:
-        fixed_sql = fix_sql_query(
+        # User requested: Fetch schema if needed
+        if not request.schema_data and request.connection:
+             from app.explain import get_schema_tree
+             request.schema_data = get_schema_tree(request.connection)
+
+        fixed_sql = repair_sql_query(
             sql=request.sql,
             error=request.error,
-    schema_context=None,
+            schema_context=None,
             schema_data=request.schema_data,
             model=request.model
         )

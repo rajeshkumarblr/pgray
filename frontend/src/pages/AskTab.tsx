@@ -6,6 +6,7 @@ import ChartViz from '../components/ChartViz';
 import ResultsTable from '../components/ResultsTable';
 import PerformanceDrawer from '../components/PerformanceDrawer';
 import AskChat from '../components/AskChat';
+import { generateSql, executeQuery, fixSql } from '../api'; // Import API functions
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
@@ -43,11 +44,11 @@ interface AskTabProps {
 
 const AskTab: React.FC<AskTabProps> = ({
     onSearch,
-    isExecuting,
-    result,
-    error,
-    generatedSql,
-    // onExplain, // Unused in logic, used in PerformanceDrawer below (Wait, PerformanceDrawer uses onTune now)
+    isExecuting: propIsExecuting,
+    result: propResult,
+    error: propError,
+    generatedSql: propGeneratedSql,
+    // onExplain, 
     // explainResult,
     onReset,
     promptValue,
@@ -71,18 +72,115 @@ const AskTab: React.FC<AskTabProps> = ({
     const [localParamValues, setLocalParamValues] = useState<Record<string, string>>({});
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
-    // Reset local params when requiredParams change (Deep compare to avoid infinite loop)
-    React.useEffect(() => {
-        if (requiredParams && requiredParams.length > 0) {
-            setLocalParamValues({});
+
+    // Local State for Frontend-Driven Execution
+    const [localResult, setLocalResult] = useState<any>(null);
+    const [localError, setLocalError] = useState<string | null>(null);
+    const [localIsExecuting, setLocalIsExecuting] = useState(false);
+    const [localGeneratedSql, setLocalGeneratedSql] = useState<string>("");
+    // Helper to transform result from API format to UI format
+    const transformResult = (execRes: any) => ({
+        rows: execRes.data?.map((r: any) => {
+            if (Array.isArray(r)) {
+                const arr = [...r];
+                (arr as any)._id = crypto.randomUUID();
+                return arr;
+            }
+            return { ...r, _id: crypto.randomUUID() };
+        }) || [],
+        columns: execRes.meta?.columns || [],
+        rowCount: execRes.meta?.row_count || 0,
+        executionTime: execRes.meta?.duration_ms || 0
+    });
+
+    const executeSearch = async (term: string) => {
+        if (!term.trim()) return;
+
+        // Use Local Execution Logic
+        setLocalIsExecuting(true);
+        setLocalError(null);
+        setLocalResult(null);
+        setLocalGeneratedSql("");
+        setActiveTab('data');
+
+        try {
+            // 1. Generate SQL
+            const res = await generateSql(term, null, [], model || 'qwen2.5-coder', connectionInfo);
+            let sql = res.sql || "";
+            if (!sql && res.response) {
+                const match = res.response.match(/```sql\n([\s\S]*?)\n```/);
+                sql = match ? match[1] : res.response;
+            }
+
+            if (!sql) throw new Error("Failed to generate SQL");
+
+            // Clean SQL
+            sql = sql.replace(/```sql/g, '').replace(/```/g, '').trim();
+            setLocalGeneratedSql(sql);
+
+            // 2. Execute
+            try {
+                const execRes = await executeQuery(connectionInfo, sql, 50);
+                setLocalResult(transformResult(execRes));
+            } catch (execErr: any) {
+                // Enhanced Error Extraction
+                let originalError = execErr.message || "Unknown error";
+                if (execErr.response && execErr.response.data) {
+                    originalError = execErr.response.data.detail || JSON.stringify(execErr.response.data);
+                }
+
+                console.warn("SQL Execution Failed:", originalError, execErr);
+
+                // 3. CATCH & REPAIR logic
+                // Expanded keywords: "does not exist", "syntax", "undefined", "relation", "alias"
+                const isFixable = originalError.match(/(does not exist|syntax|undefined|relation|alias|column)/i);
+
+                if (isFixable || originalError.includes("42703") || originalError.includes("42P01")) { // Postgres codes
+                    const fixMsg = `AI is fixing query... (${originalError.substring(0, 50)}...)`;
+                    setLocalError(fixMsg);
+                    console.log("Triggering Auto-Fix for:", originalError);
+
+                    try {
+                        const fixedRes = await fixSql(sql, originalError, connectionInfo, null, model || 'qwen2.5-coder');
+
+                        if (fixedRes && fixedRes.fixed_sql) {
+                            const fixedSql = fixedRes.fixed_sql;
+                            console.log("SQL Auto-Corrected:", fixedSql);
+                            setLocalGeneratedSql(fixedSql);
+
+                            // 4. Retry Execution
+                            const retryRes = await executeQuery(connectionInfo, fixedSql, 50);
+                            setLocalResult(transformResult(retryRes));
+                            setLocalError(null);
+                        } else {
+                            console.error("Auto-Fix returned empty SQL");
+                            throw new Error("AI could not fix the query");
+                        }
+                    } catch (fixErr: any) {
+                        console.error("Auto-fix failed:", fixErr);
+                        // Show actual fix failure if possible, or fallback to original
+                        const fixFailMsg = fixErr.response?.data?.detail || fixErr.message;
+                        setLocalError(`Auto-fix failed: ${fixFailMsg} | Original: ${originalError}`);
+                    }
+                } else {
+                    setLocalError(originalError); // Show detailed error
+                }
+            }
+
+        } catch (e: any) {
+            setLocalError(e.message || "Search failed");
+        } finally {
+            setLocalIsExecuting(false);
         }
-    }, [JSON.stringify(requiredParams)]);
+    };
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!promptValue.trim()) return;
         onShowResults(true);
-        onSearch(promptValue);
+        // Use Local Logic instead of Parent
+        executeSearch(promptValue);
+        // onSearch(promptValue); // Disabled parent call
     };
 
     const handleBack = () => {
@@ -117,6 +215,13 @@ const AskTab: React.FC<AskTabProps> = ({
     // ...
     // Dropdown State
     const [isFocused, setIsFocused] = useState(false);
+
+    // Effective State (Shadowing props)
+    // Placed here to ensure local hooks are initialized
+    const result = localResult || propResult;
+    const error = localError || propError;
+    const isExecuting = localIsExecuting || propIsExecuting;
+    const generatedSql = localGeneratedSql || propGeneratedSql;
 
     // Derived: Show dropdown if focused and NOT showing results (Search Home)
     const showDropdown = isFocused && !showResults && ((recentSearches && recentSearches.length > 0) || (savedQueries && savedQueries.length > 0));

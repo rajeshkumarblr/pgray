@@ -86,7 +86,7 @@ pgRay is a full-stack application that visualizes PostgreSQL `EXPLAIN ANALYZE` p
     
 *   **Auto-Healing SQL**:
     *   **Self-Correction**: Automatically detects SQL errors (e.g., "Column not found") during execution and uses AI to fix them instantly.
-    *   **Robust Generation**: Hardened prompts prevent common hallucinations like MySQL backticks, ensuring clean PostgreSQL syntax.
+    *   **Robust Generation**: Hardened prompts prevent common hallucinations like MySQL backticks and enforce PostgreSQL-compliant double quotes (`"identifier"`). Includes strict anti-CamelCase rules to match snake_case schemas.
     *   **Transparent Feedback**: If auto-fixing fails, users can inspect the problematic SQL code directly via a "View SQL" action.
 
     
