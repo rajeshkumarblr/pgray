@@ -7,7 +7,11 @@ from typing import List, Optional, Dict
 def _get_history_file(connection: dict) -> str:
     # Logic to map connection to file path
     # Same as saved_queries: saved_queries/{host}_{port}/{db}/ask_history.json
-    base_path = os.path.join(os.path.dirname(__file__), "..", "saved_queries")
+    data_dir = os.getenv("PGRAY_DATA_DIR")
+    if data_dir:
+        base_path = os.path.join(data_dir, "saved_queries")
+    else:
+        base_path = os.path.join(os.path.dirname(__file__), "..", "saved_queries")
     host = connection.get("host", "unknown")
     port = connection.get("port", 5432)
     db = connection.get("database", "postgres")

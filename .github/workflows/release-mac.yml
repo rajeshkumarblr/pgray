@@ -1,0 +1,73 @@
+name: Build & Release macOS DMG
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-mac:
+    name: Build macOS Apple Silicon (.dmg)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build Python backend binary (darwin/arm64)
+        run: |
+          pip install -r backend/requirements.txt pyinstaller
+          mkdir -p frontend/resources
+          pyinstaller --onefile --name pgray-backend --paths backend --distpath frontend/resources backend/run_local.py
+          chmod +x frontend/resources/pgray-backend
+          cp -R backend/saved_queries frontend/resources/saved_queries
+
+          # Smoke-test the compiled binary on macOS arm64
+          ./frontend/resources/pgray-backend --port 9000 --data-dir /tmp/pgray_smoke_test &
+          BG_PID=$!
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:9000/ >/dev/null; then
+              echo "Verified pgray-backend is listening on port 9000"
+              break
+            fi
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:9000/
+          kill $BG_PID 2>/dev/null || true
+
+      - name: Install frontend dependencies & package Electron macOS app
+        working-directory: frontend
+        env:
+          VITE_ELECTRON: 'true'
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          npm install
+          npx tsc
+          npx vite build
+          npx electron-builder --mac --arm64 --config.mac.identity=null
+
+      - name: Upload PGRay-0.1.0-arm64.dmg to GitHub Release v0.1.0
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DMG_PATH=$(ls frontend/release/*-arm64.dmg | head -n 1)
+          echo "Uploading $DMG_PATH to release v0.1.0..."
+          gh release view v0.1.0 >/dev/null 2>&1 || gh release create v0.1.0 --title "PGRay v0.1.0" --notes "Automated macOS Apple Silicon (arm64) desktop build of PGRay."
+          gh release upload v0.1.0 "${DMG_PATH}#PGRay-0.1.0-arm64.dmg" --clobber

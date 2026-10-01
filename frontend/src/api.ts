@@ -1,8 +1,19 @@
 import axios from 'axios';
 
-// Backend runs on localhost:9000 (mapped from container 8000)
-const API_URL = 'http://localhost:9000/api';
-const API_BASE_URL = 'http://localhost:9000'; // Base URL for fetch requests
+// Resolve backend port from Electron URL query param (?apiPort=...) or default to 9000
+const resolveApiBaseUrl = () => {
+    if (typeof window !== 'undefined' && window.location && window.location.search) {
+        const params = new URLSearchParams(window.location.search);
+        const port = params.get('apiPort');
+        if (port) {
+            return `http://127.0.0.1:${port}`;
+        }
+    }
+    return 'http://localhost:9000';
+};
+
+export const API_BASE_URL = resolveApiBaseUrl();
+export const API_URL = `${API_BASE_URL}/api`;
 
 export const api = axios.create({
     baseURL: API_URL,
@@ -92,7 +103,7 @@ export const getSavedQueryContent = async (name: string, connection: any = null)
 
 export const checkHealth = async () => {
     try {
-        const response = await axios.get('http://localhost:9000/');
+        const response = await axios.get(`${API_BASE_URL}/`);
         return response.data;
     } catch (error) {
         console.error("Health check failed:", error);

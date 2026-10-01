@@ -1,10 +1,5 @@
 import React from 'react';
-import Editor, { loader } from '@monaco-editor/react';
-import * as monaco from 'monaco-editor';
-
-// Configure Monaco to use locally bundled editor instead of CDN
-// This fixes "Tracking Prevention blocked access to storage" errors
-loader.config({ monaco });
+import SimpleEditor from './SimpleEditor';
 
 interface SqlEditorProps {
     value: string;
@@ -15,21 +10,7 @@ interface SqlEditorProps {
 const SqlEditor: React.FC<SqlEditorProps> = ({ value, onChange, schema }) => {
     return (
         <div style={{ height: '100%', width: '100%' }}>
-            <Editor
-                height="100%"
-                defaultLanguage="sql"
-                value={value}
-                onChange={(val) => onChange(val || '')}
-                theme="vs-dark"
-                options={{
-                    minimap: { enabled: false },
-                    fontSize: 14,
-                    lineNumbers: 'on',
-                    scrollBeyondLastLine: false,
-                    automaticLayout: true,
-                    padding: { top: 10 },
-                }}
-            />
+            <SimpleEditor value={value} onChange={onChange} schema={schema} />
         </div>
     );
 };

@@ -190,9 +190,6 @@ def get_schema_tree(info: ConnectionInfo):
             target_schema = getattr(info, 'schema_name', None) or getattr(info, 'schema', None) or 'public'
             
         conn = psycopg2.connect(dsn)
-        
-        target_schema = getattr(info, 'schema_name', None) or 'public'
-        
         cur = conn.cursor()
         
         # 1. Fetch Columns

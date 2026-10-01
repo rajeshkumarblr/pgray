@@ -4,7 +4,11 @@ import json
 import shutil
 import datetime
 
-SAVED_QUERIES_DIR = "saved_queries"
+def _get_saved_queries_root():
+    data_dir = os.getenv("PGRAY_DATA_DIR")
+    if data_dir:
+        return os.path.join(data_dir, "saved_queries")
+    return os.path.join(os.path.dirname(__file__), "..", "saved_queries")
 
 def get_connection_dir(connection: dict = None):
     """
@@ -12,18 +16,19 @@ def get_connection_dir(connection: dict = None):
     If connection is None, returns global SAVED_QUERIES_DIR.
     Structure: saved_queries/<host>_<port>/<database>/
     """
+    root_dir = _get_saved_queries_root()
     if not connection:
-        return SAVED_QUERIES_DIR
+        return root_dir
     
     host = connection.get("host", "localhost")
     port = connection.get("port", 5432)
     db = connection.get("database", "postgres")
     
     # Sanitize
-    host = host.replace(":", "_").replace("/", "_")
-    db = db.replace(":", "_").replace("/", "_")
+    host = str(host).replace(":", "_").replace("/", "_")
+    db = str(db).replace(":", "_").replace("/", "_")
     
-    path = os.path.join(SAVED_QUERIES_DIR, f"{host}_{port}", db)
+    path = os.path.join(root_dir, f"{host}_{port}", db)
     return path
 
 def list_saved_queries(connection: dict = None):

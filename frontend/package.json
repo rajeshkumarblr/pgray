@@ -1,12 +1,57 @@
 {
-  "name": "pgray-frontend",
+  "name": "pgray",
+  "appId": "com.pgray.app",
+  "productName": "PGRay",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "description": "Postgres Query Visualizer & Local AI IDE",
+  "author": {
+    "name": "PGRay",
+    "email": "noreply@pgray.app"
+  },
+  "homepage": "https://github.com/rajeshkumarblr/pgray",
   "type": "module",
+  "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:electron": "tsc && vite build && electron-builder",
     "preview": "vite preview"
+  },
+  "build": {
+    "appId": "com.pgray.app",
+    "productName": "PGRay",
+    "copyright": "Copyright © 2026",
+    "icon": "public/pgray_256.png",
+    "asar": true,
+    "extraResources": [
+      {
+        "from": "resources",
+        "to": ".",
+        "filter": [
+          "pgray-backend",
+          "pgray-backend.exe",
+          "saved_queries/**/*"
+        ]
+      }
+    ],
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "icon": "public/pgray_256.png",
+      "category": "public.app-category.developer-tools",
+      "identity": null,
+      "type": "distribution"
+    },
+    "directories": {
+      "output": "release"
+    }
   },
   "dependencies": {
     "@types/diff": "^7.0.2",
@@ -29,11 +74,15 @@
     "@types/node": "^25.0.10",
     "@types/react": "^18.2.15",
     "@types/react-dom": "^18.2.7",
-    "@vitejs/plugin-react": "^4.0.3",
+    "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.24",
+    "electron": "^40.8.0",
+    "electron-builder": "^26.8.1",
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.18",
-    "typescript": "^5.0.2",
-    "vite": "^4.4.5"
+    "typescript": "^5.2.2",
+    "vite": "^5.2.0",
+    "vite-plugin-electron": "^0.29.0",
+    "vite-plugin-electron-renderer": "^0.14.6"
   }
 }

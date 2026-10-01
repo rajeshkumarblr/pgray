@@ -13,9 +13,13 @@ dist/
 .mypy_cache/
 .pytest_cache/
 
-# Node/Frontend
+# Node/Frontend/Electron
 node_modules/
 dist/
+dist-electron/
+frontend/release/
+frontend/resources/
+*.spec
 .DS_Store
 coverage/
 .npm/

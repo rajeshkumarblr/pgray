@@ -97,9 +97,6 @@ async def get_settings(request: ConnectionRequest):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
 @app.post("/api/databases")
 async def get_databases_endpoint(request: ConnectionRequest):
     try:
@@ -367,22 +364,35 @@ async def save_full_session_endpoint(request: FullSessionRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+def _get_connection_config_path(for_write: bool = False) -> str:
+    import os
+    data_dir = os.getenv("PGRAY_DATA_DIR")
+    if data_dir:
+        os.makedirs(data_dir, exist_ok=True)
+        primary = os.path.join(data_dir, "connection.json")
+        if for_write or os.path.exists(primary):
+            return primary
+    return os.path.join(os.path.dirname(__file__), "..", "connection.json")
+
 @app.get("/api/config/connection")
 async def get_connection_config():
     """
-    Reads connection.json from the backend directory to auto-fill credentials.
+    Reads connection.json from PGRAY_DATA_DIR (or backend directory) to auto-fill credentials.
     """
     import os
     import json
     
-    config_path = os.path.join(os.path.dirname(__file__), "..", "connection.json")
+    config_path = _get_connection_config_path(for_write=False)
     if not os.path.exists(config_path):
         return {"status": "error", "message": "connection.json not found"}
         
     try:
         with open(config_path, "r") as f:
             config = json.load(f)
-            # Basic validation
+            if "username" in config and "user" not in config:
+                config["user"] = config["username"]
+            elif "user" in config and "username" not in config:
+                config["username"] = config["user"]
             required = ["host", "port", "user", "password", "database"]
             if not all(k in config for k in required):
                 return {"status": "error", "message": "Invalid config format"}
@@ -396,16 +406,14 @@ async def save_connection_config(request: ConnectionRequest):
     """
     Saves the provided connection info to connection.json
     """
-    import os
     import json
     
-    config_path = os.path.join(os.path.dirname(__file__), "..", "connection.json")
+    config_path = _get_connection_config_path(for_write=True)
     
     try:
-        # Convert Pydantic model to dict
-        config_data = request.connection.dict()
+        config_data = request.connection.model_dump()
+        config_data["user"] = config_data.get("username", "postgres")
         
-        # Write to file
         with open(config_path, "w") as f:
             json.dump(config_data, f, indent=4)
             

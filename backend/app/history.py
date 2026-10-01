@@ -3,9 +3,11 @@ import os
 from pydantic import BaseModel
 from typing import List
 
-# Persist history across container restarts by default.
-# Can be overridden via env var.
-DB_PATH = os.getenv("PGRAY_HISTORY_DB", "/data/history.db")
+def _get_db_path() -> str:
+    if os.getenv("PGRAY_HISTORY_DB"):
+        return os.getenv("PGRAY_HISTORY_DB")
+    data_dir = os.getenv("PGRAY_DATA_DIR", os.path.expanduser("~/.pgray"))
+    return os.path.join(data_dir, "history.db")
 
 class HistoryItem(BaseModel):
     id: int
@@ -13,10 +15,11 @@ class HistoryItem(BaseModel):
     timestamp: str
 
 def get_db_connection():
-    db_dir = os.path.dirname(DB_PATH)
+    db_path = _get_db_path()
+    db_dir = os.path.dirname(db_path)
     if db_dir:
         os.makedirs(db_dir, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     return conn
 

@@ -21,14 +21,15 @@ def setup_logging():
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
 
-    # File Handler (server.log)
-    # This will create server.log in /app/server.log inside the container,
-    # which is mapped to backend/server.log on host if using the volume map in docker-compose
-    log_file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "server.log")
-    
-    file_handler = logging.FileHandler(log_file_path)
-    file_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
+    data_dir = os.getenv("PGRAY_DATA_DIR", os.path.expanduser("~/.pgray"))
+    try:
+        os.makedirs(data_dir, exist_ok=True)
+        log_file_path = os.path.join(data_dir, "server.log")
+        file_handler = logging.FileHandler(log_file_path)
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+        sys.stderr.write(f"Logging configured. Writing to {log_file_path}\n")
+    except Exception as e:
+        sys.stderr.write(f"Could not configure file logger: {e}\n")
 
-    sys.stderr.write(f"Logging configured. Writing to {log_file_path}\n")
     logger.info("Server logging initialized successfully.")

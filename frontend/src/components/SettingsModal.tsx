@@ -38,7 +38,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     const [activeTab, setActiveTab] = useState<'db' | 'ai'>('db');
 
     // DB State
-    const [host, setHost] = useState('host.docker.internal');
+    const [host, setHost] = useState('localhost');
     const [port, setPort] = useState(5432);
     const [username, setUsername] = useState('postgres');
     const [password, setPassword] = useState('');

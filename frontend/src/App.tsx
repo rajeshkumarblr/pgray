@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react'
 import { Node, Edge, applyNodeChanges, NodeChange } from 'reactflow';
 import * as Diff from 'diff';
 import SettingsModal from './components/SettingsModal';
-import { connectDb, explainQuery, getSavedQueryContent, executeQuery, getSchema, getConnectionConfig } from './api';
+import { connectDb, explainQuery, getSavedQueryContent, executeQuery, getSchema, getConnectionConfig, API_BASE_URL } from './api';
 import { parsePlanToFlow } from './utils/planLayout';
 
 // Workspace
@@ -414,7 +414,7 @@ function App() {
       const promptToSend = displayMsg ? userMsg : `Existing SQL:\n\`\`\`sql\n${sqlQuery}\n\`\`\`\n\nUser Request: ${userMsg}`;
       const startTime = performance.now();
 
-      const response = await fetch('http://localhost:9000/api/generate_sql_stream', {
+      const response = await fetch(`${API_BASE_URL}/api/generate_sql_stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -672,7 +672,7 @@ Please provide a detailed analysis in the following format:
     setToast({ message: 'Indexing database for AI search... this may take 10-30 seconds.', type: 'info' });
 
     try {
-      const response = await fetch('http://localhost:9000/api/search/index', {
+      const response = await fetch(`${API_BASE_URL}/api/search/index`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ connection: connectionInfo, force: true })

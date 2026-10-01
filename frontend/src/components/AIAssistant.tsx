@@ -42,7 +42,7 @@ interface AIAssistantProps {
     onStreamCode?: (code: string) => void;
 }
 
-import { getAIModels } from '../api';
+import { getAIModels, API_BASE_URL } from '../api';
 
 const AIAssistant: React.FC<AIAssistantProps> = ({ schema, onApplyCode, connectionInfo, onStreamCode }) => {
     const [messages, setMessages] = useState<Message[]>(() => {
@@ -137,7 +137,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ schema, onApplyCode, connecti
         }
 
         try {
-            const response = await fetch('http://localhost:9000/api/generate_sql_stream', {
+            const response = await fetch(`${API_BASE_URL}/api/generate_sql_stream`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
