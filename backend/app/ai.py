@@ -4,6 +4,11 @@ import httpx # Async Support
 import json
 import datetime
 import time
+import glob
+import socket
+import subprocess
+import sys
+from urllib.parse import urlparse
 
 import os
 
@@ -13,6 +18,244 @@ from app.search_engine import search_database
 logger = logging.getLogger(__name__)
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate")
+LITERT_URL = os.getenv("LITERT_URL", "http://127.0.0.1:9379")
+DEFAULT_LITERT_MODEL = "gemma4-e2b-hw-int4-20260622"
+
+
+def _is_port_open(host: str, port: int, timeout: float = 0.4) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def throttle_litert_processes():
+    """Pin running litert-lm processes to Apple Silicon Efficiency (E) cores on macOS."""
+    if sys.platform != "darwin":
+        return
+    try:
+        out = subprocess.check_output(["pgrep", "-f", "litert-lm"], text=True, timeout=2.0)
+        for line in out.strip().splitlines():
+            pid = line.strip()
+            if pid:
+                subprocess.run(["/usr/sbin/taskpolicy", "-b", "-p", pid], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2.0)
+                subprocess.run(["renice", "+15", "-p", pid], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2.0)
+    except Exception:
+        pass
+
+
+def list_disk_litert_models() -> list:
+    """Scan ~/.litert-lm/models/*/model.litertlm for downloaded LiteRT-LM models."""
+    home = os.path.expanduser("~")
+    if not home:
+        return []
+    pattern = os.path.join(home, ".litert-lm", "models", "*", "model.litertlm")
+    models = []
+    for match in sorted(glob.glob(pattern)):
+        dir_name = os.path.basename(os.path.dirname(match))
+        if dir_name and dir_name != ".":
+            models.append(dir_name)
+    return models
+
+
+def ensure_litert_server() -> bool:
+    """Ensure LiteRT-LM server is listening on 127.0.0.1:9379, auto-starting it if installed."""
+    if _is_port_open("127.0.0.1", 9379):
+        throttle_litert_processes()
+        return True
+
+    home = os.path.expanduser("~")
+    candidates = [
+        os.path.join(home, "litert-env", "bin", "litert-lm"),
+        os.path.join(home, ".virtualenvs", "litert-env", "bin", "litert-lm"),
+        os.path.join(home, "proj", "litert-env", "bin", "litert-lm"),
+        os.path.join(home, "proj", "hn_station", "litert-env", "bin", "litert-lm"),
+        os.path.join(home, "miniconda3", "envs", "litert-env", "bin", "litert-lm"),
+        os.path.join(home, "anaconda3", "envs", "litert-env", "bin", "litert-lm"),
+        os.path.join(home, "miniforge3", "envs", "litert-env", "bin", "litert-lm"),
+        "/opt/homebrew/Caskroom/miniconda/base/envs/litert-env/bin/litert-lm",
+        os.path.join(home, ".local", "bin", "litert-lm"),
+        "/opt/homebrew/bin/litert-lm",
+    ]
+
+    bin_path = None
+    for c in candidates:
+        if os.path.isfile(c) and os.access(c, os.X_OK):
+            bin_path = c
+            break
+
+    if not bin_path:
+        return False
+
+    logger.info(f"Auto-starting LiteRT-LM server on 127.0.0.1:9379 using {bin_path}")
+    try:
+        if sys.platform == "darwin" and os.path.exists("/usr/sbin/taskpolicy"):
+            cmd = ["/usr/sbin/taskpolicy", "-b", "nice", "-n", "15", bin_path, "serve", "--port", "9379"]
+        else:
+            cmd = [bin_path, "serve", "--port", "9379"]
+        subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        for _ in range(15):
+            time.sleep(0.3)
+            if _is_port_open("127.0.0.1", 9379):
+                throttle_litert_processes()
+                logger.info("LiteRT-LM server is now listening on 127.0.0.1:9379")
+                return True
+    except Exception as e:
+        logger.error(f"Failed to auto-start litert-lm serve: {e}")
+
+    return _is_port_open("127.0.0.1", 9379)
+
+
+def _resolve_local_backend(ollama_url: str = None, model: str = None) -> tuple:
+    """
+    Resolves whether to use LiteRT-LM (port 9379, OpenAI /v1/chat/completions)
+    or Ollama (port 11434, /api/generate).
+    Returns: (base_url, resolved_model, is_litert)
+    """
+    raw_url = (ollama_url or OLLAMA_URL).rstrip("/")
+    ollama_base = raw_url.replace("/api/generate", "").replace("/v1/chat/completions", "").rstrip("/")
+    disk_litert = list_disk_litert_models()
+
+    def _pick_litert_model(req_model: str) -> str:
+        if req_model and req_model in disk_litert:
+            return req_model
+        if disk_litert:
+            return disk_litert[0]
+        if req_model and ("gemma" in req_model.lower() or "litert" in req_model.lower()):
+            return req_model
+        return DEFAULT_LITERT_MODEL
+
+    # 1. Explicit LiteRT URL (:9379 or /v1) or explicit LiteRT disk model
+    if ":9379" in raw_url or "/v1" in raw_url or (model and model in disk_litert):
+        ensure_litert_server()
+        base = ollama_base if ":9379" in ollama_base else LITERT_URL.rstrip("/")
+        return base, _pick_litert_model(model), True
+
+    # 2. Check if Ollama is actually reachable at the configured URL (default 11434)
+    try:
+        parsed = urlparse(ollama_base if "://" in ollama_base else f"http://{ollama_base}")
+        host = parsed.hostname or "127.0.0.1"
+        port = parsed.port or 11434
+    except Exception:
+        host, port = "127.0.0.1", 11434
+
+    if _is_port_open(host, port):
+        # Ollama is running! Keep Ollama unless user specifically asked for a gemma/litert model not on Ollama
+        return ollama_base, (model or "qwen2.5-coder"), False
+
+    # 3. Ollama is not running on 11434 -> Use LiteRT-LM (auto-starting if available)
+    if _is_port_open("127.0.0.1", 9379) or disk_litert or ensure_litert_server():
+        ensure_litert_server()
+        return LITERT_URL.rstrip("/"), _pick_litert_model(model), True
+
+    # 4. Fallback to configured Ollama URL
+    return ollama_base, (model or "qwen2.5-coder"), False
+
+
+def _strip_thinking_tags(text: str) -> str:
+    import re
+    if not text:
+        return ""
+    cleaned = re.sub(r"<(thought|think)>.*?</\1>", "", text, flags=re.DOTALL | re.IGNORECASE)
+    return cleaned.strip()
+
+
+def _extract_litert_text(data: dict) -> str:
+    if not isinstance(data, dict):
+        return ""
+    choices = data.get("choices") or []
+    if choices and isinstance(choices, list):
+        first = choices[0] if isinstance(choices[0], dict) else {}
+        msg = first.get("message") or first.get("delta") or {}
+        if isinstance(msg, dict) and msg.get("content"):
+            return _strip_thinking_tags(msg["content"])
+    msg = data.get("message") or {}
+    if isinstance(msg, dict) and msg.get("content"):
+        return _strip_thinking_tags(msg["content"])
+    return _strip_thinking_tags(data.get("response", ""))
+
+
+def _call_local_llm_sync(
+    prompt: str,
+    model: str = "qwen2.5-coder",
+    ollama_url: str = None,
+    temperature: float = 0.1,
+    stop: list = None,
+    format_json: bool = False,
+    timeout: float = 120.0,
+) -> str:
+    """Unified synchronous helper for LiteRT-LM (/v1/chat/completions) and Ollama (/api/generate)."""
+    base_url, resolved_model, is_litert = _resolve_local_backend(ollama_url, model)
+    if is_litert:
+        endpoint = f"{base_url}/v1/chat/completions"
+        payload = {
+            "model": resolved_model,
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False,
+        }
+        response = requests.post(endpoint, json=payload, timeout=timeout)
+        response.raise_for_status()
+        return _extract_litert_text(response.json())
+    else:
+        endpoint = f"{base_url}/api/generate"
+        options = {"temperature": temperature}
+        if stop:
+            options["stop"] = stop
+        payload = {
+            "model": resolved_model,
+            "prompt": prompt,
+            "stream": False,
+            "options": options,
+        }
+        if format_json:
+            payload["format"] = "json"
+        response = requests.post(endpoint, json=payload, timeout=timeout)
+        response.raise_for_status()
+        return response.json().get("response", "")
+
+
+async def _call_local_llm_async(
+    prompt: str,
+    model: str = "qwen2.5-coder",
+    ollama_url: str = None,
+    temperature: float = 0.1,
+    format_json: bool = False,
+    timeout: float = 60.0,
+) -> str:
+    """Unified async helper for LiteRT-LM (/v1/chat/completions) and Ollama (/api/generate)."""
+    base_url, resolved_model, is_litert = _resolve_local_backend(ollama_url, model)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        if is_litert:
+            endpoint = f"{base_url}/v1/chat/completions"
+            payload = {
+                "model": resolved_model,
+                "messages": [{"role": "user", "content": prompt}],
+                "stream": False,
+            }
+            response = await client.post(endpoint, json=payload)
+            response.raise_for_status()
+            return _extract_litert_text(response.json())
+        else:
+            endpoint = f"{base_url}/api/generate"
+            payload = {
+                "model": resolved_model,
+                "prompt": prompt,
+                "keep_alive": "60m",
+                "stream": False,
+                "options": {"temperature": temperature},
+            }
+            if format_json:
+                payload["format"] = "json"
+            response = await client.post(endpoint, json=payload)
+            response.raise_for_status()
+            return response.json().get("response", "")
+
 
 def format_schema_ddl(schema: dict) -> str:
     """
@@ -53,12 +296,24 @@ def format_schema_ddl(schema: dict) -> str:
 
 def generate_sql(prompt: str, schema_context: str = None, schema_data: dict = None, history: list = None, model: str = "qwen2.5-coder", connection = None) -> dict:
     """
-    Generates SQL based on a prompt and schema context using Ollama (Agentic).
+    Generates SQL based on a prompt and schema context using LiteRT-LM or Ollama.
     """
+    if not schema_data and connection:
+        try:
+            from app.explain import get_schema_tree
+            schema_data = get_schema_tree(connection)
+        except Exception as e:
+            logger.warning(f"Could not auto-fetch schema_data: {e}")
+
     if schema_data:
         schema_context = format_schema_ddl(schema_data)
     elif not schema_context:
         schema_context = "-- No schema provided"
+
+    _, resolved_model, is_litert = _resolve_local_backend(None, model)
+    if is_litert:
+        # For LiteRT-LM (e.g. gemma4-e2b), pass the complete schema DDL in a single fast call
+        return standard_generate_sql(prompt, schema_context, schema_data, history, resolved_model, connection)
 
     # --- AGENTIC TOOLS ---
     def list_tables_tool(connection) -> str:
@@ -231,33 +486,32 @@ def generate_sql(prompt: str, schema_context: str = None, schema_data: dict = No
                 break
 
     # Fallback to standard generation if no connection or loop failed
-    if connection and 'current_context' in locals():
-         history += f"\n\n[System: The agent attempted to solve this but failed. Here is the investigation log. Use this information to generate the correct SQL without hallucinating.]\n{current_context}\n"
-
     return standard_generate_sql(prompt, schema_context, schema_data, history, model, connection)
 
 def standard_generate_sql(prompt, schema_context, schema_data, history, model, connection):
-    # ... (Original Logic Renamed) ...
-    # Initialize variables that were used in the original function
-    logger.info("Fallback to Standard Generation")
+    logger.info(f"Running Standard SQL Generation (model={model})")
+    if not schema_context or schema_context == "-- No schema provided":
+        if not schema_data and connection:
+            try:
+                from app.explain import get_schema_tree
+                schema_data = get_schema_tree(connection)
+            except Exception as e:
+                logger.warning(f"Could not auto-fetch schema in standard_generate_sql: {e}")
+        if schema_data:
+            schema_context = format_schema_ddl(schema_data)
+
     data_context = ""
     history_text = ""
-    
-    # ... (Copy essential parts of original build_prompt) ...
+
     def build_prompt(context_str, error_msg=None):
-         # ... existing build_prompt code ...
          base_prompt = (
             "## Instructions\n"
             "You are an expert PostgreSQL Data Analyst. Your goal is to write the most accurate SQL query for the user's question.\n\n"
             "## Process\n"
-            "1.  **Identify the Subject:** What is the main entity the user wants to list? (e.g., Customers, Orders, Patients, Transactions).\n"
-            "    -   *Rule:* If the user asks for a specific Subject, that Subject's Name/ID MUST appear in the generic `SELECT` clause. Do not aggregate it away unless explicitly asked to \"count\" or \"summarize\".\n"
-            "2.  **Identify the Metrics:** What value are we measuring? (e.g., Total Sales, Count of Visits).\n"
+            "1.  **Identify the Subject:** What is the main entity the user wants to list? (e.g., Customers, Orders, Products).\n"
+            "    -   *Rule:* If the user asks for a specific Subject, that Subject's Name/ID MUST appear in the `SELECT` clause. Do not aggregate it away unless explicitly asked to \"count\" or \"summarize\".\n"
+            "2.  **Identify the Metrics:** What value are we measuring? (e.g., Total Sales, Revenue = SUM(unit_price * quantity * (1 - discount))).\n"
             "3.  **Generate SQL:** Write standard PostgreSQL code.\n\n"
-            "## Constraint Checklist & Confidence Score\n"
-            "1. Does the query return the columns requested?\n"
-            "2. Are the joins correct based on Foreign Keys?\n"
-            "3. Confidence Score: 1-5\n\n"
             "### Database Schema\n"
             f"{context_str}\n\n"
             f"{data_context}\n\n"
@@ -265,11 +519,11 @@ def standard_generate_sql(prompt, schema_context, schema_data, history, model, c
             f"{history_text}"
             f"Current Request: {prompt}\n\n"
             "CRITICAL: Do not assume column names based on your training data. You MUST strictly use the column names provided in the CREATE TABLE definitions above.\n"
-            "CRITICAL: This database uses snake_case (e.g. `order_id`, `customer_name`). DO NOT use CamelCase (e.g. `OrderID`, `CustomerName`). If you use CamelCase, the query WILL FAIL.\n"
+            "CRITICAL: This database uses snake_case (e.g. `order_id`, `company_name`, `unit_price`). DO NOT use CamelCase (e.g. `OrderID`, `CustomerName`). If you use CamelCase, the query WILL FAIL.\n"
             "If a column is not in the schema, do not hallucinate it.\n"
-            "DO NOT use backticks (`). Use double quotes (\") for identifiers if needed (e.g. \"Order Details\").\n\n"
+            "DO NOT use backticks (`). Use double quotes (\") for identifiers if needed.\n\n"
             "### Output\n"
-            "Return ONLY the SQL code block. No conversational text.\n"
+            "Return ONLY the SQL code block inside ```sql ... ```. No conversational text.\n"
             "```sql\n"
             "SELECT ...\n"
             "```"
@@ -278,20 +532,13 @@ def standard_generate_sql(prompt, schema_context, schema_data, history, model, c
             base_prompt += f"\n\n!!! PREVIOUS ATTEMPT FAILED !!!\nError: {error_msg}\nFIX THE SQL AND RETURN ONLY THE FIXED SQL."
          return base_prompt
 
-    # Retry Loop (Simplified for fallback)
     final_sql = None
     debug_prompt = build_prompt(schema_context)
     
     try:
-        # One-shot attempt
         full_prompt = build_prompt(schema_context)
-        payload = { "model": model, "prompt": full_prompt, "stream": False, "options": { "temperature": 0.2 } }
-        response = requests.post(OLLAMA_URL, json=payload, timeout=120)
-        response.raise_for_status()
-        ai_response = response.json().get("response", "")
-        
+        ai_response = _call_local_llm_sync(full_prompt, model=model, temperature=0.1, timeout=120.0)
         final_sql = cleanup_sql(ai_response)
-        
     except Exception as e:
         logger.error(f"Standard Gen Failed: {e}")
 
@@ -301,6 +548,7 @@ def cleanup_sql(text: str) -> str:
     """Robustly extract SQL from Markdown or raw text."""
     import re
     if not text: return ""
+    text = _strip_thinking_tags(text)
     # 1. Try ```sql ... ```
     match = re.search(r"```sql\s*(.*?)\s*```", text, re.DOTALL | re.IGNORECASE)
     if match: return match.group(1).strip()
@@ -312,7 +560,10 @@ def cleanup_sql(text: str) -> str:
     # 3. Fallback: Strip common artifacts
     text = text.replace("```sql", "").replace("```", "").strip()
     
-    # 4. Remove leading "SELECT" if duplicated by accident? No, risky.
+    # 4. If conversational prefix precedes SELECT/WITH, extract from SELECT/WITH
+    kw_match = re.search(r"\b(SELECT|WITH)\b[\s\S]*", text, re.IGNORECASE)
+    if kw_match:
+        return kw_match.group(0).strip()
     return text
 
 
@@ -338,30 +589,28 @@ def explain_sql_query(query: str, schema_context: str = None, schema_data: dict 
         f"```sql\n{query}\n```"
     )
 
-    payload = {
-        "model": model,
-        "prompt": prompt,
-        "stream": False,
-        "keep_alive": "60m",
-        "options": { "temperature": 0.2 }
-    }
-
     try:
-        response = requests.post(OLLAMA_URL, json=payload, timeout=300)
-        response.raise_for_status()
-        return response.json().get("response", "Could not generate explanation.")
+        text = _call_local_llm_sync(prompt, model=model, temperature=0.2, timeout=180.0)
+        return text if text else "Could not generate explanation."
     except Exception as e:
         logger.error(f"Explanation failed: {e}")
         return f"Error generating explanation: {str(e)}"
 
 async def generate_sql_stream(prompt: str, schema_context: str = None, schema_data: dict = None, history: list = None, model: str = "qwen2.5-coder", plan_text: str = None, sql_query: str = None, apiKey: str = None, ollamaUrl: str = None, connection: dict = None):
     """
-    Async Generator that streams the response from Ollama using httpx.
+    Async Generator that streams the response from LiteRT-LM, Ollama, or Gemini using httpx.
     """
     # Use custom URL if provided, else default
     active_ollama_url = ollamaUrl if ollamaUrl else OLLAMA_URL
     # Ensure no trailing slash for consistency if we append /api/...
     active_ollama_url = active_ollama_url.rstrip('/')
+
+    if not schema_data and not schema_context and connection:
+        try:
+            from app.explain import get_schema_tree
+            schema_data = get_schema_tree(connection)
+        except Exception:
+            pass
 
     schema_text = ""
     if schema_data:
@@ -382,10 +631,6 @@ async def generate_sql_stream(prompt: str, schema_context: str = None, schema_da
             search_results = []
             for term in possible_terms:
                 if len(term) > 2:
-                     # Search DB - This is synchronous, but fast enough? Or should be async?
-                     # search_database uses psycopg2, which is sync.
-                     # We are in async def. 
-                     # Ideally we offload to thread, but for MVP keep it simple (it blocks loop briefly).
                      results = search_database(connection, term, limit=3)
                      search_results.extend(results)
             
@@ -406,11 +651,11 @@ async def generate_sql_stream(prompt: str, schema_context: str = None, schema_da
     if plan_text:
         optimization_context += f"### Execution Plan (Text)\n```text\n{plan_text}\n```\n\n"
     
-    # Always disable title for now as per user request
-    title_instruction = "1. Do NOT output a Title line. Start directly with the SQL block.\n"
-
     # ... Prompt construction ...
-    if plan_text:
+    if "SQL Explainer Assistant" in prompt:
+        # AskChat follow-up explanation mode
+        base_prompt = f"### Database Schema\n{schema_text}\n\n{prompt}"
+    elif plan_text:
         # TUNE/ANALYSIS MODE
         base_prompt = (
             "You are a helpful SQL Assistant. Your goal is to analyze execution plans and suggest optimizations.\n"
@@ -453,34 +698,56 @@ async def generate_sql_stream(prompt: str, schema_context: str = None, schema_da
             "8. Output ONLY the SQL code block. Do NOT include any explanations, introductions, or 'Here is the SQL'.\n"
         )
 
+    if model and model.startswith("gemini"):
+        if not apiKey:
+             yield json.dumps({"error": "Gemini model selected but no API Key provided."}) + "\n"
+             return
+        async for chunk in generate_gemini_stream(base_prompt, model, apiKey):
+             yield chunk
+        return
+
+    base_url, resolved_model, is_litert = _resolve_local_backend(active_ollama_url, model)
+
+    if is_litert:
+        try:
+            start_time = time.time()
+            async with httpx.AsyncClient(timeout=180.0) as client:
+                target_url = f"{base_url}/v1/chat/completions"
+                litert_payload = {
+                    "model": resolved_model,
+                    "messages": [{"role": "user", "content": base_prompt}],
+                    "stream": False,
+                }
+                resp = await client.post(target_url, json=litert_payload)
+                if resp.status_code != 200:
+                    err_text = resp.text
+                    logger.error(f"LiteRT-LM API error: {resp.status_code} - {err_text}")
+                    yield json.dumps({"error": f"LiteRT-LM error ({resp.status_code}): {err_text}"}) + "\n"
+                    return
+                data = resp.json()
+                text = _extract_litert_text(data)
+                elapsed_ms = f"{(time.time() - start_time) * 1000:.0f}ms"
+                if text:
+                    yield json.dumps({"response": text, "total_duration": elapsed_ms}) + "\n"
+                logger.info(f"✅ Generated LiteRT-LM Response ({elapsed_ms}):\n{text}")
+        except Exception as e:
+            logger.error(f"LiteRT-LM stream failed: {e}")
+            yield json.dumps({"error": str(e)}) + "\n"
+        return
 
     payload = {
-        "model": model, 
+        "model": resolved_model, 
         "prompt": base_prompt,
         "keep_alive": "60m", # Keep model loaded for 1 hour
         "stream": True,  # ENABLE STREAMING
         "options": { "temperature": 0.1 } # Lower temperature for diffs
     }
 
-    if model.startswith("gemini"):
-        if not apiKey:
-             yield json.dumps({"error": "Gemini model selected but no API Key provided."}) + "\n"
-             return
-        
-        
-        # generate_gemini_stream is defined in this module
-        async for chunk in generate_gemini_stream(base_prompt, model, apiKey):
-             yield chunk
-        return
-
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
             start_time = time.time()
-            target_url = active_ollama_url
-            if "/api/generate" not in target_url:
-                 target_url = f"{active_ollama_url}/api/generate"
+            target_url = f"{base_url}/api/generate"
 
-            # print(f"DEBUG: sending to {target_url}")
             async with client.stream("POST", target_url, json=payload) as response:
                 if response.status_code != 200:
                     error_detail = await response.aread()
@@ -517,21 +784,15 @@ async def generate_title(prompt: str, model: str = "qwen2.5-coder") -> str:
         "Example: 'Top 5 Movies Revenue'"
     )
     
-    payload = {
-        "model": model, 
-        "prompt": f"{sys_prompt}\nUser Request: {prompt}\nTitle:",
-        "keep_alive": "60m",
-        "stream": False,
-        "options": { "temperature": 0.3 }
-    }
-    
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(OLLAMA_URL, json=payload, timeout=30)
-            response.raise_for_status()
-            title = response.json().get("response", "").strip().strip('"').strip("'")
-            return title if title else "Untitled Session"
-
+        raw = await _call_local_llm_async(
+            f"{sys_prompt}\nUser Request: {prompt}\nTitle:",
+            model=model,
+            temperature=0.3,
+            timeout=30.0,
+        )
+        title = raw.strip().strip('"').strip("'")
+        return title if title else "Untitled Session"
     except Exception as e:
         logger.error(f"Title generation failed: {e}")
         return "Untitled Session"
@@ -545,12 +806,7 @@ async def analyze_parameterized_query(sql_query: str, model: str = "qwen2.5-code
     logger.info(f"DEBUG: analyze_parameterized_query called with SQL: {sql_query}")
 
     # 1. Regex Detection for existing parameters (e.g. :name)
-    # Basic regex to find :word. Avoids ::cast (postgres). 
-    # Look for : followed by word chars, ensuring not preceded by : (cast)
     import re
-    # Negative lookbehind for :, match : then word.
-    # Also careful about quotes? 
-    # For now, simplistic regex: (?<!:):([a-zA-Z_][a-zA-Z0-9_]*)
     regex_params = []
     try:
         matches = re.finditer(r'(?<!:):([a-zA-Z_][a-zA-Z0-9_]*)', sql_query)
@@ -558,10 +814,6 @@ async def analyze_parameterized_query(sql_query: str, model: str = "qwen2.5-code
         for m in matches:
             p_name = m.group(1)
             if p_name not in seen:
-                # Basic check to ensure it's not inside a string literal? 
-                # This is hard without full parser. 
-                # But typically :param is distinct. 
-                # We will assume it's a param.
                 regex_params.append({
                     "name": p_name,
                     "original_value": f":{p_name}", # No-op replacement
@@ -576,8 +828,6 @@ async def analyze_parameterized_query(sql_query: str, model: str = "qwen2.5-code
     logger.info(f"DEBUG: Regex found params: {regex_params}")
 
     # 2. AI Analysis for Literals (and Title if needed)
-    
-    # If we have title, we can simplify the prompt
     title_instruction = "2. Suggest a short, descriptive Title (3-5 words)."
     if existing_title:
         title_instruction = "2. Title: Return null (we have one)."
@@ -612,65 +862,46 @@ async def analyze_parameterized_query(sql_query: str, model: str = "qwen2.5-code
         "}"
     )
     
-    payload = {
-        "model": model, 
-        "prompt": prompt,
-        "stream": False,
-        "keep_alive": "60m",
-        "format": "json",
-        "options": { "temperature": 0.1 }
-    }
-    
     ai_result = { "title": existing_title or "Untitled Query", "parameters": [] }
     
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(OLLAMA_URL, json=payload, timeout=30)
-            response.raise_for_status()
-            data = response.json()
-            content = data.get("response", "")
+        content = await _call_local_llm_async(
+            prompt,
+            model=model,
+            temperature=0.1,
+            format_json=True,
+            timeout=45.0,
+        )
+        try:
+            json_match = re.search(r"(\{.*\})", content, re.DOTALL)
+            if json_match:
+                content = json_match.group(1).strip()
             
-            try:
-                # Try to extract JSON structure directly
-                json_match = re.search(r"(\{.*\})", content, re.DOTALL)
-                if json_match:
-                    content = json_match.group(1).strip()
+            parsed = json.loads(content)
+            
+            if not existing_title and "title" in parsed:
+                ai_result["title"] = parsed["title"]
                 
-                parsed = json.loads(content)
-                
-                # Use AI title if we don't have one
-                if not existing_title and "title" in parsed:
-                    ai_result["title"] = parsed["title"]
-                    
-                if "parameters" in parsed and isinstance(parsed["parameters"], list):
-                    # Filter bad AI params
-                    for p in parsed["parameters"]:
-                         if isinstance(p, dict) and "name" in p and "original_value" in p:
-                            if "table" not in p: p["table"] = None
-                            if "column" not in p: p["column"] = None
-                            ai_result["parameters"].append(p)
-                            
-            except json.JSONDecodeError:
-                 pass # Keep defaults
+            if "parameters" in parsed and isinstance(parsed["parameters"], list):
+                for p in parsed["parameters"]:
+                     if isinstance(p, dict) and "name" in p and "original_value" in p:
+                        if "table" not in p: p["table"] = None
+                        if "column" not in p: p["column"] = None
+                        ai_result["parameters"].append(p)
+                        
+        except json.JSONDecodeError:
+             pass
                  
     except Exception as e:
         logger.error(f"Analyze Query failed: {e}")
-        # Return what we found via regex at least!
         
     # 3. Merge Regex Params into AI Params
-    # Priority: Keep existing regex params (high confidence they are intended).
-    # AI might have found literals.
-    # Deduplicate by name?
-    
-    final_params = list(regex_params) # Start with explicit
-    # deduplicate by name AND original_value
-    existing_map = {p["name"]: p for p in final_params} # Map for easy update
+    final_params = list(regex_params)
+    existing_map = {p["name"]: p for p in final_params}
     existing_values = set(p["original_value"] for p in regex_params)
     
     for ai_p in ai_result["parameters"]:
-        # 1. Check for Name Match (Merge Metadata)
         if ai_p["name"] in existing_map:
-            # MERGE METADATA: If AI found table/col/transform for an existing regex param, enrich it!
             existing = existing_map[ai_p["name"]]
             if not existing.get("table") and ai_p.get("table"):
                 existing["table"] = ai_p["table"]
@@ -680,75 +911,83 @@ async def analyze_parameterized_query(sql_query: str, model: str = "qwen2.5-code
                 existing["transform"] = ai_p["transform"]
             continue
 
-        # 2. Skip if AI suggests satisfying an existing values literal entirely (deduplication for new params)
         if ai_p["original_value"] in existing_values:
             continue
             
-        # 3. Add new param
-        # Skip heuristic ":limit"
         if ai_p["original_value"].startswith(":") and not ai_p["original_value"].startswith("::"):
              continue
 
         final_params.append(ai_p)
             
-    final_result = {
+    return {
+        "title": ai_result["title"],
         "parameters": final_params
     }
-    
-    return final_result
 
 async def list_models() -> list:
     """
-    Fetches available models from Ollama /api/tags.
+    Fetches available models from LiteRT-LM (~/.litert-lm/models or :9379/v1/models) and/or Ollama (:11434/api/tags).
     """
-    try:
-        # Construct base URL from OLLAMA_URL
-        # OLLAMA_URL defaults to .../api/generate
-        base_url = OLLAMA_URL.replace("/api/generate", "")
-        tags_url = f"{base_url}/api/tags"
-        
-        async with httpx.AsyncClient() as client:
-            response = await client.get(tags_url, timeout=5)
-            if response.status_code == 200:
-                data = response.json()
-                # Ollama returns { "models": [ { "name": "..." }, ... ] }
-                models = [m["name"] for m in data.get("models", [])]
-                return models
-                
-    except Exception as e:
-        logger.error(f"Failed to list models: {e}")
-    
+    discovered = []
+
+    # 1. Check disk LiteRT-LM models (~/.litert-lm/models/*/model.litertlm)
+    for m in list_disk_litert_models():
+        if m not in discovered:
+            discovered.append(m)
+
+    # 2. Check LiteRT-LM /v1/models if listening on 9379
+    if _is_port_open("127.0.0.1", 9379):
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                resp = await client.get(f"{LITERT_URL.rstrip('/')}/v1/models")
+                if resp.status_code == 200:
+                    data = resp.json()
+                    for item in data.get("data", []):
+                        mid = item.get("id")
+                        if mid and mid not in discovered:
+                            discovered.append(mid)
+        except Exception:
+            pass
+
+    # 3. Check Ollama /api/tags if listening on 11434
+    base_url = OLLAMA_URL.replace("/api/generate", "").rstrip("/")
+    if _is_port_open("127.0.0.1", 11434):
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                response = await client.get(f"{base_url}/api/tags")
+                if response.status_code == 200:
+                    data = response.json()
+                    for m in data.get("models", []):
+                        name = m.get("name")
+                        if name and name not in discovered:
+                            discovered.append(name)
+        except Exception as e:
+            logger.error(f"Failed to list Ollama models: {e}")
+
+    if discovered:
+        return discovered
+
     # Fallback
-    return ["qwen2.5-coder:latest", "qwen2.5-coder", "llama3", "mistral"]
+    return [DEFAULT_LITERT_MODEL, "qwen2.5-coder:latest", "qwen2.5-coder", "llama3", "mistral"]
 
 async def warmup_model(model: str = "qwen2.5-coder:latest"):
     """
-    Sends a keep-alive request to Ollama to load the model into memory.
+    Ensures LiteRT-LM server is started (if applicable) or sends a keep-alive request to Ollama.
     """
     try:
-        # Just sending an empty generate request with keep_alive
+        base_url, resolved_model, is_litert = _resolve_local_backend(None, model)
+        if is_litert:
+            ensure_litert_server()
+            return
         payload = {
-            "model": model,
+            "model": resolved_model,
             "prompt": "", 
             "keep_alive": "60m",
             "stream": False
         }
         async with httpx.AsyncClient() as client:
-            # We don't care about the response, just triggering the load
-            # Use short timeout, if it times out, the load is arguably started? 
-            # Actually, Ollama blocks until loaded.
-            # So we should run this fire-and-forget or async?
-            # The client (frontend) shouldn't wait 60s for warmup.
-            # So we set timeout to 1s? 
-            # If we timeout, the request might be cancelled by Ollama?
-            # Better to let it run in background task? 
-            # FastAPI BackgroundTasks is perfect here.
-            # BUT for now, let's just send the request with a small timeout and catch exception.
-            # If it's already loaded, it returns instantly.
-            # If loading, it will block. 
-            await client.post(OLLAMA_URL, json=payload, timeout=1.0)
+            await client.post(f"{base_url}/api/generate", json=payload, timeout=1.0)
     except httpx.TimeoutException:
-        # Expected if model is loading
         pass 
     except Exception as e:
         logger.error(f"Warmup failed: {e}")
@@ -931,6 +1170,9 @@ def repair_sql_query(sql: str, error: str, schema_context: str = None, schema_da
              candidates = list(set(candidates))
              hint_msg += f"\n\n### AUTO-DETECTED HINT\nThe table '{missing_rel}' was not found. Did you mean: {', '.join(candidates[:3])}?\nREPLACE the table name with the correct one from the schema."
 
+    if "products" in sql.lower() and "category_name" in sql.lower():
+        hint_msg += "\n\n### PROACTIVE HINT\nThe table `products` does NOT have `category_name`. It has `category_id`. You must JOIN `categories` to get `category_name`."
+
     prompt = (
         f"You are a SQL Repair Expert. The user generated this SQL:\n```sql\n{sql}\n```\n"
         f"It failed with this error: {error}\n\n"
@@ -950,23 +1192,8 @@ def repair_sql_query(sql: str, error: str, schema_context: str = None, schema_da
     logger.info(f"DEBUG: Repair Prompt Sent to AI:\n{prompt}")
 
     try:
-        payload = {
-            "model": model, 
-            "prompt": prompt,
-            "stream": False,
-            "options": { "temperature": 0.1 } # Lower temp for fixes
-        }
-        
-        logger.info(f"Fixing SQL...")
-        response = requests.post(OLLAMA_URL, json=payload, timeout=60)
-        response.raise_for_status()
-        data = response.json()
-        ai_response = data.get("response", "")
-        
-        if "products" in sql.lower() and "category_name" in sql.lower():
-             hint_msg += "\n\n### PROACTIVE HINT\nThe table `products` does NOT have `category_name`. It has `category_id`. You must JOIN `categories` to get `category_name`."
-
-        # Extract SQL using Regex
+        logger.info("Fixing SQL...")
+        ai_response = _call_local_llm_sync(prompt, model=model, temperature=0.1, timeout=90.0)
         return cleanup_sql(ai_response)
 
     except Exception as e:

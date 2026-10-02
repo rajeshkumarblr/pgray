@@ -16,6 +16,15 @@ async def startup_event():
     from app.logger import setup_logging
     setup_logging()
     init_db()
+    import threading
+    def _bg_start_litert():
+        try:
+            from app.ai import _is_port_open, ensure_litert_server
+            if not _is_port_open("127.0.0.1", 11434):
+                ensure_litert_server()
+        except Exception:
+            pass
+    threading.Thread(target=_bg_start_litert, daemon=True).start()
 
 # Allow CORS for frontend
 app.add_middleware(

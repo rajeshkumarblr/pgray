@@ -222,11 +222,13 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
     };
 
     // Handler for explaining SQL logic in plain English
-    const handleExplainLogic = useCallback(async () => {
-        if (!sqlQuery) return;
+    const handleExplainLogic = useCallback(async (sqlOverride?: string) => {
+        const targetSql = sqlOverride || sqlQuery;
+        if (!targetSql) return;
         setSqlExplanation(null); // Clear previous to trigger loading state in UI
         try {
-            const res = await explainSql(sqlQuery, schema);
+            const activeModel = activeProvider === 'local' ? localModel : geminiModel;
+            const res = await explainSql(targetSql, schema, activeModel);
             if (res && res.response) {
                 setSqlExplanation(res.response);
             } else if (res && res.explanation) {
@@ -236,7 +238,7 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
             console.error("Failed to explain query", e);
             setSqlExplanation("Failed to generate explanation. Please try again.");
         }
-    }, [sqlQuery, schema]);
+    }, [sqlQuery, schema, activeProvider, localModel, geminiModel]);
 
     const startBottomResize = (e: React.MouseEvent) => {
         e.preventDefault();

@@ -86,7 +86,7 @@ const AskChat: React.FC<AskChatProps> = ({ connectionInfo, sql, initialExplanati
                 {
                     connection: connectionInfo,
                     sql_query: sql, // Backend might use this
-                    model: model || 'gemini-2.0-flash-exp' // Default fallback
+                    model: model || 'gemma4-e2b-hw-int4-20260622' // Default local fallback
                 },
                 (chunk) => {
                     setMessages(prev => prev.map(m =>

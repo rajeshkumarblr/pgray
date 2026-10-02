@@ -88,10 +88,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
             getAIModels().then(models => {
                 if (models && models.length > 0) {
                     setAvailableModels(models);
+                    if (!models.includes(localModel)) {
+                        setSelectedLocalModel(models[0]);
+                    }
                 } else {
-                    setAvailableModels(["qwen2.5-coder:latest", "llama3", "mistral"]);
+                    setAvailableModels(["gemma4-e2b-hw-int4-20260622", "qwen2.5-coder:latest", "llama3", "mistral"]);
                 }
-            }).catch(() => setAvailableModels(["qwen2.5-coder:latest", "llama3", "mistral"]));
+            }).catch(() => setAvailableModels(["gemma4-e2b-hw-int4-20260622", "qwen2.5-coder:latest", "llama3", "mistral"]));
         }
     }, [isOpen, connectionInfo, ollamaUrl, geminiKey, localModel]);
 
@@ -222,9 +225,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                     ) : (
                         <form onSubmit={handleAiSubmit}>
                             <div style={fieldStyle}>
-                                <label style={{ fontSize: '13px', color: '#94a3b8' }}>Ollama URL</label>
-                                <input type="text" value={localOllamaUrl} onChange={e => setLocalOllamaUrl(e.target.value)} placeholder="http://localhost:11434" style={inputStyle} />
-                                <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>Default: http://localhost:11434</div>
+                                <label style={{ fontSize: '13px', color: '#94a3b8' }}>Local AI URL (LiteRT-LM / Ollama)</label>
+                                <input type="text" value={localOllamaUrl} onChange={e => setLocalOllamaUrl(e.target.value)} placeholder="http://127.0.0.1:9379 or http://localhost:11434" style={inputStyle} />
+                                <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>Auto-detects LiteRT-LM (:9379) or Ollama (:11434)</div>
                             </div>
 
                             <div style={fieldStyle}>

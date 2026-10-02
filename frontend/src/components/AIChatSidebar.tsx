@@ -292,7 +292,7 @@ const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
                                 cursor: 'pointer'
                             }}
                         >
-                            <option value="local">Local AI (Ollama)</option>
+                            <option value="local">Local AI (LiteRT / Ollama)</option>
                             <option value="gemini">Google Gemini</option>
                         </select>
                     )}

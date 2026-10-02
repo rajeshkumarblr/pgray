@@ -9,7 +9,7 @@ import { parsePlanToFlow } from './utils/planLayout';
 import QueryWorkspace from './components/QueryWorkspace';
 import Toast from './components/Toast';
 import SaveSessionModal from './components/SaveSessionModal';
-import { analyzeQuery, saveQueryFinal, generateSql, warmupModel, fixSql } from './api';
+import { analyzeQuery, saveQueryFinal, generateSql, warmupModel, fixSql, getAIModels } from './api';
 
 
 function App() {
@@ -180,10 +180,18 @@ function App() {
     return () => { cancelled = true; };
   }, []);
 
-  // Warmup Effect
+  // Warmup & Model Auto-Discovery Effect
   useEffect(() => {
-    // Fire and forget warmup for faster first response
-    warmupModel(activeProvider === 'local' ? localModel : geminiModel);
+    getAIModels().then((models) => {
+      if (models && models.length > 0 && !models.includes(localModel)) {
+        setLocalModel(models[0]);
+        warmupModel(activeProvider === 'local' ? models[0] : geminiModel);
+      } else {
+        warmupModel(activeProvider === 'local' ? localModel : geminiModel);
+      }
+    }).catch(() => {
+      warmupModel(activeProvider === 'local' ? localModel : geminiModel);
+    });
   }, []); // Run once on mount
 
   // --- Handlers ---

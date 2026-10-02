@@ -35,7 +35,7 @@ interface AskTabProps {
     onSelectQuery?: (query: any) => void;
     // Explanation Feature
     sqlExplanation?: string | null;
-    onExplainLogic?: () => void;
+    onExplainLogic?: (sql?: string) => void;
     onTune?: () => void;
     onEditSql?: (sql?: string) => void;
     connectionInfo: any;
@@ -259,7 +259,7 @@ const AskTab: React.FC<AskTabProps> = ({
     React.useEffect(() => {
         if (showResults && generatedSql && !sqlExplanation && !isExecuting && !error) {
             const timer = setTimeout(() => {
-                explainRef.current?.();
+                explainRef.current?.(generatedSql);
             }, 500);
             return () => clearTimeout(timer);
         }
@@ -426,7 +426,7 @@ const AskTab: React.FC<AskTabProps> = ({
                             {(suggestions.length > 0 ? suggestions : (recentSearches && recentSearches.length > 0 ? recentSearches.slice(0, 6) : ['Top 5 customers', 'Revenue by year', 'Products out of stock'])).map((s, i) => (
                                 <button
                                     key={`sugg-${i}`}
-                                    onClick={() => { onPromptChange(s); onShowResults(true); onSearch(s); }}
+                                    onClick={() => { onPromptChange(s); onShowResults(true); executeSearch(s); }}
                                     className="flex items-center gap-2 px-4 py-2 bg-slate-800/50 hover:bg-slate-700 border border-slate-700 rounded-full text-sm text-slate-400 hover:text-white transition-colors"
                                 >
                                     {(suggestions.includes(s) || (recentSearches && recentSearches.includes(s))) && <History size={12} className="text-blue-400" />}
