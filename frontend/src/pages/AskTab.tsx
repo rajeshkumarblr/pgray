@@ -36,20 +36,20 @@ interface AskTabProps {
     // Explanation Feature
     sqlExplanation?: string | null;
     onExplainLogic?: (sql?: string) => void;
-    onTune?: () => void;
-    onEditSql?: (sql?: string) => void;
+    onClearExplanation?: () => void;
+    onSyncState?: (sql: string, result: any, prompt?: string) => void;
+    onTune?: (sql?: string, result?: any) => void;
+    onEditSql?: (sql?: string, result?: any) => void;
     connectionInfo: any;
     model?: string;
 }
 
 const AskTab: React.FC<AskTabProps> = ({
-    onSearch,
+    onSearch: _onSearch,
     isExecuting: propIsExecuting,
     result: propResult,
     error: propError,
     generatedSql: propGeneratedSql,
-    // onExplain, 
-    // explainResult,
     onReset,
     promptValue,
     onPromptChange,
@@ -62,6 +62,8 @@ const AskTab: React.FC<AskTabProps> = ({
     onSelectQuery,
     sqlExplanation,
     onExplainLogic,
+    onClearExplanation,
+    onSyncState,
     onTune,
     onEditSql,
     connectionInfo,
@@ -92,6 +94,8 @@ const AskTab: React.FC<AskTabProps> = ({
     const [localError, setLocalError] = useState<string | null>(null);
     const [localIsExecuting, setLocalIsExecuting] = useState(false);
     const [localGeneratedSql, setLocalGeneratedSql] = useState<string>("");
+    const lastExplainedSqlRef = React.useRef<string>("");
+
     // Helper to transform result from API format to UI format
     const transformResult = (execRes: any) => ({
         rows: execRes.data?.map((r: any) => {
@@ -110,11 +114,13 @@ const AskTab: React.FC<AskTabProps> = ({
     const executeSearch = async (term: string) => {
         if (!term.trim()) return;
 
-        // Use Local Execution Logic
+        // Clear previous state & stale explanation immediately
         setLocalIsExecuting(true);
         setLocalError(null);
         setLocalResult(null);
         setLocalGeneratedSql("");
+        lastExplainedSqlRef.current = "";
+        if (onClearExplanation) onClearExplanation();
         setActiveTab('data');
 
         try {
@@ -131,11 +137,14 @@ const AskTab: React.FC<AskTabProps> = ({
             // Clean SQL
             sql = sql.replace(/```sql/g, '').replace(/```/g, '').trim();
             setLocalGeneratedSql(sql);
+            if (onSyncState) onSyncState(sql, null, term);
 
             // 2. Execute
             try {
                 const execRes = await executeQuery(connectionInfo, sql, 50);
-                setLocalResult(transformResult(execRes));
+                const transformed = transformResult(execRes);
+                setLocalResult(transformed);
+                if (onSyncState) onSyncState(sql, transformed, term);
                 // SUCCESS! Save history
                 saveAskSuccess(connectionInfo, term, sql);
             } catch (execErr: any) {
@@ -148,7 +157,6 @@ const AskTab: React.FC<AskTabProps> = ({
                 console.warn("SQL Execution Failed:", originalError, execErr);
 
                 // 3. CATCH & REPAIR logic
-                // Expanded keywords: "does not exist", "syntax", "undefined", "relation", "alias"
                 const isFixable = originalError.match(/(does not exist|syntax|undefined|relation|alias|column)/i);
 
                 if (isFixable || originalError.includes("42703") || originalError.includes("42P01")) { // Postgres codes
@@ -163,11 +171,14 @@ const AskTab: React.FC<AskTabProps> = ({
                             const fixedSql = fixedRes.fixed_sql;
                             console.log("SQL Auto-Corrected:", fixedSql);
                             setLocalGeneratedSql(fixedSql);
+                            if (onSyncState) onSyncState(fixedSql, null, term);
 
                             // 4. Retry Execution
                             const retryRes = await executeQuery(connectionInfo, fixedSql, 50);
-                            setLocalResult(transformResult(retryRes));
+                            const transformedRetry = transformResult(retryRes);
+                            setLocalResult(transformedRetry);
                             setLocalError(null);
+                            if (onSyncState) onSyncState(fixedSql, transformedRetry, term);
                             // RETRY SUCCESS! Save history
                             saveAskSuccess(connectionInfo, term, fixedSql);
                         } else {
@@ -176,7 +187,6 @@ const AskTab: React.FC<AskTabProps> = ({
                         }
                     } catch (fixErr: any) {
                         console.error("Auto-fix failed:", fixErr);
-                        // Show actual fix failure if possible, or fallback to original
                         const fixFailMsg = fixErr.response?.data?.detail || fixErr.message;
                         setLocalError(`Auto-fix failed: ${fixFailMsg} | Original: ${originalError}`);
                     }
@@ -204,14 +214,17 @@ const AskTab: React.FC<AskTabProps> = ({
         e.preventDefault();
         if (!promptValue.trim()) return;
         onShowResults(true);
-        // Use Local Logic instead of Parent
         executeSearch(promptValue);
-        // onSearch(promptValue); // Disabled parent call
     };
 
     const handleBack = () => {
         onShowResults(false);
         onPromptChange('');
+        setLocalResult(null);
+        setLocalError(null);
+        setLocalGeneratedSql('');
+        lastExplainedSqlRef.current = '';
+        if (onClearExplanation) onClearExplanation();
         if (onReset) onReset();
     };
 
@@ -225,25 +238,19 @@ const AskTab: React.FC<AskTabProps> = ({
     // Animation Variants
     const containerVariants = {
         centered: {
-            paddingTop: '30vh',
+            paddingTop: '24vh',
             justifyContent: 'center',
         },
         top: {
-            paddingTop: '2rem',
+            paddingTop: '1.25rem',
             justifyContent: 'flex-start',
         }
     };
 
-    // Check if we are in "Parameter Collection Mode" (has params, showResults is true (activated), but no result yet? or explicit mode)
-    // Actually, if we have requiredParams, and we are "showing results" (active), we should show the form FIRST.
-    // We can interpret `showResults` as "Active Mode".
-    // If `requiredParams.length > 0` and `!result` (or special flag?), show form.
-    // ...
     // Dropdown State
     const [isFocused, setIsFocused] = useState(false);
 
     // Effective State (Shadowing props)
-    // Placed here to ensure local hooks are initialized
     const result = localResult || propResult;
     const error = localError || propError;
     const isExecuting = localIsExecuting || propIsExecuting;
@@ -252,20 +259,20 @@ const AskTab: React.FC<AskTabProps> = ({
     // Derived: Show dropdown if focused and NOT showing results (Search Home)
     const showDropdown = isFocused && !showResults && ((recentSearches && recentSearches.length > 0) || (savedQueries && savedQueries.length > 0));
 
-    // Auto-Explain Effect (Stabilized)
+    // Auto-Explain Effect: Always re-generate explanation whenever generatedSql changes to a new SQL string
     const explainRef = React.useRef(onExplainLogic);
     React.useEffect(() => { explainRef.current = onExplainLogic; }, [onExplainLogic]);
 
     React.useEffect(() => {
-        if (showResults && generatedSql && !sqlExplanation && !isExecuting && !error) {
+        if (showResults && generatedSql && !isExecuting && !error && lastExplainedSqlRef.current !== generatedSql) {
+            lastExplainedSqlRef.current = generatedSql;
             const timer = setTimeout(() => {
                 explainRef.current?.(generatedSql);
-            }, 500);
+            }, 150);
             return () => clearTimeout(timer);
         }
-    }, [showResults, generatedSql, sqlExplanation, isExecuting, error]); // Removed onExplainLogic dependency
+    }, [showResults, generatedSql, isExecuting, error]);
 
-    // Restore lost definition
     const showParamForm = showResults && requiredParams.length > 0 && !result && !isExecuting && !error;
 
     return (
@@ -448,28 +455,52 @@ const AskTab: React.FC<AskTabProps> = ({
                         transition={{ delay: 0.3, duration: 0.4 }}
                     >
                         {/* TAB BAR */}
-                        <div className="flex items-center gap-4 mb-2 border-b border-slate-800 px-2">
-                            {[
-                                { id: 'data', label: 'Data', icon: Database },
-                                { id: 'charts', label: 'Charts', icon: BarChart2 },
-                                { id: 'sql', label: 'SQL', icon: Code },
-                            ].map(tab => {
-                                const Icon = tab.icon;
-                                const isActive = activeTab === tab.id;
-                                return (
-                                    <button
-                                        key={tab.id}
-                                        onClick={() => setActiveTab(tab.id as any)}
-                                        className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-all ${isActive
-                                            ? 'border-blue-500 text-blue-400 bg-slate-900/50 rounded-t-lg'
-                                            : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/30 rounded-t-lg'
-                                            }`}
-                                    >
-                                        <Icon size={14} />
-                                        {tab.label}
-                                    </button>
-                                );
-                            })}
+                        <div className="flex items-center justify-between mb-2 border-b border-slate-800 px-2">
+                            <div className="flex items-center gap-4">
+                                {[
+                                    { id: 'data', label: 'Data', icon: Database },
+                                    { id: 'charts', label: 'Charts', icon: BarChart2 },
+                                    { id: 'sql', label: 'SQL', icon: Code },
+                                ].map(tab => {
+                                    const Icon = tab.icon;
+                                    const isActive = activeTab === tab.id;
+                                    return (
+                                        <button
+                                            key={tab.id}
+                                            onClick={() => setActiveTab(tab.id as any)}
+                                            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-all ${isActive
+                                                ? 'border-blue-500 text-blue-400 bg-slate-900/50 rounded-t-lg'
+                                                : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/30 rounded-t-lg'
+                                                }`}
+                                        >
+                                            <Icon size={14} />
+                                            {tab.label}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            {generatedSql && (
+                                <div className="flex items-center gap-2 pb-1">
+                                    {onEditSql && (
+                                        <button
+                                            onClick={() => onEditSql(generatedSql, result)}
+                                            className="flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-2.5 py-1 rounded-md transition-colors"
+                                            title="Open SQL in Query Editor"
+                                        >
+                                            <Edit size={12} /> Open in Query Editor
+                                        </button>
+                                    )}
+                                    {onTune && (
+                                        <button
+                                            onClick={() => onTune(generatedSql, result)}
+                                            className="flex items-center gap-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white px-2.5 py-1 rounded-md transition-colors shadow-sm font-medium"
+                                            title="Carry SQL & results to Query Editor and run EXPLAIN ANALYZE"
+                                        >
+                                            <Activity size={12} /> Fine Tune
+                                        </button>
+                                    )}
+                                </div>
+                            )}
                         </div>
 
                         {/* CONTENT AREA */}
@@ -547,7 +578,7 @@ const AskTab: React.FC<AskTabProps> = ({
                                                                     </button>
                                                                     {onEditSql && (
                                                                         <button
-                                                                            onClick={() => onEditSql(generatedSql)}
+                                                                            onClick={() => onEditSql(generatedSql, result)}
                                                                             className="p-1 text-slate-400 hover:text-white transition-colors"
                                                                             title="Edit in Query Editor"
                                                                         >
@@ -556,10 +587,10 @@ const AskTab: React.FC<AskTabProps> = ({
                                                                     )}
                                                                     {onTune && (
                                                                         <button
-                                                                            onClick={onTune}
-                                                                            className="flex items-center gap-1 text-xs bg-blue-600 hover:bg-blue-500 text-white px-2 py-0.5 rounded transition-colors shadow"
+                                                                            onClick={() => onTune(generatedSql, result)}
+                                                                            className="flex items-center gap-1 text-xs bg-blue-600 hover:bg-blue-500 text-white px-2.5 py-1 rounded transition-colors shadow font-medium"
                                                                         >
-                                                                            <Activity size={10} /> Tune
+                                                                            <Activity size={11} /> Fine Tune
                                                                         </button>
                                                                     )}
                                                                 </div>

@@ -24,7 +24,12 @@ const AskChat: React.FC<AskChatProps> = ({ connectionInfo, sql, initialExplanati
     const [isLoading, setIsLoading] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
 
-    // Initialize with explanation
+    // Clear messages immediately when SQL query changes so stale explanations never linger
+    useEffect(() => {
+        setMessages([]);
+    }, [sql]);
+
+    // Initialize with explanation once available
     useEffect(() => {
         if (initialExplanation) {
             setMessages([{
@@ -32,8 +37,6 @@ const AskChat: React.FC<AskChatProps> = ({ connectionInfo, sql, initialExplanati
                 role: 'assistant',
                 content: initialExplanation
             }]);
-        } else {
-            setMessages([]);
         }
     }, [initialExplanation]);
 
@@ -119,15 +122,22 @@ const AskChat: React.FC<AskChatProps> = ({ connectionInfo, sql, initialExplanati
             {/* Header */}
             <div className="p-3 border-b border-slate-800 bg-slate-950/50 flex items-center gap-2">
                 <Sparkles size={14} className="text-purple-400" />
-                <span className="text-sm font-medium text-slate-300">SQL assistant</span>
+                <span className="text-sm font-medium text-slate-300">SQL Summary & Assistant</span>
             </div>
 
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-4" ref={scrollRef}>
                 {messages.length === 0 && (
-                    <div className="text-center text-slate-500 text-sm mt-10">
-                        Ask follow-up questions about your data...
-                    </div>
+                    sql && !initialExplanation ? (
+                        <div className="flex items-center gap-3 text-slate-400 text-xs bg-slate-800/60 border border-slate-700/60 rounded-xl p-3">
+                            <div className="w-4 h-4 border-2 border-purple-400/30 border-t-purple-400 rounded-full animate-spin flex-shrink-0" />
+                            <span>Summarizing query logic...</span>
+                        </div>
+                    ) : (
+                        <div className="text-center text-slate-500 text-sm mt-10">
+                            Ask follow-up questions about your data...
+                        </div>
+                    )
                 )}
 
                 {messages.map((msg) => (

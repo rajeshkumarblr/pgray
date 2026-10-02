@@ -571,30 +571,37 @@ def explain_sql_query(query: str, schema_context: str = None, schema_data: dict 
     """
     Generates a natural language explanation for a given SQL query.
     """
-    if schema_data:
-        schema_context = format_schema_ddl(schema_data)
+    q_lower = (query or "").lower()
+    if schema_data and isinstance(schema_data, dict):
+        # Filter schema to only tables actually referenced in the SQL query
+        referenced_schema = {
+            tbl: data for tbl, data in schema_data.items()
+            if tbl.lower() in q_lower
+        }
+        schema_context = format_schema_ddl(referenced_schema) if referenced_schema else ""
     elif not schema_context:
-        schema_context = "-- No schema provided"
+        schema_context = ""
+
+    schema_section = f"### Referenced Table Schema\n{schema_context}\n\n" if schema_context else ""
 
     prompt = (
-        "You are a concise Data Analyst.\n"
-        "Provide a single short paragraph (2-3 sentences max) explaining the business logic of this query.\n"
-        "Focus ONLY on the logic present in the SQL. Do not infer unrelated entities (like Employees if not used).\n"
-        "Do NOT mention specific SQL keywords (like JOIN, GROUP BY) unless critical.\n"
-        "Do NOT provide a line-by-line breakdown.\n"
-        "End with: 'Let me know if you want a detailed breakdown.'\n\n"
-        "### Database Schema\n"
-        f"{schema_context}\n\n"
-        "### SQL Query\n"
-        f"```sql\n{query}\n```"
+        "You are a precise PostgreSQL Data Analyst.\n"
+        "In 2-3 concise sentences, explain what the following SQL query does.\n"
+        "STRICT RULES:\n"
+        "1. Describe ONLY the exact tables, columns, aggregations, filters, grouping, sorting, and limits present in the SQL query below.\n"
+        "2. NEVER mention any table, column, or concept (such as products, movies, or employees) unless it explicitly appears in the SQL query below.\n"
+        "3. End with: 'Ask a follow-up below if you want to modify or break down this query.'\n\n"
+        f"### SQL Query to Explain\n```sql\n{query}\n```\n\n"
+        f"{schema_section}"
     )
 
     try:
-        text = _call_local_llm_sync(prompt, model=model, temperature=0.2, timeout=180.0)
+        text = _call_local_llm_sync(prompt, model=model, temperature=0.1, timeout=180.0)
         return text if text else "Could not generate explanation."
     except Exception as e:
         logger.error(f"Explanation failed: {e}")
         return f"Error generating explanation: {str(e)}"
+
 
 async def generate_sql_stream(prompt: str, schema_context: str = None, schema_data: dict = None, history: list = None, model: str = "qwen2.5-coder", plan_text: str = None, sql_query: str = None, apiKey: str = None, ollamaUrl: str = None, connection: dict = None):
     """

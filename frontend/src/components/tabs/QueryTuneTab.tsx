@@ -88,42 +88,71 @@ const QueryTuneTab: React.FC<QueryTuneTabProps> = ({
     return (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0f172a', overflow: 'hidden' }} onClick={() => setMenu(null)}>
             {/* Header / Tabs */}
-            <div style={{ display: 'flex', background: '#0f172a', borderBottom: '1px solid #475569', alignItems: 'center' }}>
+            <div style={{ display: 'flex', height: '40px', background: '#0f172a', borderBottom: '1px solid #334155', alignItems: 'center', padding: '0 8px', gap: '4px', overflowX: 'auto' }}>
 
-                <div onClick={() => setActiveTab('visual')} style={{ padding: '8px 20px', cursor: 'pointer', color: activeTab === 'visual' ? '#e2e8f0' : '#64748b', borderBottom: activeTab === 'visual' ? '2px solid #3b82f6' : 'none', fontWeight: activeTab === 'visual' ? 600 : 500, fontSize: '13px' }}>Visual Plan</div>
-                <div onClick={() => setActiveTab('text')} style={{ padding: '8px 20px', cursor: 'pointer', color: activeTab === 'text' ? '#e2e8f0' : '#64748b', borderBottom: activeTab === 'text' ? '2px solid #3b82f6' : 'none', fontWeight: activeTab === 'text' ? 600 : 500, fontSize: '13px' }}>Text Plan</div>
+                <div
+                    onClick={() => setActiveTab('visual')}
+                    style={{
+                        padding: '8px 10px',
+                        cursor: 'pointer',
+                        color: activeTab === 'visual' ? '#e2e8f0' : '#64748b',
+                        borderBottom: activeTab === 'visual' ? '2px solid #3b82f6' : '2px solid transparent',
+                        fontWeight: activeTab === 'visual' ? 600 : 500,
+                        fontSize: '12px',
+                        whiteSpace: 'nowrap',
+                        flexShrink: 0
+                    }}
+                >
+                    Visual Plan
+                </div>
+                <div
+                    onClick={() => setActiveTab('text')}
+                    style={{
+                        padding: '8px 10px',
+                        cursor: 'pointer',
+                        color: activeTab === 'text' ? '#e2e8f0' : '#64748b',
+                        borderBottom: activeTab === 'text' ? '2px solid #3b82f6' : '2px solid transparent',
+                        fontWeight: activeTab === 'text' ? 600 : 500,
+                        fontSize: '12px',
+                        whiteSpace: 'nowrap',
+                        flexShrink: 0
+                    }}
+                >
+                    Text Plan
+                </div>
 
-                {/* Metrics Display */}
-                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '15px', paddingRight: '10px', fontSize: '12px', color: '#94a3b8' }}>
+                {/* Metrics & Actions Display */}
+                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: '#94a3b8', flexShrink: 0 }}>
                     {explainResult && explainResult[0] && (
-                        <>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#1e293b', padding: '3px 8px', borderRadius: '6px', border: '1px solid #334155', whiteSpace: 'nowrap' }}>
                             {explainResult[0]['Planning Time'] !== undefined && (
                                 <span>
-                                    Planning: <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{explainResult[0]['Planning Time'].toFixed(2)}ms</span>
+                                    Plan: <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{explainResult[0]['Planning Time'].toFixed(2)}ms</span>
                                 </span>
                             )}
                             {(explainResult[0]['Execution Time'] !== undefined || explainResult[0]['Total Runtime'] !== undefined) && (
                                 <span>
-                                    Execution: <span style={{ color: '#e2e8f0', fontWeight: 600 }}>
+                                    Exec: <span style={{ color: '#4ade80', fontWeight: 600 }}>
                                         {(explainResult[0]['Execution Time'] || explainResult[0]['Total Runtime']).toFixed(2)}ms
                                     </span>
                                 </span>
                             )}
-                        </>
+                        </div>
                     )}
                     {baselineMetrics && (
                         <button
                             onClick={onCompare}
                             title="Compare current Plan/Exec time with baseline (first run)"
                             style={{
-                                background: '#334155',
+                                background: '#1e293b',
                                 border: '1px solid #475569',
                                 color: '#93c5fd',
-                                fontSize: '10px',
-                                padding: '2px 8px',
-                                borderRadius: '4px',
+                                fontSize: '11px',
+                                padding: '3px 7px',
+                                borderRadius: '5px',
                                 cursor: 'pointer',
-                                marginLeft: '10px'
+                                whiteSpace: 'nowrap',
+                                flexShrink: 0
                             }}
                         >
                             ⚖ Compare
@@ -136,11 +165,12 @@ const QueryTuneTab: React.FC<QueryTuneTabProps> = ({
                             background: '#1e293b',
                             border: '1px solid #475569',
                             color: '#4ade80',
-                            fontSize: '10px',
-                            padding: '2px 8px',
-                            borderRadius: '4px',
+                            fontSize: '11px',
+                            padding: '3px 7px',
+                            borderRadius: '5px',
                             cursor: 'pointer',
-                            marginLeft: '10px'
+                            whiteSpace: 'nowrap',
+                            flexShrink: 0
                         }}
                     >
                         ⚡ Refresh
@@ -149,17 +179,20 @@ const QueryTuneTab: React.FC<QueryTuneTabProps> = ({
                     {onClose && (
                         <button
                             onClick={onClose}
+                            title="Close Plan View"
                             style={{
                                 background: 'transparent',
                                 border: 'none',
                                 color: '#94a3b8',
                                 cursor: 'pointer',
-                                marginLeft: '10px',
+                                padding: '4px',
+                                borderRadius: '4px',
                                 display: 'flex',
-                                alignItems: 'center'
+                                alignItems: 'center',
+                                flexShrink: 0
                             }}
                         >
-                            <X size={16} />
+                            <X size={15} />
                         </button>
                     )}
                 </div>

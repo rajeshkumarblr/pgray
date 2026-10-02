@@ -310,15 +310,19 @@ function App() {
     }
   };
 
-  const handleTune = async (params: any = null) => {
-    if (!connectionInfo || !sqlQuery) return;
+  const handleTune = async (params: any = null, sqlOverride?: string) => {
+    const targetSql = sqlOverride || sqlQuery;
+    if (!connectionInfo || !targetSql) return;
+    if (sqlOverride && sqlOverride !== sqlQuery) {
+      setSqlQuery(sqlOverride);
+    }
     setLoadingExplain(true);
     setExplainError('');
     setNodes([]);
     setEdges([]);
 
     try {
-      const res = await explainQuery(connectionInfo, sqlQuery, true, params);
+      const res = await explainQuery(connectionInfo, targetSql, true, params);
       if (res.data && res.data.json) {
         let rawPlan = res.data.json;
         if (Array.isArray(rawPlan) && rawPlan.length > 0) rawPlan = rawPlan;
@@ -729,6 +733,11 @@ Please provide a detailed analysis in the following format:
           isExecuting={isExecuting}
           executionResult={executionResult}
           execError={execError}
+          onSyncFromAsk={(sql, res, title) => {
+            if (sql) setSqlQuery(sql);
+            if (res !== undefined) setExecutionResult(res);
+            if (title) setSessionTitle(title);
+          }}
 
           onTune={handleTune}
           explainResult={explainResult}

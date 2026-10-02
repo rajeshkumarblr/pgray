@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, nativeImage, shell, Menu } from 'electron';
+import { app, BrowserWindow, ipcMain, nativeImage, nativeTheme, shell, Menu } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn, ChildProcess } from 'node:child_process';
@@ -17,6 +17,9 @@ export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist');
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL
     ? path.join(process.env.APP_ROOT, 'public')
     : RENDERER_DIST;
+
+// Force native dark appearance for macOS window chrome, menus, and scrollbars
+nativeTheme.themeSource = 'dark';
 
 // ── Logging ──────────────────────────────────────────────────────────────────
 const logFile = path.join(app.getPath('userData'), 'app.log');
@@ -184,9 +187,17 @@ function createWindow() {
     win = new BrowserWindow({
         width: 1440,
         height: 900,
+        minWidth: 1024,
+        minHeight: 680,
         show: false,
         backgroundColor: '#0f172a',
         title: 'PGRay',
+        ...(process.platform === 'darwin'
+            ? {
+                  titleBarStyle: 'hiddenInset' as const,
+                  trafficLightPosition: { x: 16, y: 13 },
+              }
+            : {}),
         icon: path.join(process.env.VITE_PUBLIC!, 'pgray_256.png'),
         webPreferences: {
             preload: (() => {

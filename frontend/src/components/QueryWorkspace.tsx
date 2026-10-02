@@ -1,6 +1,6 @@
-
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Node } from 'reactflow';
+import { format as formatSql } from 'sql-formatter';
 import SavedQueriesSidebar from './workspace/SavedQueriesSidebar';
 import AIChatSidebar from './AIChatSidebar';
 import EditorToolbar from './EditorToolbar';
@@ -16,7 +16,7 @@ import AskTab from '../pages/AskTab';
 import AdminTab from './tabs/AdminTab';
 import DesignTab from './tabs/DesignTab';
 import QueryTuneTab from './tabs/QueryTuneTab';
-import { Sparkles, Code, GitBranch, Settings, MessageSquare, Info } from 'lucide-react';
+import { Sparkles, Code, GitBranch, Settings, MessageSquare, Info, Database, Cpu } from 'lucide-react';
 
 
 const nodeTypes = { planNode: PlanNode };
@@ -36,7 +36,8 @@ interface QueryWorkspaceProps {
     isExecuting: boolean;
     executionResult: any;
     execError?: string | null;
-    onTune: (params?: any) => void;
+    onSyncFromAsk?: (sql: string, result: any, title?: string) => void;
+    onTune: (params?: any, sqlOverride?: string) => void;
     explainResult: any;
     explainText: string;
     loadingExplain: boolean;
@@ -88,7 +89,7 @@ interface QueryWorkspaceProps {
 const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
     connectionInfo, sqlQuery, setSqlQuery, schema, loadingSchema,
     sessionTitle, setSessionTitle, onLoadSession, onNewSession, onSaveSession,
-    onExecute, isExecuting, executionResult, execError,
+    onExecute, isExecuting, executionResult, execError, onSyncFromAsk,
     onTune, explainResult, explainText, loadingExplain, explainError,
     selectedNode, setSelectedNode,
     nodes, edges, onNodesChange, onNodeClick, onPaneClick,
@@ -106,7 +107,7 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
 }) => {
 
     // --- AI Sidebar State ---
-    const [aiSidebarWidth, setAiSidebarWidth] = useState(400);
+    const [aiSidebarWidth, setAiSidebarWidth] = useState(380);
     const [activeRightTab, setActiveRightTab] = useState<'chat' | 'details'>('chat');
 
 
@@ -114,20 +115,19 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
     const [savedQueries, setSavedQueries] = useState<ParameterizedQuery[]>([]);
     const [activeBottomTab, setActiveBottomTab] = useState<'results' | 'insights'>('results');
     const [bottomExpanded, setBottomExpanded] = useState(false);
-    const [bottomHeight, setBottomHeight] = useState(300);
+    const [bottomHeight, setBottomHeight] = useState(280);
     const [isBottomMaximized, setIsBottomMaximized] = useState(false);
     const [tuneTabMode, setTuneTabMode] = useState<'visual' | 'text' | 'compare'>('visual');
     const [paramValues, setParamValues] = useState<Record<string, string>>({});
 
     // Split View State
     const [showPlan, setShowPlan] = useState(false);
-    const [planWidth, setPlanWidth] = useState(600); // Default width for Plan pane
+    const [planWidth, setPlanWidth] = useState(560); // Default width for Plan pane
 
     // Auto-Trigger Explain Plan Logic
     useEffect(() => {
-        // If user opens Plan view AND has SQL AND (no plan yet)
         if (activeTab === 'query' && showPlan && sqlQuery && !explainResult) {
-            onTune();
+            onTune(null, sqlQuery);
         }
     }, [activeTab, showPlan, explainResult, sqlQuery]);
 
@@ -141,6 +141,7 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
 
     // SQL Explanation State for Search Tab
     const [sqlExplanation, setSqlExplanation] = useState<string | null>(null);
+    const explainReqIdRef = useRef<number>(0);
 
     // --- Load Saved Queries ---
     const [loadingSavedQueries, setLoadingSavedQueries] = useState(false);
@@ -206,35 +207,67 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
         setBottomExpanded(true);
     };
 
-    // Handler for opening Visual Plan
-    const handleTuneWrapper = () => {
-        setActiveTab('query');
-        setShowPlan(true); // Open Plan Pane
-        onTune(); // Trigger Plan
-    };
-
-    // Handler for throwing away plan
-    const handleTogglePlan = () => {
-        setShowPlan(!showPlan);
-        if (!showPlan && !explainResult) {
-            onTune(); // Auto tune if opening
+    const handleFormatSql = () => {
+        if (!sqlQuery.trim()) return;
+        try {
+            const formatted = formatSql(sqlQuery, {
+                language: 'postgresql',
+                keywordCase: 'upper',
+                tabWidth: 2,
+            });
+            setSqlQuery(formatted);
+        } catch (e) {
+            console.warn('SQL formatting failed, keeping original SQL:', e);
         }
     };
 
-    // Handler for explaining SQL logic in plain English
+    // Handler for opening Visual Plan (carries over SQL & results from Ask if provided)
+    const handleTuneWrapper = (sqlOverride?: string, resultOverride?: any) => {
+        const targetSql = sqlOverride || sqlQuery;
+        if (sqlOverride) {
+            setSqlQuery(sqlOverride);
+        }
+        if (onSyncFromAsk && (sqlOverride || resultOverride !== undefined)) {
+            onSyncFromAsk(targetSql, resultOverride);
+        }
+        if (resultOverride || executionResult) {
+            setActiveBottomTab('results');
+            setBottomExpanded(true);
+        }
+        setTuneTabMode('visual');
+        setActiveTab('query');
+        setShowPlan(true); // Open Plan Pane
+        if (targetSql) {
+            onTune(null, targetSql); // Trigger Plan with targetSql immediately
+        }
+    };
+
+    // Handler for toggling Plan pane
+    const handleTogglePlan = () => {
+        const nextShow = !showPlan;
+        setShowPlan(nextShow);
+        if (nextShow && sqlQuery) {
+            onTune(null, sqlQuery);
+        }
+    };
+
+    // Handler for explaining SQL logic in plain English (race-safe)
     const handleExplainLogic = useCallback(async (sqlOverride?: string) => {
         const targetSql = sqlOverride || sqlQuery;
         if (!targetSql) return;
+        const reqId = ++explainReqIdRef.current;
         setSqlExplanation(null); // Clear previous to trigger loading state in UI
         try {
             const activeModel = activeProvider === 'local' ? localModel : geminiModel;
             const res = await explainSql(targetSql, schema, activeModel);
+            if (reqId !== explainReqIdRef.current) return; // Ignore stale response
             if (res && res.response) {
                 setSqlExplanation(res.response);
             } else if (res && res.explanation) {
                 setSqlExplanation(res.explanation);
             }
         } catch (e) {
+            if (reqId !== explainReqIdRef.current) return;
             console.error("Failed to explain query", e);
             setSqlExplanation("Failed to generate explanation. Please try again.");
         }
@@ -311,20 +344,25 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
         setActiveRightTab('details'); // Switch right tab to details
     };
 
+    const isMacElectron = typeof navigator !== 'undefined' &&
+        navigator.userAgent.includes('Electron') &&
+        navigator.platform.toLowerCase().includes('mac');
 
     // Tab Style Helper
     const tabStyle = (tab: 'ask' | 'query' | 'design' | 'admin') => ({
-        padding: '10px 20px',
+        padding: '0 16px',
+        height: '100%',
         cursor: 'pointer',
-        color: activeTab === tab ? '#e2e8f0' : '#94a3b8',
+        color: activeTab === tab ? '#f8fafc' : '#94a3b8',
         borderBottom: activeTab === tab ? '2px solid #3b82f6' : '2px solid transparent',
-        background: activeTab === tab ? '#1e293b' : 'transparent',
+        background: activeTab === tab ? 'rgba(30, 41, 59, 0.75)' : 'transparent',
         fontWeight: activeTab === tab ? 600 : 500,
-        fontSize: '14px',
+        fontSize: '13px',
         display: 'flex',
         alignItems: 'center',
-        gap: '8px',
+        gap: '7px',
         userSelect: 'none' as any,
+        WebkitAppRegion: 'no-drag' as any,
         transition: 'all 0.15s ease'
     });
 
@@ -345,8 +383,9 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
         gap: '6px'
     });
 
-
-
+    const activeModelLabel = activeProvider === 'local'
+        ? (localModel.includes('gemma4') ? 'LiteRT • Gemma4-2B' : `Local • ${localModel}`)
+        : `Gemini • ${geminiModel}`;
 
     return (
         <div style={{ display: 'flex', height: '100%', width: '100%', overflow: 'hidden' }}>
@@ -354,19 +393,65 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
             {/* Main Center Column */}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: '#0f172a' }}>
 
-                {/* 1. Tabs Row */}
-                <div style={{ display: 'flex', background: '#1e293b', borderBottom: '1px solid #334155', paddingLeft: '0px' }}>
-                    <div onClick={() => setActiveTab('ask')} style={tabStyle('ask')}>
-                        <Sparkles size={16} className={activeTab === 'ask' ? 'text-blue-400' : ''} /> Ask
+                {/* 1. Native macOS Unified Titlebar + Navigation Row */}
+                <div
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        height: '40px',
+                        background: '#0f172a',
+                        borderBottom: '1px solid #1e293b',
+                        paddingLeft: isMacElectron ? '82px' : '8px',
+                        paddingRight: '12px',
+                        WebkitAppRegion: 'drag',
+                        userSelect: 'none'
+                    } as React.CSSProperties}
+                >
+                    <div style={{ display: 'flex', alignItems: 'center', height: '100%' }}>
+                        <div onClick={() => setActiveTab('ask')} style={tabStyle('ask')}>
+                            <Sparkles size={15} className={activeTab === 'ask' ? 'text-blue-400' : ''} /> Ask
+                        </div>
+                        <div onClick={() => setActiveTab('query')} style={tabStyle('query')}>
+                            <Code size={15} className={activeTab === 'query' ? 'text-blue-400' : ''} /> Query
+                        </div>
+                        <div onClick={() => setActiveTab('design')} style={tabStyle('design')}>
+                            <GitBranch size={15} className={activeTab === 'design' ? 'text-blue-400' : ''} /> Design
+                        </div>
+                        <div onClick={() => setActiveTab('admin')} style={tabStyle('admin')}>
+                            <Settings size={15} className={activeTab === 'admin' ? 'text-blue-400' : ''} /> Admin
+                        </div>
                     </div>
-                    <div onClick={() => setActiveTab('query')} style={tabStyle('query')}>
-                        <Code size={16} className={activeTab === 'query' ? 'text-blue-400' : ''} /> Query
-                    </div>
-                    <div onClick={() => setActiveTab('design')} style={tabStyle('design')}>
-                        <GitBranch size={16} className={activeTab === 'design' ? 'text-blue-400' : ''} /> Design
-                    </div>
-                    <div onClick={() => setActiveTab('admin')} style={tabStyle('admin')}>
-                        <Settings size={16} className={activeTab === 'admin' ? 'text-blue-400' : ''} /> Admin
+
+                    {/* Right Status Pills (Connection & AI Engine) */}
+                    <div
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            WebkitAppRegion: 'no-drag'
+                        } as React.CSSProperties}
+                    >
+                        <button
+                            onClick={onOpenSettings}
+                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs text-slate-300 transition-colors"
+                            title="PostgreSQL Connection Settings"
+                        >
+                            <span className={`w-1.5 h-1.5 rounded-full ${connectionInfo?.database ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                            <Database size={11} className="text-slate-400" />
+                            <span className="font-mono text-[11px]">
+                                {connectionInfo ? `${connectionInfo.host || 'localhost'}:${connectionInfo.port || 5432}/${connectionInfo.database || 'postgres'}` : 'Connect DB'}
+                            </span>
+                        </button>
+
+                        <button
+                            onClick={onOpenSettings}
+                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs text-purple-300 transition-colors"
+                            title="AI Model Settings"
+                        >
+                            <Cpu size={11} className="text-purple-400" />
+                            <span className="text-[11px] font-medium">{activeModelLabel}</span>
+                        </button>
                     </div>
                 </div>
 
@@ -379,8 +464,7 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                             isExecuting={isExecuting}
                             result={executionResult}
                             error={execError || null}
-                            generatedSql={sqlQuery} // Pass SQL for Split View
-                            // Mapping props
+                            generatedSql={sqlQuery}
                             promptValue={searchPrompt}
                             onPromptChange={setSearchPrompt}
                             showResults={showSearchResults}
@@ -400,9 +484,30 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
 
                             sqlExplanation={sqlExplanation}
                             onExplainLogic={handleExplainLogic}
-                            onTune={handleTuneWrapper}
-                            onEditSql={(sql) => {
+                            onClearExplanation={() => {
+                                explainReqIdRef.current++;
+                                setSqlExplanation(null);
+                            }}
+                            onSyncState={(sql, res, promptText) => {
                                 if (sql) setSqlQuery(sql);
+                                if (res !== undefined && onSyncFromAsk) {
+                                    onSyncFromAsk(sql, res, promptText);
+                                }
+                                if (res) {
+                                    setBottomExpanded(true);
+                                    setActiveBottomTab('results');
+                                }
+                            }}
+                            onTune={(sql, res) => handleTuneWrapper(sql, res)}
+                            onEditSql={(sql, res) => {
+                                if (sql) setSqlQuery(sql);
+                                if (res !== undefined && onSyncFromAsk) {
+                                    onSyncFromAsk(sql || sqlQuery, res);
+                                }
+                                if (res || executionResult) {
+                                    setBottomExpanded(true);
+                                    setActiveBottomTab('results');
+                                }
                                 setActiveTab('query');
                             }}
                             connectionInfo={connectionInfo}
@@ -431,15 +536,30 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                                     {/* Left Split: Code Editor */}
                                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
                                         <EditorToolbar
+                                            sessionTitle={sessionTitle}
+                                            connectionInfo={connectionInfo}
                                             onExecute={handleExecuteWrapper}
                                             isExecuting={isExecuting}
                                             onStop={() => { }}
                                             onClear={onReset}
-                                            onFormat={() => { }}
+                                            onFormat={handleFormatSql}
                                             onSave={onSaveSession}
-                                            onExplain={() => { /* explain text */ }}
-                                            onVisualize={() => { /* visualize results */ }}
-                                            onAskAI={handleExplainLogic}
+                                            onExplain={() => {
+                                                setTuneTabMode('text');
+                                                setShowPlan(true);
+                                                onTune(null, sqlQuery);
+                                            }}
+                                            onAskAI={() => {
+                                                setActiveRightTab('chat');
+                                                if (sqlQuery.trim()) {
+                                                    onAIStream(
+                                                        `Explain what this PostgreSQL query does and suggest any indexing or performance improvements:\n\`\`\`sql\n${sqlQuery}\n\`\`\``,
+                                                        'Analyze & explain current SQL query',
+                                                        true
+                                                    );
+                                                }
+                                            }}
+                                            onOpenSettings={onOpenSettings}
                                             showPlan={showPlan}
                                             onTogglePlan={handleTogglePlan}
                                         />
@@ -499,8 +619,11 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                                                     error={explainError}
                                                     setReactFlowInstance={() => { }}
                                                     nodeTypes={nodeTypes}
-                                                    onAnalyzeNode={onAnalyzeNode}
-                                                    onRefreshPlan={onTune}
+                                                    onAnalyzeNode={(node) => {
+                                                        setActiveRightTab('chat');
+                                                        onAnalyzeNode(node);
+                                                    }}
+                                                    onRefreshPlan={() => onTune(null, sqlQuery)}
                                                     onCompare={onCompare}
                                                     baselineMetrics={baselineMetrics}
                                                     onClose={() => setShowPlan(false)}
@@ -603,6 +726,10 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                                             selectedNode={selectedNode}
                                             onClose={() => setSelectedNode(null)}
                                             fullPlan={explainResult}
+                                            onAnalyzeNode={(node) => {
+                                                setActiveRightTab('chat');
+                                                onAnalyzeNode(node);
+                                            }}
                                         />
                                     )}
                                 </div>
