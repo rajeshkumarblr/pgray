@@ -29,13 +29,15 @@ interface AIChatSidebarProps {
     onClearHistory?: () => void;
     onIndexDatabase?: () => void;
     connectionInfo: any;
+    onSimulateIndex?: (indexSql: string) => void;
+    onApplyIndex?: (indexSql: string) => void;
 }
 
 const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
     messages, onClose, onSend, loading, aiState = 'idle', title = "Query Discussion", onRunSql,
     selectedModel = "qwen2.5-coder:latest", onModelChange,
     googleApiKey = '', onSetGoogleApiKey, onOpenSettings, onClearHistory, onIndexDatabase,
-    connectionInfo
+    connectionInfo, onSimulateIndex, onApplyIndex
 }) => {
     const endRef = useRef<HTMLDivElement>(null);
     const [input, setInput] = useState('');
@@ -63,11 +65,6 @@ const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
 
         if (lastWord.startsWith('@') && lastWord.length >= 3) {
             const term = lastWord.substring(1); // Remove @
-            // TODO: Extract table context if syntax is @Table:Term? 
-            // For now, assuming Global search or Table search based on term
-
-            // Debounce or just fire? 
-            // Simulating debounce with timeout could be better but let's try direct for responsiveness
             const timer = setTimeout(() => {
                 autocomplete(connectionInfo, term).then(res => {
                     if (res && res.length > 0) {
@@ -92,10 +89,8 @@ const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
         const textAfter = input.slice(cursor);
         const lastWord = textBefore.split(/\s/).pop() || '';
 
-        // Replace last word (the @term) with the value
         const newTextBefore = textBefore.slice(0, -lastWord.length);
         const insertion = s.type === 'table' ? s.value : `${s.value} (ID: ${s.meta.match(/ID: (.*?)\)/)?.[1] || '?'})`;
-        // Or just the value? Prompt said "complete the name". Adding ID helps context.
 
         setInput(newTextBefore + insertion + " " + textAfter);
         setShowSuggestions(false);
@@ -105,7 +100,6 @@ const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
     useEffect(() => {
         endRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages, aiState]);
-    // ... (rest of logic) ...
 
     const handleSend = () => {
         if (input.trim() && !loading && aiState === 'idle') {
@@ -113,7 +107,7 @@ const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
             setInputHistory(prev => [...prev, input]);
             setHistoryIndex(-1);
             setInput('');
-            setHasWarmedUp(false); // Reset for next interaction
+            setHasWarmedUp(false);
         }
     };
 
@@ -169,8 +163,6 @@ const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
         const { content, role, respTime, planTime, execTime } = msg;
 
         if (role === 'user') {
-            // ... (user message logic unchanged) ...
-            // Look ahead for SQL in the next message
             let associatedSql = null;
             if (index + 1 < messages.length && messages[index + 1].role === 'assistant') {
                 const nextContent = messages[index + 1].content;
@@ -200,7 +192,6 @@ const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
             );
         }
 
-        // Assistant: Hide SQL Blocks as requested
         const parts = content.split(/(```[\w]*[\s\S]*?```)/g);
 
         return (
@@ -212,8 +203,7 @@ const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
                         const sql = part.replace(/^```[\w]*\n?|```$/g, '').trim();
                         if (!sql) return null;
 
-                        // Extract first line for preview
-                        const firstLine = sql.split('\n')[0].substring(0, 50) + (sql.length > 50 ? '...' : '');
+                        const isCreateIndex = /^\s*CREATE\s+(UNIQUE\s+)?INDEX\b/i.test(sql);
 
                         return (
                             <div
@@ -221,31 +211,115 @@ const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
                                 style={{
                                     display: 'flex',
                                     flexDirection: 'column',
-                                    gap: '2px',
-                                    margin: '4px 0',
+                                    gap: '4px',
+                                    margin: '6px 0',
+                                    background: '#090f1d',
+                                    border: '1px solid #1e293b',
+                                    borderRadius: '6px',
+                                    padding: '8px',
                                 }}
                             >
-                                <div
-                                    onClick={() => { if (onRunSql) onRunSql(sql); }}
+                                <pre
                                     style={{
-                                        cursor: 'pointer',
-                                        color: '#60a5fa',
-                                        fontSize: '13px',
-                                        fontFamily: 'monospace',
-                                        textDecoration: 'none',
-                                        display: 'flex', alignItems: 'center', gap: '6px'
+                                        margin: 0,
+                                        fontSize: '11px',
+                                        lineHeight: '1.45',
+                                        color: '#93c5fd',
+                                        fontFamily: 'Menlo, Monaco, Consolas, monospace',
+                                        overflowX: 'auto',
+                                        maxHeight: '120px',
+                                        whiteSpace: 'pre-wrap',
+                                        wordBreak: 'break-word'
                                     }}
-                                    onMouseEnter={(e) => (e.currentTarget.style.textDecoration = 'underline')}
-                                    onMouseLeave={(e) => (e.currentTarget.style.textDecoration = 'none')}
-                                    title="Click to load SQL"
                                 >
-                                    <span style={{ fontSize: '14px' }}>📄</span>
-                                    <span>{firstLine}</span>
+                                    {sql}
+                                </pre>
+
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginTop: '4px', paddingTop: '6px', borderTop: '1px solid #1e293b' }}>
+                                    {isCreateIndex ? (
+                                        <>
+                                            {onSimulateIndex && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => onSimulateIndex(sql)}
+                                                    style={{
+                                                        background: 'rgba(139, 92, 246, 0.2)',
+                                                        border: '1px solid rgba(139, 92, 246, 0.45)',
+                                                        color: '#c4b5fd',
+                                                        fontSize: '10px',
+                                                        fontWeight: 600,
+                                                        padding: '3px 8px',
+                                                        borderRadius: '4px',
+                                                        cursor: 'pointer'
+                                                    }}
+                                                    title="Test this index inside a rollback transaction and compare EXPLAIN ANALYZE before & after"
+                                                >
+                                                    🧪 Simulate Index
+                                                </button>
+                                            )}
+                                            {onApplyIndex && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => onApplyIndex(sql)}
+                                                    style={{
+                                                        background: 'rgba(16, 185, 129, 0.2)',
+                                                        border: '1px solid rgba(16, 185, 129, 0.45)',
+                                                        color: '#6ee7b7',
+                                                        fontSize: '10px',
+                                                        fontWeight: 600,
+                                                        padding: '3px 8px',
+                                                        borderRadius: '4px',
+                                                        cursor: 'pointer'
+                                                    }}
+                                                    title="Create this index in the database and refresh the execution plan"
+                                                >
+                                                    ✅ Create Index
+                                                </button>
+                                            )}
+                                        </>
+                                    ) : (
+                                        onRunSql && (
+                                            <button
+                                                type="button"
+                                                onClick={() => onRunSql(sql)}
+                                                style={{
+                                                    background: 'rgba(59, 130, 246, 0.2)',
+                                                    border: '1px solid rgba(59, 130, 246, 0.4)',
+                                                    color: '#93c5fd',
+                                                    fontSize: '10px',
+                                                    fontWeight: 600,
+                                                    padding: '3px 8px',
+                                                    borderRadius: '4px',
+                                                    cursor: 'pointer'
+                                                }}
+                                                title="Load this SQL query into the workbench editor"
+                                            >
+                                                ↱ Load in Editor
+                                            </button>
+                                        )
+                                    )}
+
+                                    <button
+                                        type="button"
+                                        onClick={() => navigator.clipboard.writeText(sql)}
+                                        style={{
+                                            background: 'transparent',
+                                            border: '1px solid #334155',
+                                            color: '#94a3b8',
+                                            fontSize: '10px',
+                                            padding: '3px 7px',
+                                            borderRadius: '4px',
+                                            cursor: 'pointer',
+                                            marginLeft: 'auto'
+                                        }}
+                                        title="Copy SQL to clipboard"
+                                    >
+                                        Copy
+                                    </button>
                                 </div>
 
                                 {(respTime || planTime || execTime || msg.ttft) && (
-                                    <div style={{ fontSize: '10px', color: '#64748b', marginLeft: '24px' }}>
-                                        {/* Format: T: 86.83 ms (P: 8.42ms, E: 78.41ms) */}
+                                    <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>
                                         {(msg as any).totalTime ? `T: ${(msg as any).totalTime}ms ` : ''}
                                         ({planTime ? `P: ${planTime}ms` : ''}{planTime && execTime ? ', ' : ''}{execTime ? `E: ${execTime}ms` : ''})
                                     </div>

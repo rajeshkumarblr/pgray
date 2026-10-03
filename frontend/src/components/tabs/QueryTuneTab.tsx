@@ -28,6 +28,11 @@ interface QueryTuneTabProps {
     onCompare?: () => void;
     baselineMetrics?: { planning: number, execution: number } | null;
     onClose?: () => void;
+    onSimulateIndex?: (indexSql: string) => Promise<void>;
+    onApplyIndex?: (indexSql: string) => Promise<void>;
+    simulationResult?: any | null;
+    onClearSimulation?: () => void;
+    simulatingIndex?: boolean;
 }
 
 const QueryTuneTab: React.FC<QueryTuneTabProps> = ({
@@ -41,13 +46,26 @@ const QueryTuneTab: React.FC<QueryTuneTabProps> = ({
     onAnalyzeNode,
     onCompare,
     baselineMetrics,
-    onClose
+    onClose,
+    onSimulateIndex,
+    onApplyIndex,
+    simulationResult,
+    onClearSimulation,
+    simulatingIndex = false,
 }) => {
     // Internal Ref for the flow wrapper
     const flowWrapperRef = React.useRef<HTMLDivElement>(null);
 
     // Context Menu State
     const [menu, setMenu] = React.useState<{ x: number, y: number, node: any } | null>(null);
+    const [showSimBar, setShowSimBar] = React.useState(false);
+    const [indexInput, setIndexInput] = React.useState('');
+
+    React.useEffect(() => {
+        if (simulationResult?.index_sql) {
+            setIndexInput(simulationResult.index_sql);
+        }
+    }, [simulationResult]);
 
     const onNodeContextMenu = React.useCallback(
         (event: React.MouseEvent, node: Node) => {
@@ -139,6 +157,26 @@ const QueryTuneTab: React.FC<QueryTuneTabProps> = ({
                             )}
                         </div>
                     )}
+                    {onSimulateIndex && (
+                        <button
+                            onClick={() => setShowSimBar(prev => !prev)}
+                            title="Test a virtual CREATE INDEX inside a rollback transaction (What-If Index Simulator)"
+                            style={{
+                                background: showSimBar || simulationResult ? 'rgba(139, 92, 246, 0.25)' : '#1e293b',
+                                border: showSimBar || simulationResult ? '1px solid #8b5cf6' : '1px solid #475569',
+                                color: '#c4b5fd',
+                                fontSize: '11px',
+                                padding: '3px 7px',
+                                borderRadius: '5px',
+                                cursor: 'pointer',
+                                whiteSpace: 'nowrap',
+                                flexShrink: 0,
+                                fontWeight: 500
+                            }}
+                        >
+                            🧪 What-If Index
+                        </button>
+                    )}
                     {baselineMetrics && (
                         <button
                             onClick={onCompare}
@@ -197,6 +235,120 @@ const QueryTuneTab: React.FC<QueryTuneTabProps> = ({
                     )}
                 </div>
             </div>
+
+            {/* Collapsible What-If Index Simulator Input Bar */}
+            {showSimBar && onSimulateIndex && (
+                <div style={{ padding: '8px 10px', background: '#131c31', borderBottom: '1px solid #334155', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '11px', color: '#c4b5fd', fontWeight: 600, whiteSpace: 'nowrap' }}>🧪 What-If DDL:</span>
+                    <input
+                        type="text"
+                        value={indexInput}
+                        onChange={e => setIndexInput(e.target.value)}
+                        placeholder="CREATE INDEX idx_orders_customer_id ON orders (customer_id);"
+                        style={{
+                            flex: 1,
+                            background: '#0f172a',
+                            border: '1px solid #475569',
+                            borderRadius: '4px',
+                            padding: '4px 8px',
+                            color: '#e2e8f0',
+                            fontSize: '11px',
+                            fontFamily: 'Menlo, Monaco, monospace',
+                            outline: 'none'
+                        }}
+                    />
+                    <button
+                        disabled={simulatingIndex || !indexInput.trim()}
+                        onClick={() => onSimulateIndex(indexInput.trim())}
+                        style={{
+                            background: '#7c3aed',
+                            border: 'none',
+                            color: '#fff',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            padding: '4px 10px',
+                            borderRadius: '4px',
+                            cursor: simulatingIndex || !indexInput.trim() ? 'default' : 'pointer',
+                            opacity: simulatingIndex || !indexInput.trim() ? 0.6 : 1,
+                            whiteSpace: 'nowrap'
+                        }}
+                    >
+                        {simulatingIndex ? 'Simulating...' : 'Run Simulation'}
+                    </button>
+                </div>
+            )}
+
+            {/* Active Simulation Comparison Banner */}
+            {simulationResult && (
+                <div style={{
+                    padding: '8px 12px',
+                    background: 'linear-gradient(90deg, rgba(88, 28, 135, 0.35), rgba(15, 23, 42, 0.9))',
+                    borderBottom: '1px solid rgba(139, 92, 246, 0.4)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '8px',
+                    flexWrap: 'wrap',
+                    fontSize: '11px'
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                        <span style={{ color: '#d8b4fe', fontWeight: 700 }}>
+                            🧪 Simulated Index Impact:
+                        </span>
+                        <span style={{ color: '#cbd5e1', fontFamily: 'Menlo, monospace' }}>
+                            Cost: <strong>{simulationResult.baseline_cost}</strong> → <strong style={{ color: '#4ade80' }}>{simulationResult.simulated_cost}</strong>{' '}
+                            <span style={{
+                                padding: '1px 5px',
+                                borderRadius: '4px',
+                                background: simulationResult.cost_reduction_pct > 0 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(148, 163, 184, 0.15)',
+                                color: simulationResult.cost_reduction_pct > 0 ? '#6ee7b7' : '#94a3b8',
+                                fontWeight: 700
+                            }}>
+                                {simulationResult.cost_reduction_pct > 0 ? `-${simulationResult.cost_reduction_pct}%` : '0%'}
+                            </span>
+                        </span>
+                        <span style={{ color: '#cbd5e1', fontFamily: 'Menlo, monospace' }}>
+                            Exec: <strong>{simulationResult.baseline_exec_ms}ms</strong> → <strong style={{ color: '#38bdf8' }}>{simulationResult.simulated_exec_ms}ms</strong>
+                        </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        {onApplyIndex && simulationResult.index_sql && (
+                            <button
+                                onClick={() => onApplyIndex(simulationResult.index_sql)}
+                                style={{
+                                    background: '#059669',
+                                    border: '1px solid #34d399',
+                                    color: '#fff',
+                                    fontSize: '10px',
+                                    fontWeight: 600,
+                                    padding: '3px 8px',
+                                    borderRadius: '4px',
+                                    cursor: 'pointer'
+                                }}
+                                title="Create this index permanently in PostgreSQL"
+                            >
+                                ✅ Apply Index to DB
+                            </button>
+                        )}
+                        {onClearSimulation && (
+                            <button
+                                onClick={onClearSimulation}
+                                style={{
+                                    background: 'transparent',
+                                    border: '1px solid #475569',
+                                    color: '#94a3b8',
+                                    fontSize: '10px',
+                                    padding: '2px 6px',
+                                    borderRadius: '4px',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                Revert to Baseline
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* Content */}
             <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>

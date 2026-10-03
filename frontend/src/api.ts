@@ -344,3 +344,19 @@ export const streamChat = async (prompt: string, context: any, onChunk: (chunk: 
         throw e;
     }
 };
+
+export const simulateIndex = async (connection: any, query: string, index_sql: string, analyze: boolean = true) => {
+    const response = await api.post('/simulate_index', { connection, query, index_sql, analyze });
+    return response.data;
+};
+
+export const getAdminDiagnostics = async (connection: any) => {
+    const response = await api.post('/admin/diagnostics', { connection });
+    return response.data;
+};
+
+export const runAdminAction = async (connection: any, action: string, target: string = '', sql_command: string = '') => {
+    const response = await api.post('/admin/action', { connection, action, target, sql_command });
+    return response.data;
+};
+

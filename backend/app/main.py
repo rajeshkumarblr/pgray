@@ -587,3 +587,62 @@ async def fix_sql_endpoint(request: FixSqlRequest):
         return {"status": "success", "fixed_sql": fixed_sql}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+class SimulateIndexRequest(BaseModel):
+    connection: ConnectionInfo
+    query: str
+    index_sql: str
+    analyze: bool = True
+
+
+@app.post("/api/simulate_index")
+async def simulate_index_endpoint(request: SimulateIndexRequest):
+    from app.explain import simulate_index_explain
+    try:
+        result = simulate_index_explain(
+            info=request.connection,
+            query=request.query,
+            index_sql=request.index_sql,
+            analyze=request.analyze,
+        )
+        return {"status": "success", "data": result}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+class AdminDiagnosticsRequest(BaseModel):
+    connection: ConnectionInfo
+
+
+@app.post("/api/admin/diagnostics")
+async def admin_diagnostics_endpoint(request: AdminDiagnosticsRequest):
+    from app.explain import get_admin_diagnostics
+    try:
+        data = get_admin_diagnostics(request.connection)
+        return {"status": "success", "data": data}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+class AdminActionRequest(BaseModel):
+    connection: ConnectionInfo
+    action: str
+    target: str = ""
+    sql_command: str = ""
+
+
+@app.post("/api/admin/action")
+async def admin_action_endpoint(request: AdminActionRequest):
+    from app.explain import run_admin_action
+    try:
+        result = run_admin_action(
+            info=request.connection,
+            action=request.action,
+            target=request.target,
+            sql_command=request.sql_command,
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+

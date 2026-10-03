@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { Sparkles, Play, Loader2, X, CornerDownLeft } from 'lucide-react';
 
 interface SimpleEditorProps {
     value: string;
@@ -11,7 +12,8 @@ interface SimpleEditorProps {
     errorLine?: number | null;
     highlightLines?: number[]; // indices 1-based
     schema?: any; // { tableName: { columns: [...], ... } }
-    onExecute?: () => void;
+    onExecute?: (selectedSql?: string) => void;
+    onInlineAI?: (instruction: string, currentSql: string) => Promise<string | null>;
 }
 
 interface Suggestion {
@@ -21,12 +23,22 @@ interface Suggestion {
 }
 
 const SimpleEditor: React.FC<SimpleEditorProps> = ({
-    value, onChange, language = 'sql', placeholder, style, errorLine, highlightLines = [], schema, onExecute
+    value, onChange, language = 'sql', placeholder, style, errorLine, highlightLines = [], schema, onExecute, onInlineAI
 }) => {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const codeRef = useRef<HTMLDivElement>(null);
     const lineNumbersRef = useRef<HTMLDivElement>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
+    const cmdKInputRef = useRef<HTMLInputElement>(null);
+
+    // Inline Cmd+K AI bar state
+    const [showCmdK, setShowCmdK] = useState(false);
+    const [cmdKPrompt, setCmdKPrompt] = useState('');
+    const [cmdKLoading, setCmdKLoading] = useState(false);
+    const [cmdKError, setCmdKError] = useState<string | null>(null);
+
+    // Selection state for "Run Selection"
+    const [selectedSqlText, setSelectedSqlText] = useState<string>('');
 
     // Completion state
     const [showDropdown, setShowDropdown] = useState(false);
@@ -171,12 +183,71 @@ const SimpleEditor: React.FC<SimpleEditorProps> = ({
         }
     };
 
+    const handleSelect = () => {
+        const textarea = textareaRef.current;
+        if (!textarea) return;
+        const { selectionStart, selectionEnd } = textarea;
+        if (selectionStart !== selectionEnd) {
+            const sel = value.substring(selectionStart, selectionEnd).trim();
+            setSelectedSqlText(sel);
+        } else {
+            setSelectedSqlText('');
+        }
+    };
+
+    const handleCmdKSubmit = async (e?: React.FormEvent) => {
+        if (e) e.preventDefault();
+        if (!cmdKPrompt.trim() || !onInlineAI || cmdKLoading) return;
+        setCmdKLoading(true);
+        setCmdKError(null);
+        try {
+            const newSql = await onInlineAI(cmdKPrompt.trim(), value);
+            if (newSql) {
+                onChange(newSql);
+                setShowCmdK(false);
+                setCmdKPrompt('');
+                setTimeout(() => textareaRef.current?.focus(), 50);
+            } else {
+                setCmdKError('AI did not return valid SQL.');
+            }
+        } catch (err: any) {
+            setCmdKError(err?.message || 'AI edit failed');
+        } finally {
+            setCmdKLoading(false);
+        }
+    };
+
     // Handle keyboard navigation
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-        // Run Trigger
+        // Inline AI Trigger (Cmd+K / Ctrl+K)
+        if ((e.key === 'k' || e.key === 'K') && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            if (onInlineAI) {
+                setShowCmdK(prev => {
+                    const next = !prev;
+                    if (next) {
+                        setTimeout(() => cmdKInputRef.current?.focus(), 30);
+                    }
+                    return next;
+                });
+            }
+            return;
+        }
+
+        // Run Trigger (Cmd+Enter / Ctrl+Enter) — executes highlighted selection if present, else full query
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
             e.preventDefault();
-            if (onExecute) onExecute();
+            if (onExecute) {
+                const textarea = textareaRef.current;
+                if (textarea && textarea.selectionStart !== textarea.selectionEnd) {
+                    const sel = value.substring(textarea.selectionStart, textarea.selectionEnd).trim();
+                    if (sel) {
+                        onExecute(sel);
+                        return;
+                    }
+                }
+                onExecute();
+            }
             return;
         }
 
@@ -379,6 +450,9 @@ const SimpleEditor: React.FC<SimpleEditorProps> = ({
                     onChange={handleChange}
                     onKeyDown={handleKeyDown}
                     onScroll={handleScroll}
+                    onSelect={handleSelect}
+                    onKeyUp={handleSelect}
+                    onMouseUp={handleSelect}
                     spellCheck={false}
                     placeholder={placeholder}
                     style={{
@@ -403,6 +477,166 @@ const SimpleEditor: React.FC<SimpleEditorProps> = ({
                         zIndex: 10
                     }}
                 />
+
+                {/* Subtle Cmd+K Trigger Pill in Top-Right */}
+                {onInlineAI && !showCmdK && (
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setShowCmdK(true);
+                            setTimeout(() => cmdKInputRef.current?.focus(), 30);
+                        }}
+                        style={{
+                            position: 'absolute',
+                            top: '10px',
+                            right: '14px',
+                            zIndex: 25,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            padding: '4px 10px',
+                            borderRadius: '6px',
+                            background: 'rgba(30, 41, 59, 0.85)',
+                            border: '1px solid rgba(139, 92, 246, 0.35)',
+                            color: '#c4b5fd',
+                            fontSize: '11px',
+                            fontWeight: 500,
+                            cursor: 'pointer',
+                            backdropFilter: 'blur(6px)',
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.25)'
+                        }}
+                        title="Edit or generate SQL inline with AI (⌘K)"
+                    >
+                        <Sparkles size={11} />
+                        <span>Edit with AI</span>
+                        <span style={{ opacity: 0.7, fontSize: '10px', marginLeft: '2px' }}>⌘K</span>
+                    </button>
+                )}
+
+                {/* Floating Inline Cmd+K AI Command Bar */}
+                {onInlineAI && showCmdK && (
+                    <div
+                        style={{
+                            position: 'absolute',
+                            top: '10px',
+                            left: '16px',
+                            right: '16px',
+                            maxWidth: '640px',
+                            zIndex: 50,
+                            background: 'rgba(15, 23, 42, 0.96)',
+                            border: '1px solid #8b5cf6',
+                            borderRadius: '8px',
+                            padding: '8px 10px',
+                            boxShadow: '0 10px 25px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(139, 92, 246, 0.2)',
+                            backdropFilter: 'blur(8px)',
+                        }}
+                    >
+                        <form onSubmit={handleCmdKSubmit} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <Sparkles size={15} style={{ color: '#a78bfa', flexShrink: 0 }} />
+                            <input
+                                ref={cmdKInputRef}
+                                type="text"
+                                value={cmdKPrompt}
+                                onChange={e => setCmdKPrompt(e.target.value)}
+                                onKeyDown={e => {
+                                    if (e.key === 'Escape') {
+                                        e.stopPropagation();
+                                        setShowCmdK(false);
+                                        setCmdKError(null);
+                                        textareaRef.current?.focus();
+                                    }
+                                }}
+                                placeholder={value.trim() ? "Ask AI to modify this SQL (e.g., 'add a CTE for top 5 products' or 'optimize JOIN')..." : "Describe the SQL query to generate..."}
+                                disabled={cmdKLoading}
+                                style={{
+                                    flex: 1,
+                                    background: 'transparent',
+                                    border: 'none',
+                                    outline: 'none',
+                                    color: '#f8fafc',
+                                    fontSize: '13px',
+                                    fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif'
+                                }}
+                            />
+                            <button
+                                type="submit"
+                                disabled={cmdKLoading || !cmdKPrompt.trim()}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    padding: '4px 10px',
+                                    borderRadius: '5px',
+                                    background: cmdKLoading || !cmdKPrompt.trim() ? '#334155' : '#7c3aed',
+                                    color: '#fff',
+                                    border: 'none',
+                                    fontSize: '11px',
+                                    fontWeight: 600,
+                                    cursor: cmdKLoading || !cmdKPrompt.trim() ? 'default' : 'pointer',
+                                }}
+                            >
+                                {cmdKLoading ? <Loader2 size={12} className="animate-spin" /> : <CornerDownLeft size={12} />}
+                                <span>{cmdKLoading ? 'Writing...' : 'Apply'}</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setShowCmdK(false);
+                                    setCmdKError(null);
+                                    textareaRef.current?.focus();
+                                }}
+                                style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    color: '#64748b',
+                                    cursor: 'pointer',
+                                    padding: '2px',
+                                    display: 'flex',
+                                    alignItems: 'center'
+                                }}
+                                title="Close (Esc)"
+                            >
+                                <X size={14} />
+                            </button>
+                        </form>
+                        {cmdKError && (
+                            <div style={{ color: '#f87171', fontSize: '11px', marginTop: '6px', paddingLeft: '23px' }}>
+                                {cmdKError}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Floating "Run Selection" Pill when SQL text is highlighted */}
+                {onExecute && selectedSqlText && (
+                    <button
+                        type="button"
+                        onClick={() => onExecute(selectedSqlText)}
+                        style={{
+                            position: 'absolute',
+                            bottom: '12px',
+                            right: '16px',
+                            zIndex: 25,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '5px 12px',
+                            borderRadius: '6px',
+                            background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+                            border: '1px solid #60a5fa',
+                            color: '#ffffff',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            boxShadow: '0 4px 12px rgba(37, 99, 235, 0.4)'
+                        }}
+                        title="Execute only the highlighted SQL selection"
+                    >
+                        <Play size={11} fill="currentColor" />
+                        <span>Run Selection</span>
+                        <span style={{ opacity: 0.8, fontSize: '10px' }}>⌘↵</span>
+                    </button>
+                )}
 
                 {/* Completion Dropdown */}
                 {showDropdown && suggestions.length > 0 && (

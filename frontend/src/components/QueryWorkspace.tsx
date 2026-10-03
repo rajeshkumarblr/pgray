@@ -9,7 +9,8 @@ import SimpleEditor from './SimpleEditor';
 import DiffView from './DiffView';
 import PlanNode from './PlanNode';
 import NodeDetailsPanel from './NodeDetailsPanel';
-import { getSavedQueries, ParameterizedQuery, explainSql } from '../api';
+import { getSavedQueries, ParameterizedQuery, explainSql, simulateIndex, runAdminAction, generateSql } from '../api';
+import { parsePlanToFlow } from '../utils/planLayout';
 
 
 import AskTab from '../pages/AskTab';
@@ -124,6 +125,19 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
     const [showPlan, setShowPlan] = useState(false);
     const [planWidth, setPlanWidth] = useState(560); // Default width for Plan pane
 
+    // What-If Index Simulation State
+    const [simulationResult, setSimulationResult] = useState<any | null>(null);
+    const [simulatingIndex, setSimulatingIndex] = useState(false);
+    const [simulatedNodes, setSimulatedNodes] = useState<any[] | null>(null);
+    const [simulatedEdges, setSimulatedEdges] = useState<any[] | null>(null);
+
+    // Clear simulation when SQL query changes
+    useEffect(() => {
+        setSimulationResult(null);
+        setSimulatedNodes(null);
+        setSimulatedEdges(null);
+    }, [sqlQuery]);
+
     // Auto-Trigger Explain Plan Logic
     useEffect(() => {
         if (activeTab === 'query' && showPlan && sqlQuery && !explainResult) {
@@ -184,12 +198,10 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
         setSearchPrompt(query.name);
         setShowSearchResults(false);
 
-        // Switch to Query tab
         if (activeTab === 'ask') {
             setActiveTab('query');
         }
 
-        // Execute immediately OR Ask for params
         if (query.params && query.params.length > 0) {
             setPendingParams(query.params);
         } else {
@@ -201,8 +213,9 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
         }
     };
 
-    const handleExecuteWrapper = () => {
-        onExecute(sqlQuery, paramValues);
+    const handleExecuteWrapper = (selectedSql?: string) => {
+        const targetSql = typeof selectedSql === 'string' && selectedSql.trim() ? selectedSql : sqlQuery;
+        onExecute(targetSql, paramValues);
         setActiveBottomTab('results');
         setBottomExpanded(true);
     };
@@ -218,6 +231,75 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
             setSqlQuery(formatted);
         } catch (e) {
             console.warn('SQL formatting failed, keeping original SQL:', e);
+        }
+    };
+
+    const handleInlineAI = async (instruction: string, currentSql: string): Promise<string | null> => {
+        const activeModel = activeProvider === 'local' ? localModel : geminiModel;
+        const prompt = currentSql.trim()
+            ? `Modify the following PostgreSQL query according to this request: "${instruction}". Return ONLY the valid PostgreSQL SQL query.\n\nExisting SQL:\n\`\`\`sql\n${currentSql}\n\`\`\``
+            : instruction;
+        const res = await generateSql(prompt, schema, [], activeModel, connectionInfo, '', currentSql);
+        const rawText = res?.response || res?.sql || '';
+        const blockMatch = rawText.match(/```(?:sql)?\s*([\s\S]*?)```/i);
+        const extracted = (blockMatch ? blockMatch[1] : rawText).trim();
+        return extracted || null;
+    };
+
+    const handleSimulateIndex = async (indexSql: string) => {
+        if (!connectionInfo || !sqlQuery.trim() || !indexSql.trim()) return;
+        setActiveTab('query');
+        setShowPlan(true);
+        setTuneTabMode('visual');
+        setSimulatingIndex(true);
+        try {
+            const res = await simulateIndex(connectionInfo, sqlQuery, indexSql, true);
+            if (res?.data) {
+                setSimulationResult(res.data);
+                const simJson = res.data.simulated_json;
+                const planRoot = Array.isArray(simJson) && simJson.length > 0
+                    ? (simJson[0]['QUERY PLAN'] || simJson[0]['Plan'])
+                    : simJson;
+                if (planRoot) {
+                    const { nodes: sNodes, edges: sEdges } = parsePlanToFlow(planRoot);
+                    setSimulatedNodes(sNodes);
+                    setSimulatedEdges(sEdges);
+                }
+            }
+        } catch (err: any) {
+            const msg = err?.response?.data?.detail || err?.message || 'Index simulation failed';
+            alert(`Simulation Error: ${msg}`);
+        } finally {
+            setSimulatingIndex(false);
+        }
+    };
+
+    const handleApplyIndex = async (indexSql: string) => {
+        if (!connectionInfo || !indexSql.trim()) return;
+        try {
+            await runAdminAction(connectionInfo, 'create_index', '', indexSql);
+            setSimulationResult(null);
+            setSimulatedNodes(null);
+            setSimulatedEdges(null);
+            setShowPlan(true);
+            onTune(null, sqlQuery);
+        } catch (err: any) {
+            const msg = err?.response?.data?.detail || err?.message || 'Failed to create index';
+            alert(`Create Index Error: ${msg}`);
+        }
+    };
+
+    const handleClearSimulation = () => {
+        setSimulationResult(null);
+        setSimulatedNodes(null);
+        setSimulatedEdges(null);
+    };
+
+    const handleRunMaintenance = async (action: 'analyze' | 'vacuum_analyze', tableName: string) => {
+        if (!connectionInfo || !tableName) return;
+        await runAdminAction(connectionInfo, action, tableName);
+        if (showPlan && sqlQuery) {
+            onTune(null, sqlQuery);
         }
     };
 
@@ -518,7 +600,7 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                     {activeTab === 'query' && (
                         <div style={{ display: 'flex', flexDirection: 'row', height: '100%', overflow: 'hidden' }}>
 
-                            {/* Left Sidebar (Saved Queries) */}
+                            {/* Left Sidebar (Schema Explorer & Saved Queries) */}
                             <SavedQueriesSidebar
                                 connectionInfo={connectionInfo}
                                 onSelectQuery={handleSelectSavedQuery}
@@ -526,6 +608,16 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                                 loading={loadingSavedQueries}
                                 onReload={loadSavedQueries}
                                 activeQueryName={sessionTitle}
+                                schema={schema}
+                                onPreviewTable={(tableName) => {
+                                    const previewSql = `SELECT *\nFROM ${tableName}\nLIMIT 50;`;
+                                    setSqlQuery(previewSql);
+                                    setSessionTitle(`Preview: ${tableName}`);
+                                    handleExecuteWrapper(previewSql);
+                                }}
+                                onInsertSnippet={(snippet) => {
+                                    setSqlQuery(sqlQuery ? `${sqlQuery} ${snippet}` : snippet);
+                                }}
                             />
 
                             {/* Center Area (Code/Plan + BottomPane) */}
@@ -538,7 +630,7 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                                         <EditorToolbar
                                             sessionTitle={sessionTitle}
                                             connectionInfo={connectionInfo}
-                                            onExecute={handleExecuteWrapper}
+                                            onExecute={() => handleExecuteWrapper()}
                                             isExecuting={isExecuting}
                                             onStop={() => { }}
                                             onClear={onReset}
@@ -568,7 +660,9 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                                             <SimpleEditor
                                                 value={sqlQuery}
                                                 onChange={setSqlQuery}
+                                                schema={schema}
                                                 onExecute={handleExecuteWrapper}
+                                                onInlineAI={handleInlineAI}
                                                 style={{ height: '100%', flex: 1 }}
                                             />
                                             {/* Diff View Overlay */}
@@ -608,14 +702,15 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                                                 <QueryTuneTab
                                                     activeTab={tuneTabMode}
                                                     setActiveTab={setTuneTabMode}
-                                                    nodes={nodes} edges={edges}
+                                                    nodes={simulatedNodes || nodes}
+                                                    edges={simulatedEdges || edges}
                                                     onNodesChange={onNodesChange}
                                                     onNodeClick={handleNodeClickWrapper}
                                                     onPaneClick={onPaneClick}
                                                     selectedNode={selectedNode}
-                                                    explainResult={explainResult}
-                                                    explainText={explainText}
-                                                    loading={loadingExplain}
+                                                    explainResult={simulationResult?.simulated_json || explainResult}
+                                                    explainText={simulationResult?.simulated_text || explainText}
+                                                    loading={loadingExplain || simulatingIndex}
                                                     error={explainError}
                                                     setReactFlowInstance={() => { }}
                                                     nodeTypes={nodeTypes}
@@ -627,6 +722,11 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                                                     onCompare={onCompare}
                                                     baselineMetrics={baselineMetrics}
                                                     onClose={() => setShowPlan(false)}
+                                                    onSimulateIndex={handleSimulateIndex}
+                                                    onApplyIndex={handleApplyIndex}
+                                                    simulationResult={simulationResult}
+                                                    onClearSimulation={handleClearSimulation}
+                                                    simulatingIndex={simulatingIndex}
                                                 />
                                             </div>
                                         </>
@@ -669,7 +769,7 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                                     onParamChange={setParamValues}
                                     connectionInfo={connectionInfo}
                                     metaParams={[]}
-                                    onExecuteQuery={handleExecuteWrapper}
+                                    onExecuteQuery={() => handleExecuteWrapper()}
                                 />
 
                             </div>
@@ -710,6 +810,8 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                                             aiState={aiStatus}
                                             title={showPlan ? "Plan Assistant" : "Query Assistant"}
                                             onRunSql={(sql) => { setSqlQuery(sql); }}
+                                            onSimulateIndex={handleSimulateIndex}
+                                            onApplyIndex={handleApplyIndex}
                                             onClose={() => { }}
                                             selectedModel={activeProvider}
                                             onModelChange={setActiveProvider}
@@ -730,6 +832,7 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                                                 setActiveRightTab('chat');
                                                 onAnalyzeNode(node);
                                             }}
+                                            onRunMaintenance={handleRunMaintenance}
                                         />
                                     )}
                                 </div>
@@ -747,7 +850,20 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                     )}
 
                     {activeTab === 'admin' && (
-                        <AdminTab connectionInfo={connectionInfo} />
+                        <AdminTab
+                            connectionInfo={connectionInfo}
+                            onOpenInWorkbench={(sql, autoTune) => {
+                                setSqlQuery(sql);
+                                setActiveTab('query');
+                                if (autoTune) {
+                                    setShowPlan(true);
+                                    setTuneTabMode('visual');
+                                    onTune(null, sql);
+                                } else {
+                                    handleExecuteWrapper(sql);
+                                }
+                            }}
+                        />
                     )}
 
                 </div>

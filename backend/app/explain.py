@@ -356,3 +356,386 @@ def get_pg_settings(info: ConnectionInfo):
         # or re-raise if we want to handle it in the endpoint
         raise e
 
+
+def _extract_dsn_and_schema(info):
+    if isinstance(info, dict):
+        host = info.get('host')
+        port = info.get('port')
+        database = info.get('database')
+        username = info.get('username') or info.get('user')
+        password = info.get('password')
+        schema = info.get('schema_name') or info.get('schema') or 'public'
+    else:
+        host = info.host
+        port = info.port
+        database = info.database
+        username = info.username
+        password = info.password
+        schema = getattr(info, 'schema_name', None) or getattr(info, 'schema', None) or 'public'
+    dsn = f"host={host} port={port} dbname={database} user={username} password={password} connect_timeout=10"
+    return dsn, (schema or 'public').strip() or 'public'
+
+
+def simulate_index_explain(info: ConnectionInfo, query: str, index_sql: str, analyze: bool = True):
+    """
+    Runs a transactional What-If Index Simulation:
+    1. Baseline EXPLAIN (FORMAT JSON, ANALYZE, BUFFERS)
+    2. BEGIN -> CREATE INDEX -> ANALYZE <table> -> Simulated EXPLAIN -> ROLLBACK
+    """
+    import re
+    dsn, schema = _extract_dsn_and_schema(info)
+    conn = psycopg2.connect(dsn)
+    conn.autocommit = False
+    try:
+        _set_search_path(conn, schema)
+        cur = conn.cursor()
+
+        clean_query = query.strip().rstrip(';')
+        explain_opts = "FORMAT JSON, ANALYZE, BUFFERS" if analyze else "FORMAT JSON"
+        explain_text_opts = "FORMAT TEXT, ANALYZE, BUFFERS" if analyze else "FORMAT TEXT"
+
+        # 1. Baseline Plan
+        cur.execute(f"EXPLAIN ({explain_opts}) {clean_query}")
+        base_json_row = cur.fetchone()
+        base_json = base_json_row[0] if base_json_row else None
+
+        cur.execute(f"EXPLAIN ({explain_text_opts}) {clean_query}")
+        base_text = "\n".join([r[0] for r in cur.fetchall()])
+
+        # Reset transaction before starting simulation block
+        conn.rollback()
+        _set_search_path(conn, schema)
+
+        # 2. Prepare Index DDL (strip CONCURRENTLY so it can run inside a transaction block)
+        sim_index_sql = re.sub(r'\bCONCURRENTLY\b', '', index_sql, flags=re.IGNORECASE).strip()
+        if not re.match(r'^\s*CREATE\s+(UNIQUE\s+)?INDEX\b', sim_index_sql, flags=re.IGNORECASE):
+            raise ValueError("Only CREATE INDEX statements can be simulated.")
+
+        cur.execute(sim_index_sql)
+
+        # Extract table name from ON <table_name> to run ANALYZE so planner stats update immediately
+        tbl_match = re.search(r'\bON\s+(?:ONLY\s+)?([a-zA-Z0-9_."]+)', sim_index_sql, flags=re.IGNORECASE)
+        if tbl_match:
+            raw_tbl = tbl_match.group(1).strip('"').split('.')[-1]
+            try:
+                cur.execute(sql.SQL("ANALYZE {}").format(sql.Identifier(raw_tbl)))
+            except Exception:
+                pass
+
+        # 3. Simulated Plan
+        cur.execute(f"EXPLAIN ({explain_opts}) {clean_query}")
+        sim_json_row = cur.fetchone()
+        sim_json = sim_json_row[0] if sim_json_row else None
+
+        cur.execute(f"EXPLAIN ({explain_text_opts}) {clean_query}")
+        sim_text = "\n".join([r[0] for r in cur.fetchall()])
+
+        # Always roll back the simulated index
+        conn.rollback()
+
+        def _extract_metrics(plan_json):
+            if not plan_json or not isinstance(plan_json, list) or len(plan_json) == 0:
+                return 0.0, 0.0
+            root = plan_json[0]
+            plan = root.get("Plan", {})
+            total_cost = float(plan.get("Total Cost", 0.0) or 0.0)
+            exec_ms = float(root.get("Execution Time", plan.get("Actual Total Time", 0.0)) or 0.0)
+            return total_cost, exec_ms
+
+        base_cost, base_ms = _extract_metrics(base_json)
+        sim_cost, sim_ms = _extract_metrics(sim_json)
+
+        cost_reduction_pct = round(((base_cost - sim_cost) / base_cost) * 100.0, 1) if base_cost > 0 else 0.0
+        time_reduction_pct = round(((base_ms - sim_ms) / base_ms) * 100.0, 1) if base_ms > 0 else 0.0
+
+        return {
+            "baseline_json": base_json,
+            "baseline_text": base_text,
+            "baseline_cost": round(base_cost, 2),
+            "baseline_exec_ms": round(base_ms, 3),
+            "simulated_json": sim_json,
+            "simulated_text": sim_text,
+            "simulated_cost": round(sim_cost, 2),
+            "simulated_exec_ms": round(sim_ms, 3),
+            "cost_reduction_pct": cost_reduction_pct,
+            "time_reduction_pct": time_reduction_pct,
+            "index_sql": index_sql.strip(),
+        }
+    finally:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        conn.close()
+
+
+def get_admin_diagnostics(info: ConnectionInfo):
+    """
+    Collects comprehensive PostgreSQL DBA & developer diagnostics:
+    - missing_fk_indexes: Foreign key columns lacking a supporting index
+    - unused_indexes: Non-PK/Non-Unique indexes with idx_scan = 0
+    - table_stats: Sequential scan vs index scan ratios, dead tuple bloat %, sizes, last analyze/vacuum
+    - active_sessions: Live pg_stat_activity + pg_blocking_pids lock tree
+    - slow_queries: Top queries from pg_stat_statements (if extension enabled)
+    """
+    dsn, schema = _extract_dsn_and_schema(info)
+    conn = psycopg2.connect(dsn)
+    try:
+        cur = conn.cursor()
+
+        # 1. Missing FK Indexes
+        missing_fk_query = """
+            WITH fk_constraints AS (
+                SELECT
+                    con.conname AS constraint_name,
+                    rel.relname AS table_name,
+                    att.attname AS column_name,
+                    frel.relname AS foreign_table,
+                    con.conrelid,
+                    con.conkey[1] AS attnum,
+                     COALESCE(stat.n_live_tup, rel.reltuples::bigint, 0) AS est_rows
+                FROM pg_constraint con
+                JOIN pg_class rel ON rel.oid = con.conrelid
+                JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+                JOIN pg_class frel ON frel.oid = con.confrelid
+                JOIN pg_attribute att ON att.attrelid = con.conrelid AND att.attnum = con.conkey[1]
+                LEFT JOIN pg_stat_user_tables stat ON stat.relid = con.conrelid
+                WHERE con.contype = 'f'
+                  AND nsp.nspname = %s
+                  AND array_length(con.conkey, 1) = 1
+            )
+            SELECT
+                fk.table_name,
+                fk.column_name,
+                fk.foreign_table,
+                fk.constraint_name,
+                fk.est_rows
+            FROM fk_constraints fk
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM pg_index idx
+                WHERE idx.indrelid = fk.conrelid
+                  AND idx.indkey[0] = fk.attnum
+            )
+            ORDER BY fk.est_rows DESC, fk.table_name, fk.column_name;
+        """
+        cur.execute(missing_fk_query, (schema,))
+        missing_fk_indexes = []
+        for row in cur.fetchall():
+            t_name, c_name, f_table, con_name, est_rows = row
+            idx_name = f"idx_{t_name}_{c_name}"
+            missing_fk_indexes.append({
+                "table_name": t_name,
+                "column_name": c_name,
+                "foreign_table": f_table,
+                "constraint_name": con_name,
+                "est_rows": int(est_rows or 0),
+                "suggested_sql": f"CREATE INDEX {idx_name} ON {t_name} ({c_name});"
+            })
+
+        # 2. Unused Indexes
+        unused_idx_query = """
+            SELECT
+                s.relname AS table_name,
+                s.indexrelname AS index_name,
+                s.idx_scan,
+                pg_relation_size(s.indexrelid) AS size_bytes,
+                pg_size_pretty(pg_relation_size(s.indexrelid)) AS size_pretty,
+                pg_get_indexdef(s.indexrelid) AS indexdef
+            FROM pg_stat_user_indexes s
+            JOIN pg_index i ON i.indexrelid = s.indexrelid
+            WHERE s.schemaname = %s
+              AND NOT i.indisprimary
+              AND NOT i.indisunique
+              AND s.idx_scan = 0
+            ORDER BY pg_relation_size(s.indexrelid) DESC, s.relname;
+        """
+        cur.execute(unused_idx_query, (schema,))
+        unused_indexes = []
+        for row in cur.fetchall():
+            unused_indexes.append({
+                "table_name": row[0],
+                "index_name": row[1],
+                "idx_scan": int(row[2] or 0),
+                "size_bytes": int(row[3] or 0),
+                "size_pretty": row[4],
+                "indexdef": row[5]
+            })
+
+        # 3. Table Health & Sequential Scan Hotspots
+        table_stats_query = """
+            SELECT
+                relname AS table_name,
+                COALESCE(seq_scan, 0) AS seq_scan,
+                COALESCE(seq_tup_read, 0) AS seq_tup_read,
+                COALESCE(idx_scan, 0) AS idx_scan,
+                COALESCE(idx_tup_fetch, 0) AS idx_tup_fetch,
+                COALESCE(n_live_tup, 0) AS n_live_tup,
+                COALESCE(n_dead_tup, 0) AS n_dead_tup,
+                ROUND(100.0 * COALESCE(n_dead_tup, 0) / GREATEST(COALESCE(n_live_tup, 0) + COALESCE(n_dead_tup, 0), 1), 1) AS dead_tup_pct,
+                pg_total_relation_size(relid) AS size_bytes,
+                pg_size_pretty(pg_total_relation_size(relid)) AS total_size,
+                COALESCE(last_analyze, last_autoanalyze) AS last_analyzed,
+                COALESCE(last_vacuum, last_autovacuum) AS last_vacuumed
+            FROM pg_stat_user_tables
+            WHERE schemaname = %s
+            ORDER BY COALESCE(seq_tup_read, 0) DESC, pg_total_relation_size(relid) DESC;
+        """
+        cur.execute(table_stats_query, (schema,))
+        table_stats = []
+        for row in cur.fetchall():
+            table_stats.append({
+                "table_name": row[0],
+                "seq_scan": int(row[1] or 0),
+                "seq_tup_read": int(row[2] or 0),
+                "idx_scan": int(row[3] or 0),
+                "idx_tup_fetch": int(row[4] or 0),
+                "n_live_tup": int(row[5] or 0),
+                "n_dead_tup": int(row[6] or 0),
+                "dead_tup_pct": float(row[7] or 0.0),
+                "size_bytes": int(row[8] or 0),
+                "total_size": row[9],
+                "last_analyzed": row[10].isoformat() if row[10] else None,
+                "last_vacuumed": row[11].isoformat() if row[11] else None,
+            })
+
+        # 4. Active Sessions & Lock Tree
+        sessions_query = """
+            SELECT
+                pid,
+                usename,
+                application_name,
+                COALESCE(client_addr::text, 'local') AS client_addr,
+                state,
+                wait_event_type,
+                wait_event,
+                ROUND(EXTRACT(EPOCH FROM (now() - query_start))::numeric, 2) AS duration_sec,
+                pg_blocking_pids(pid) AS blocking_pids,
+                LEFT(query, 600) AS query
+            FROM pg_stat_activity
+            WHERE datname = current_database()
+              AND pid <> pg_backend_pid()
+              AND state IS NOT NULL
+            ORDER BY
+                CASE WHEN state = 'active' THEN 0 WHEN state LIKE 'idle in transaction%' THEN 1 ELSE 2 END,
+                duration_sec DESC NULLS LAST;
+        """
+        cur.execute(sessions_query)
+        active_sessions = []
+        for row in cur.fetchall():
+            active_sessions.append({
+                "pid": int(row[0]),
+                "usename": row[1] or "",
+                "application_name": row[2] or "",
+                "client_addr": row[3] or "local",
+                "state": row[4] or "",
+                "wait_event_type": row[5],
+                "wait_event": row[6],
+                "duration_sec": float(row[7] or 0.0),
+                "blocking_pids": list(row[8]) if row[8] else [],
+                "query": row[9] or "",
+            })
+
+        # 5. Top Slow Queries (pg_stat_statements if installed)
+        pg_stat_statements_enabled = False
+        slow_queries = []
+        try:
+            cur.execute("SELECT 1 FROM pg_extension WHERE extname = 'pg_stat_statements';")
+            if cur.fetchone():
+                pg_stat_statements_enabled = True
+                cur.execute("""
+                    SELECT
+                        LEFT(query, 800) AS query,
+                        calls,
+                        ROUND(total_exec_time::numeric, 2) AS total_ms,
+                        ROUND(mean_exec_time::numeric, 2) AS mean_ms,
+                        rows,
+                        shared_blks_hit,
+                        shared_blks_read
+                    FROM pg_stat_statements
+                    WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database())
+                      AND query NOT ILIKE '%%pg_stat_%%'
+                      AND query NOT ILIKE 'EXPLAIN%%'
+                    ORDER BY mean_exec_time DESC
+                    LIMIT 20;
+                """)
+                for row in cur.fetchall():
+                    slow_queries.append({
+                        "query": row[0],
+                        "calls": int(row[1] or 0),
+                        "total_ms": float(row[2] or 0.0),
+                        "mean_ms": float(row[3] or 0.0),
+                        "rows": int(row[4] or 0),
+                        "shared_blks_hit": int(row[5] or 0),
+                        "shared_blks_read": int(row[6] or 0),
+                    })
+        except Exception:
+            conn.rollback()
+
+        return {
+            "missing_fk_indexes": missing_fk_indexes,
+            "unused_indexes": unused_indexes,
+            "table_stats": table_stats,
+            "active_sessions": active_sessions,
+            "pg_stat_statements_enabled": pg_stat_statements_enabled,
+            "slow_queries": slow_queries,
+        }
+    finally:
+        conn.close()
+
+
+def run_admin_action(info: ConnectionInfo, action: str, target: str = "", sql_command: str = ""):
+    """
+    Executes an administrative/tuning action with autocommit=True:
+    - analyze: ANALYZE <target>
+    - vacuum_analyze: VACUUM ANALYZE <target>
+    - create_index: executes CREATE [UNIQUE] INDEX ...
+    - cancel_backend: SELECT pg_cancel_backend(<pid>)
+    - enable_pg_stat_statements: CREATE EXTENSION IF NOT EXISTS pg_stat_statements
+    """
+    import re
+    dsn, schema = _extract_dsn_and_schema(info)
+    conn = psycopg2.connect(dsn)
+    conn.autocommit = True
+    try:
+        _set_search_path(conn, schema)
+        cur = conn.cursor()
+
+        if action == "analyze":
+            if not target:
+                raise ValueError("Target table name is required for ANALYZE.")
+            cur.execute(sql.SQL("ANALYZE {}").format(sql.Identifier(target)))
+            return {"status": "success", "message": f"ANALYZE {target} completed."}
+
+        elif action == "vacuum_analyze":
+            if not target:
+                raise ValueError("Target table name is required for VACUUM ANALYZE.")
+            cur.execute(sql.SQL("VACUUM ANALYZE {}").format(sql.Identifier(target)))
+            return {"status": "success", "message": f"VACUUM ANALYZE {target} completed."}
+
+        elif action == "create_index":
+            cmd = (sql_command or "").strip()
+            if not re.match(r'^\s*CREATE\s+(UNIQUE\s+)?INDEX\b', cmd, flags=re.IGNORECASE):
+                raise ValueError("Only CREATE INDEX statements are allowed.")
+            cur.execute(cmd)
+            return {"status": "success", "message": "Index created successfully."}
+
+        elif action == "cancel_backend":
+            pid = int(target)
+            cur.execute("SELECT pg_cancel_backend(%s);", (pid,))
+            cancelled = cur.fetchone()[0]
+            return {
+                "status": "success" if cancelled else "warning",
+                "message": f"Sent cancel signal to PID {pid}." if cancelled else f"Could not cancel PID {pid}."
+            }
+
+        elif action == "enable_pg_stat_statements":
+            cur.execute("CREATE EXTENSION IF NOT EXISTS pg_stat_statements;")
+            return {"status": "success", "message": "pg_stat_statements extension enabled."}
+
+        else:
+            raise ValueError(f"Unsupported admin action: {action}")
+    finally:
+        conn.close()
+
+

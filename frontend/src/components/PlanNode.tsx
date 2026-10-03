@@ -63,8 +63,6 @@ const PlanNode = ({ id, data, selected }: NodeProps<PlanNodeData>) => {
   // Parse Relation / Alias
   const relation = data.details?.['Relation Name'];
   const alias = data.details?.['Alias'];
-  // If alias exists and is different from relation, show both. Otherwise just relation.
-  // If no relation, maybe show nothing.
   let tableLabel = '';
   if (relation) {
     if (alias && alias !== relation) {
@@ -74,29 +72,48 @@ const PlanNode = ({ id, data, selected }: NodeProps<PlanNodeData>) => {
     }
   }
 
+  // Diagnostic Detectors
+  const planRows = typeof data.rows === 'number' ? data.rows : 0;
+  const actualRows = typeof data.actual_rows === 'number' ? data.actual_rows : undefined;
+  let skewFactor = 1;
+  if (actualRows !== undefined) {
+    const safePlan = Math.max(planRows, 1);
+    const safeActual = Math.max(actualRows, 1);
+    skewFactor = Math.max(safeActual / safePlan, safePlan / safeActual);
+  }
+  const hasRowSkew = actualRows !== undefined && skewFactor >= 5 && Math.abs((actualRows || 0) - planRows) >= 10;
+
+  const tempWritten = data.details?.['Temp Written Blocks'] || 0;
+  const sortSpaceType = data.details?.['Sort Space Type'];
+  const hashBatches = data.details?.['Hash Batches'] || 1;
+  const hasDiskSpill = tempWritten > 0 || sortSpaceType === 'Disk' || hashBatches > 1;
+
+  const heapFetches = data.details?.['Heap Fetches'] || 0;
+  const hasHeapFetches = data.label.toLowerCase().includes('index only scan') && heapFetches > 0;
+
   // --- STYLES ---
 
-  // Main Container: Slim Dark Pill
   const containerStyle: React.CSSProperties = {
     position: 'relative',
-    minWidth: '240px', // Slightly wider to accommodate extra info
-    minHeight: '60px', // Taller for relation name
-    padding: '8px 12px',
+    minWidth: '250px',
+    minHeight: '64px',
+    padding: '8px 12px 10px 12px',
     display: 'flex',
     flexDirection: 'column',
     justifyContent: 'center',
     backgroundColor: isCritical
-      ? (isSeqScan ? '#451a1a' : '#450a0a') // Milder Red for Seq Scan, Deep Red for others
+      ? (isSeqScan ? '#3b1518' : '#3f0d12')
       : '#1e293b',
     border: isCritical
-      ? (isSeqScan ? '2px solid #ef5350' : '2px solid #ef4444') // Milder/Lighter Red border for Seq Scan
+      ? (isSeqScan ? '1.5px solid #ef5350' : '1.5px solid #ef4444')
       : selected ? '2px solid #38bdf8' : '1px solid #475569',
     borderRadius: '8px',
     color: '#f8fafc',
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-    fontSize: '13px',
-    boxShadow: selected ? '0 0 0 2px rgba(56, 189, 248, 0.2)' : 'none',
+    fontSize: '12px',
+    boxShadow: selected ? '0 0 0 3px rgba(56, 189, 248, 0.25)' : '0 4px 10px rgba(0, 0, 0, 0.25)',
     transition: 'all 0.15s ease',
+    overflow: 'hidden',
   };
 
   const headerStyle: React.CSSProperties = {
@@ -123,20 +140,20 @@ const PlanNode = ({ id, data, selected }: NodeProps<PlanNodeData>) => {
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
-    maxWidth: '120px',
+    maxWidth: '140px',
     flex: 1
   };
 
   const metricStyle: React.CSSProperties = {
     fontWeight: 700,
-    color: '#38bdf8',
+    color: isCritical ? '#fca5a5' : '#38bdf8',
     whiteSpace: 'nowrap',
     marginLeft: '8px'
   };
 
   const relationStyle: React.CSSProperties = {
     fontSize: '11px',
-    color: '#cbd5e1', // Lighter than sub-metric
+    color: '#cbd5e1',
     marginBottom: '4px',
     whiteSpace: 'nowrap',
     overflow: 'hidden',
@@ -151,14 +168,15 @@ const PlanNode = ({ id, data, selected }: NodeProps<PlanNodeData>) => {
     textAlign: 'right',
     display: 'flex',
     justifyContent: 'flex-end',
-    gap: '6px'
+    alignItems: 'center',
+    gap: '6px',
+    flexWrap: 'wrap'
   };
 
   const discardedStyle: React.CSSProperties = {
-    color: '#f87171', // Redish for discarded
+    color: '#f87171',
   };
 
-  // --- HANDLES ---
   const targetHandleStyle: React.CSSProperties = {
     left: 0,
     top: '50%',
@@ -197,6 +215,60 @@ const PlanNode = ({ id, data, selected }: NodeProps<PlanNodeData>) => {
         </div>
       )}
 
+      {/* Diagnostic Pill Row */}
+      {(hasRowSkew || hasDiskSpill || hasHeapFetches) && (
+        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '4px' }}>
+          {hasRowSkew && (
+            <span
+              title={`Planner estimated ${planRows} rows, actual was ${actualRows} rows (${Math.round(skewFactor)}x skew). Consider ANALYZE ${relation || ''}.`}
+              style={{
+                fontSize: '9px',
+                padding: '1px 5px',
+                borderRadius: '4px',
+                background: 'rgba(245, 158, 11, 0.2)',
+                border: '1px solid rgba(245, 158, 11, 0.45)',
+                color: '#fbbf24',
+                fontWeight: 600,
+              }}
+            >
+              ⚠ {Math.round(skewFactor)}x skew
+            </span>
+          )}
+          {hasDiskSpill && (
+            <span
+              title="Operation spilled to temporary disk files! Increase work_mem."
+              style={{
+                fontSize: '9px',
+                padding: '1px 5px',
+                borderRadius: '4px',
+                background: 'rgba(239, 68, 68, 0.25)',
+                border: '1px solid rgba(239, 68, 68, 0.5)',
+                color: '#fca5a5',
+                fontWeight: 600,
+              }}
+            >
+              💾 Disk Spill
+            </span>
+          )}
+          {hasHeapFetches && (
+            <span
+              title={`Index Only Scan performed ${heapFetches} heap fetches due to stale visibility map. Run VACUUM.`}
+              style={{
+                fontSize: '9px',
+                padding: '1px 5px',
+                borderRadius: '4px',
+                background: 'rgba(168, 85, 247, 0.2)',
+                border: '1px solid rgba(168, 85, 247, 0.45)',
+                color: '#d8b4fe',
+                fontWeight: 600,
+              }}
+            >
+              🧹 {formatRows(heapFetches)} heap
+            </span>
+          )}
+        </div>
+      )}
+
       <div style={subMetricStyle}>
         {/* Buffering Detector */}
         {(() => {
@@ -208,7 +280,7 @@ const PlanNode = ({ id, data, selected }: NodeProps<PlanNodeData>) => {
             const ratio = sharedHit / totalBlocks;
             if (ratio < 0.99) {
               return (
-                <div style={{ color: '#facc15', marginRight: '8px', display: 'flex', alignItems: 'center', gap: '4px' }} title={`Cache Hit Ratio: ${(ratio * 100).toFixed(1)}%. Reading from disk!`}>
+                <div style={{ color: '#facc15', marginRight: '4px', display: 'flex', alignItems: 'center', gap: '3px' }} title={`Cache Hit Ratio: ${(ratio * 100).toFixed(1)}%. Reading from disk!`}>
                   <span>⚠</span>
                   <span>{(ratio * 100).toFixed(0)}% cache</span>
                 </div>
@@ -219,12 +291,34 @@ const PlanNode = ({ id, data, selected }: NodeProps<PlanNodeData>) => {
         })()}
 
         <div>{rowMetric}</div>
-        {rowsRemoved && rowsRemoved > 0 && (
+        {rowsRemoved && rowsRemoved > 0 ? (
           <div style={discardedStyle}>
             • {formatRows(rowsRemoved)} disc
           </div>
-        )}
+        ) : null}
       </div>
+
+      {/* Bottom Severity / Time-share Heat Bar */}
+      {severity > 0.05 && (
+        <div
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: '3px',
+            background: 'rgba(15, 23, 42, 0.6)'
+          }}
+        >
+          <div
+            style={{
+              width: `${Math.min(100, Math.round(severity * 100))}%`,
+              height: '100%',
+              background: isCritical ? '#ef4444' : severity > 0.4 ? '#f59e0b' : '#38bdf8'
+            }}
+          />
+        </div>
+      )}
 
       <Handle type="source" position={Position.Bottom} style={sourceHandleStyle} />
     </div>

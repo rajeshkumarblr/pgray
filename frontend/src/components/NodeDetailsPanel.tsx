@@ -6,6 +6,7 @@ interface NodeDetailsPanelProps {
     onClose: () => void;
     fullPlan?: any;
     onAnalyzeNode?: (node: any) => void;
+    onRunMaintenance?: (action: 'analyze' | 'vacuum_analyze', tableName: string) => Promise<void>;
 }
 
 const HIGHLIGHT_KEYS = new Set([
@@ -36,8 +37,11 @@ const SUMMARY_HANDLED_KEYS = new Set([
 const NodeDetailsPanel: React.FC<NodeDetailsPanelProps> = ({
     selectedNode,
     onAnalyzeNode,
+    onRunMaintenance,
 }) => {
     const [showZeroFields, setShowZeroFields] = useState(false);
+    const [maintRunning, setMaintRunning] = useState(false);
+    const [maintStatus, setMaintStatus] = useState<string | null>(null);
 
     if (!selectedNode) {
         return (
@@ -55,7 +59,8 @@ const NodeDetailsPanel: React.FC<NodeDetailsPanelProps> = ({
 
     const details = selectedNode.data?.details || {};
     const headerTitle = selectedNode.data?.label || details['Node Type'] || 'Plan Node';
-    const relationName = details['Relation Name'] || details['Index Name'] || null;
+    const tableRelationName = details['Relation Name'] || null;
+    const relationName = tableRelationName || details['Index Name'] || null;
     const nodeIdDisplay = selectedNode.id ? selectedNode.id.replace('node_', '') : null;
 
     const actualTime = details['Actual Total Time'] ?? selectedNode.data?.actual_time;
@@ -86,6 +91,20 @@ const NodeDetailsPanel: React.FC<NodeDetailsPanelProps> = ({
     const totalBlocks = sharedHits + sharedReads;
     const cacheHitPct = totalBlocks > 0 ? Math.round((sharedHits / totalBlocks) * 100) : null;
     const totalKb = totalBlocks * 8;
+
+    const handleMaintClick = async (action: 'analyze' | 'vacuum_analyze') => {
+        if (!tableRelationName || !onRunMaintenance || maintRunning) return;
+        setMaintRunning(true);
+        setMaintStatus(null);
+        try {
+            await onRunMaintenance(action, tableRelationName);
+            setMaintStatus(`${action === 'analyze' ? 'ANALYZE' : 'VACUUM ANALYZE'} ${tableRelationName} complete`);
+        } catch (e: any) {
+            setMaintStatus(`Error: ${e?.message || 'Failed'}`);
+        } finally {
+            setMaintRunning(false);
+        }
+    };
 
     // Split remaining properties into active vs zero/false boilerplate
     const allEntries = Object.entries(details).filter(
@@ -185,6 +204,30 @@ const NodeDetailsPanel: React.FC<NodeDetailsPanelProps> = ({
                             <span className="text-slate-100 font-semibold">{actualRows?.toLocaleString() ?? '—'}</span>
                         </div>
                     </div>
+
+                    {tableRelationName && onRunMaintenance && (
+                        <div className="mt-2 pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2">
+                            <button
+                                onClick={() => handleMaintClick('analyze')}
+                                disabled={maintRunning}
+                                className="px-2 py-1 rounded text-[10px] font-medium bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 transition-colors"
+                                title={`Refresh planner statistics for ${tableRelationName}`}
+                            >
+                                {maintRunning ? 'Running...' : `↻ ANALYZE ${tableRelationName}`}
+                            </button>
+                            <button
+                                onClick={() => handleMaintClick('vacuum_analyze')}
+                                disabled={maintRunning}
+                                className="px-2 py-1 rounded text-[10px] font-medium bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 transition-colors"
+                                title={`Reclaim dead tuples and update visibility map for ${tableRelationName}`}
+                            >
+                                {maintRunning ? '...' : `🧹 VACUUM ANALYZE`}
+                            </button>
+                        </div>
+                    )}
+                    {maintStatus && (
+                        <div className="mt-1.5 text-[10px] text-emerald-400 font-mono">{maintStatus}</div>
+                    )}
                 </div>
 
                 {/* Buffer Cache & I/O Card */}
