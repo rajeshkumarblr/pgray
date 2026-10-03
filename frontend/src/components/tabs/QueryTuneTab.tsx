@@ -1,7 +1,7 @@
 import React from 'react';
 import ReactFlow, { Background, Controls, Node, Edge } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { X } from 'lucide-react';
+import { X, FlaskConical, Scale, RotateCw, Sparkles, Check } from 'lucide-react';
 
 interface QueryTuneTabProps {
     activeTab: 'visual' | 'text' | 'compare';
@@ -53,10 +53,9 @@ const QueryTuneTab: React.FC<QueryTuneTabProps> = ({
     onClearSimulation,
     simulatingIndex = false,
 }) => {
-    // Internal Ref for the flow wrapper
     const flowWrapperRef = React.useRef<HTMLDivElement>(null);
+    const localFlowRef = React.useRef<any>(null);
 
-    // Context Menu State
     const [menu, setMenu] = React.useState<{ x: number, y: number, node: any } | null>(null);
     const [showSimBar, setShowSimBar] = React.useState(false);
     const [indexInput, setIndexInput] = React.useState('');
@@ -66,6 +65,18 @@ const QueryTuneTab: React.FC<QueryTuneTabProps> = ({
             setIndexInput(simulationResult.index_sql);
         }
     }, [simulationResult]);
+
+    // Re-fit view with maxZoom cap whenever nodes change so 2-3 node plans never scale to 200%
+    React.useEffect(() => {
+        if (localFlowRef.current && nodes.length > 0 && activeTab === 'visual') {
+            const t = setTimeout(() => {
+                try {
+                    localFlowRef.current?.fitView({ padding: 0.25, maxZoom: 0.95, duration: 180 });
+                } catch {}
+            }, 40);
+            return () => clearTimeout(t);
+        }
+    }, [nodes, activeTab]);
 
     const onNodeContextMenu = React.useCallback(
         (event: React.MouseEvent, node: Node) => {
@@ -86,7 +97,6 @@ const QueryTuneTab: React.FC<QueryTuneTabProps> = ({
         if (onPaneClick) onPaneClick(event);
     }, [onPaneClick]);
 
-    // Fallback for custom nodes dispatching global event
     React.useEffect(() => {
         const handlePgrayMenu = (e: CustomEvent) => {
             const pane = flowWrapperRef.current?.getBoundingClientRect();
@@ -102,55 +112,43 @@ const QueryTuneTab: React.FC<QueryTuneTabProps> = ({
         return () => window.removeEventListener('pgray-node-contextmenu', handlePgrayMenu as EventListener);
     }, [flowWrapperRef]);
 
-
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0f172a', overflow: 'hidden' }} onClick={() => setMenu(null)}>
+        <div className="flex flex-col h-full bg-slate-950 overflow-hidden select-none" onClick={() => setMenu(null)}>
             {/* Header / Tabs */}
-            <div style={{ display: 'flex', height: '40px', background: '#0f172a', borderBottom: '1px solid #334155', alignItems: 'center', padding: '0 8px', gap: '4px', overflowX: 'auto' }}>
-
-                <div
+            <div className="flex h-10 bg-slate-950/90 border-b border-slate-800 items-center px-2.5 gap-1 overflow-x-auto no-scrollbar">
+                <button
                     onClick={() => setActiveTab('visual')}
-                    style={{
-                        padding: '8px 10px',
-                        cursor: 'pointer',
-                        color: activeTab === 'visual' ? '#e2e8f0' : '#64748b',
-                        borderBottom: activeTab === 'visual' ? '2px solid #3b82f6' : '2px solid transparent',
-                        fontWeight: activeTab === 'visual' ? 600 : 500,
-                        fontSize: '12px',
-                        whiteSpace: 'nowrap',
-                        flexShrink: 0
-                    }}
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap flex-shrink-0 ${
+                        activeTab === 'visual'
+                            ? 'bg-slate-800 text-slate-100 font-semibold'
+                            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                    }`}
                 >
                     Visual Plan
-                </div>
-                <div
+                </button>
+                <button
                     onClick={() => setActiveTab('text')}
-                    style={{
-                        padding: '8px 10px',
-                        cursor: 'pointer',
-                        color: activeTab === 'text' ? '#e2e8f0' : '#64748b',
-                        borderBottom: activeTab === 'text' ? '2px solid #3b82f6' : '2px solid transparent',
-                        fontWeight: activeTab === 'text' ? 600 : 500,
-                        fontSize: '12px',
-                        whiteSpace: 'nowrap',
-                        flexShrink: 0
-                    }}
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap flex-shrink-0 ${
+                        activeTab === 'text'
+                            ? 'bg-slate-800 text-slate-100 font-semibold'
+                            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                    }`}
                 >
-                    Text Plan
-                </div>
+                    Raw Text
+                </button>
 
                 {/* Metrics & Actions Display */}
-                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: '#94a3b8', flexShrink: 0 }}>
+                <div className="ml-auto flex items-center gap-1.5 text-[11px] text-slate-400 flex-shrink-0">
                     {explainResult && explainResult[0] && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#1e293b', padding: '3px 8px', borderRadius: '6px', border: '1px solid #334155', whiteSpace: 'nowrap' }}>
+                        <div className="flex items-center gap-2 bg-slate-900 px-2 py-0.5 rounded-md border border-slate-800 whitespace-nowrap font-mono text-[11px]">
                             {explainResult[0]['Planning Time'] !== undefined && (
                                 <span>
-                                    Plan: <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{explainResult[0]['Planning Time'].toFixed(2)}ms</span>
+                                    Plan <span className="text-slate-200 font-semibold">{explainResult[0]['Planning Time'].toFixed(2)}ms</span>
                                 </span>
                             )}
                             {(explainResult[0]['Execution Time'] !== undefined || explainResult[0]['Total Runtime'] !== undefined) && (
                                 <span>
-                                    Exec: <span style={{ color: '#4ade80', fontWeight: 600 }}>
+                                    Exec <span className="text-emerald-400 font-semibold">
                                         {(explainResult[0]['Execution Time'] || explainResult[0]['Total Runtime']).toFixed(2)}ms
                                     </span>
                                 </span>
@@ -161,76 +159,42 @@ const QueryTuneTab: React.FC<QueryTuneTabProps> = ({
                         <button
                             onClick={() => setShowSimBar(prev => !prev)}
                             title="Test a virtual CREATE INDEX inside a rollback transaction (What-If Index Simulator)"
-                            style={{
-                                background: showSimBar || simulationResult ? 'rgba(139, 92, 246, 0.25)' : '#1e293b',
-                                border: showSimBar || simulationResult ? '1px solid #8b5cf6' : '1px solid #475569',
-                                color: '#c4b5fd',
-                                fontSize: '11px',
-                                padding: '3px 7px',
-                                borderRadius: '5px',
-                                cursor: 'pointer',
-                                whiteSpace: 'nowrap',
-                                flexShrink: 0,
-                                fontWeight: 500
-                            }}
+                            className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition-colors whitespace-nowrap flex-shrink-0 border ${
+                                showSimBar || simulationResult
+                                    ? 'bg-purple-500/20 border-purple-500/50 text-purple-200'
+                                    : 'bg-slate-900 hover:bg-slate-800 border-slate-800 text-purple-300'
+                            }`}
                         >
-                            🧪 What-If Index
+                            <FlaskConical size={12} className="text-purple-400" />
+                            <span>What-If Index</span>
                         </button>
                     )}
                     {baselineMetrics && (
                         <button
                             onClick={onCompare}
                             title="Compare current Plan/Exec time with baseline (first run)"
-                            style={{
-                                background: '#1e293b',
-                                border: '1px solid #475569',
-                                color: '#93c5fd',
-                                fontSize: '11px',
-                                padding: '3px 7px',
-                                borderRadius: '5px',
-                                cursor: 'pointer',
-                                whiteSpace: 'nowrap',
-                                flexShrink: 0
-                            }}
+                            className="flex items-center gap-1 px-2 py-1 rounded-md bg-slate-900 hover:bg-slate-800 border border-slate-800 text-blue-300 text-[11px] font-medium transition-colors whitespace-nowrap flex-shrink-0"
                         >
-                            ⚖ Compare
+                            <Scale size={12} className="text-blue-400" />
+                            <span>Compare</span>
                         </button>
                     )}
                     <button
                         onClick={onRefreshPlan}
-                        title="Run EXPLAIN ANALYZE on this query again"
-                        style={{
-                            background: '#1e293b',
-                            border: '1px solid #475569',
-                            color: '#4ade80',
-                            fontSize: '11px',
-                            padding: '3px 7px',
-                            borderRadius: '5px',
-                            cursor: 'pointer',
-                            whiteSpace: 'nowrap',
-                            flexShrink: 0
-                        }}
+                        title="Re-run EXPLAIN (ANALYZE, BUFFERS)"
+                        className="flex items-center gap-1 px-2 py-1 rounded-md bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white text-[11px] font-medium transition-colors whitespace-nowrap flex-shrink-0"
                     >
-                        ⚡ Refresh
+                        <RotateCw size={12} className={loading ? 'animate-spin text-blue-400' : 'text-emerald-400'} />
+                        <span>Refresh</span>
                     </button>
 
                     {onClose && (
                         <button
                             onClick={onClose}
                             title="Close Plan View"
-                            style={{
-                                background: 'transparent',
-                                border: 'none',
-                                color: '#94a3b8',
-                                cursor: 'pointer',
-                                padding: '4px',
-                                borderRadius: '4px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                flexShrink: 0
-                            }}
+                            className="p-1 rounded-md text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors flex-shrink-0"
                         >
-                            <X size={15} />
+                            <X size={14} />
                         </button>
                     )}
                 </div>
@@ -238,112 +202,64 @@ const QueryTuneTab: React.FC<QueryTuneTabProps> = ({
 
             {/* Collapsible What-If Index Simulator Input Bar */}
             {showSimBar && onSimulateIndex && (
-                <div style={{ padding: '8px 10px', background: '#131c31', borderBottom: '1px solid #334155', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '11px', color: '#c4b5fd', fontWeight: 600, whiteSpace: 'nowrap' }}>🧪 What-If DDL:</span>
+                <div className="px-3 py-2 bg-slate-900/95 border-b border-slate-800 flex items-center gap-2">
+                    <span className="text-[11px] text-purple-300 font-semibold whitespace-nowrap flex items-center gap-1">
+                        <FlaskConical size={12} /> Hypothetical DDL:
+                    </span>
                     <input
                         type="text"
                         value={indexInput}
                         onChange={e => setIndexInput(e.target.value)}
                         placeholder="CREATE INDEX idx_orders_customer_id ON orders (customer_id);"
-                        style={{
-                            flex: 1,
-                            background: '#0f172a',
-                            border: '1px solid #475569',
-                            borderRadius: '4px',
-                            padding: '4px 8px',
-                            color: '#e2e8f0',
-                            fontSize: '11px',
-                            fontFamily: 'Menlo, Monaco, monospace',
-                            outline: 'none'
-                        }}
+                        className="flex-1 bg-slate-950 border border-slate-700 focus:border-purple-500 rounded-md px-2.5 py-1 text-slate-200 text-xs font-mono outline-none"
                     />
                     <button
                         disabled={simulatingIndex || !indexInput.trim()}
                         onClick={() => onSimulateIndex(indexInput.trim())}
-                        style={{
-                            background: '#7c3aed',
-                            border: 'none',
-                            color: '#fff',
-                            fontSize: '11px',
-                            fontWeight: 600,
-                            padding: '4px 10px',
-                            borderRadius: '4px',
-                            cursor: simulatingIndex || !indexInput.trim() ? 'default' : 'pointer',
-                            opacity: simulatingIndex || !indexInput.trim() ? 0.6 : 1,
-                            whiteSpace: 'nowrap'
-                        }}
+                        className="bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-xs font-medium px-3 py-1 rounded-md transition-colors whitespace-nowrap"
                     >
-                        {simulatingIndex ? 'Simulating...' : 'Run Simulation'}
+                        {simulatingIndex ? 'Simulating...' : 'Simulate'}
                     </button>
                 </div>
             )}
 
             {/* Active Simulation Comparison Banner */}
             {simulationResult && (
-                <div style={{
-                    padding: '8px 12px',
-                    background: 'linear-gradient(90deg, rgba(88, 28, 135, 0.35), rgba(15, 23, 42, 0.9))',
-                    borderBottom: '1px solid rgba(139, 92, 246, 0.4)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '8px',
-                    flexWrap: 'wrap',
-                    fontSize: '11px'
-                }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                        <span style={{ color: '#d8b4fe', fontWeight: 700 }}>
-                            🧪 Simulated Index Impact:
+                <div className="px-3 py-2 bg-purple-950/30 border-b border-purple-500/30 flex items-center justify-between gap-2 flex-wrap text-xs">
+                    <div className="flex items-center gap-3 flex-wrap">
+                        <span className="text-purple-300 font-semibold flex items-center gap-1">
+                            <FlaskConical size={13} /> Simulated Impact:
                         </span>
-                        <span style={{ color: '#cbd5e1', fontFamily: 'Menlo, monospace' }}>
-                            Cost: <strong>{simulationResult.baseline_cost}</strong> → <strong style={{ color: '#4ade80' }}>{simulationResult.simulated_cost}</strong>{' '}
-                            <span style={{
-                                padding: '1px 5px',
-                                borderRadius: '4px',
-                                background: simulationResult.cost_reduction_pct > 0 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(148, 163, 184, 0.15)',
-                                color: simulationResult.cost_reduction_pct > 0 ? '#6ee7b7' : '#94a3b8',
-                                fontWeight: 700
-                            }}>
+                        <span className="text-slate-300 font-mono text-[11px]">
+                            Cost: <strong>{simulationResult.baseline_cost}</strong> → <strong className="text-emerald-400">{simulationResult.simulated_cost}</strong>{' '}
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                simulationResult.cost_reduction_pct > 0
+                                    ? 'bg-emerald-500/20 text-emerald-300'
+                                    : 'bg-slate-800 text-slate-400'
+                            }`}>
                                 {simulationResult.cost_reduction_pct > 0 ? `-${simulationResult.cost_reduction_pct}%` : '0%'}
                             </span>
                         </span>
-                        <span style={{ color: '#cbd5e1', fontFamily: 'Menlo, monospace' }}>
-                            Exec: <strong>{simulationResult.baseline_exec_ms}ms</strong> → <strong style={{ color: '#38bdf8' }}>{simulationResult.simulated_exec_ms}ms</strong>
+                        <span className="text-slate-300 font-mono text-[11px]">
+                            Exec: <strong>{simulationResult.baseline_exec_ms}ms</strong> → <strong className="text-sky-400">{simulationResult.simulated_exec_ms}ms</strong>
                         </span>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div className="flex items-center gap-1.5">
                         {onApplyIndex && simulationResult.index_sql && (
                             <button
                                 onClick={() => onApplyIndex(simulationResult.index_sql)}
-                                style={{
-                                    background: '#059669',
-                                    border: '1px solid #34d399',
-                                    color: '#fff',
-                                    fontSize: '10px',
-                                    fontWeight: 600,
-                                    padding: '3px 8px',
-                                    borderRadius: '4px',
-                                    cursor: 'pointer'
-                                }}
+                                className="flex items-center gap-1 bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-medium px-2.5 py-1 rounded-md transition-colors"
                                 title="Create this index permanently in PostgreSQL"
                             >
-                                ✅ Apply Index to DB
+                                <Check size={12} /> Apply Index
                             </button>
                         )}
                         {onClearSimulation && (
                             <button
                                 onClick={onClearSimulation}
-                                style={{
-                                    background: 'transparent',
-                                    border: '1px solid #475569',
-                                    color: '#94a3b8',
-                                    fontSize: '10px',
-                                    padding: '2px 6px',
-                                    borderRadius: '4px',
-                                    cursor: 'pointer'
-                                }}
+                                className="border border-slate-700 hover:bg-slate-800 text-slate-300 text-[11px] px-2 py-1 rounded-md transition-colors"
                             >
-                                Revert to Baseline
+                                Revert
                             </button>
                         )}
                     </div>
@@ -351,10 +267,10 @@ const QueryTuneTab: React.FC<QueryTuneTabProps> = ({
             )}
 
             {/* Content */}
-            <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+            <div className="flex-1 relative overflow-hidden">
                 {activeTab === 'visual' ? (
                     <>
-                        <div ref={flowWrapperRef} style={{ height: '100%', width: '100%' }}>
+                        <div ref={flowWrapperRef} className="h-full w-full">
                             <ReactFlow
                                 nodes={nodes}
                                 edges={edges}
@@ -364,15 +280,19 @@ const QueryTuneTab: React.FC<QueryTuneTabProps> = ({
                                 onNodeContextMenu={onNodeContextMenu}
                                 onPaneClick={onPaneClickWrapper}
                                 onInit={(instance) => {
+                                    localFlowRef.current = instance;
                                     setReactFlowInstance(instance);
-                                    instance.fitView({ padding: 0.2 });
+                                    instance.fitView({ padding: 0.25, maxZoom: 0.95 });
                                 }}
                                 fitView
-                                style={{ background: '#0f172a' }}
+                                fitViewOptions={{ padding: 0.25, maxZoom: 0.95 }}
+                                minZoom={0.2}
+                                maxZoom={1.35}
+                                style={{ background: '#090d16' }}
                                 proOptions={{ hideAttribution: true }}
                             >
-                                <Background color="#475569" gap={20} />
-                                <Controls />
+                                <Background color="#1e293b" gap={22} size={1.5} />
+                                <Controls showInteractive={false} />
                             </ReactFlow>
 
                             {/* Context Menu */}
@@ -383,13 +303,8 @@ const QueryTuneTab: React.FC<QueryTuneTabProps> = ({
                                         top: menu.y,
                                         left: menu.x,
                                         zIndex: 100,
-                                        background: '#1e293b',
-                                        border: '1px solid #475569',
-                                        borderRadius: '4px',
-                                        padding: '4px 0',
-                                        boxShadow: '0 4px 6px rgba(0,0,0,0.3)',
-                                        minWidth: '150px'
                                     }}
+                                    className="bg-slate-900 border border-slate-700 rounded-lg py-1 shadow-xl min-w-[160px]"
                                 >
                                     <div
                                         onClick={(e) => {
@@ -397,65 +312,47 @@ const QueryTuneTab: React.FC<QueryTuneTabProps> = ({
                                             if (onAnalyzeNode) onAnalyzeNode(menu.node);
                                             setMenu(null);
                                         }}
-                                        style={{
-                                            padding: '8px 12px',
-                                            fontSize: '13px',
-                                            color: '#e2e8f0',
-                                            cursor: 'pointer',
-                                            display: 'flex', alignItems: 'center', gap: '8px'
-                                        }}
-                                        onMouseEnter={(e) => (e.currentTarget.style.background = '#334155')}
-                                        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                                        className="px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-800 cursor-pointer flex items-center gap-2"
                                     >
-                                        ⚡ Analyze Node
+                                        <Sparkles size={13} className="text-purple-400" />
+                                        <span>Analyze Node with AI</span>
                                     </div>
                                 </div>
                             )}
-
                         </div>
 
                         {/* Loading Overlay */}
                         {loading && (
-                            <div style={{
-                                position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                                background: 'rgba(15, 23, 42, 0.7)',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                zIndex: 20
-                            }}>
-                                <div style={{ color: '#60a5fa', fontWeight: 'bold' }}>Analyzing Plan...</div>
+                            <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-[1px] flex items-center justify-center z-20">
+                                <div className="flex items-center gap-2 text-blue-400 text-xs font-semibold bg-slate-900 border border-slate-800 px-3 py-2 rounded-lg shadow-lg">
+                                    <RotateCw size={14} className="animate-spin" />
+                                    <span>Running EXPLAIN (ANALYZE, BUFFERS)...</span>
+                                </div>
                             </div>
                         )}
 
                         {/* Empty State */}
                         {!loading && nodes.length === 0 && !error && (
-                            <div style={{
-                                position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                zIndex: 10, pointerEvents: 'none'
-                            }}>
-                                <div style={{
-                                    background: '#1e293b', border: '1px solid #334155', padding: '20px', borderRadius: '8px',
-                                    textAlign: 'center', color: '#94a3b8'
-                                }}>
-                                    <div style={{ fontSize: '24px', marginBottom: '10px' }}>⚡</div>
-                                    <div>No plan visualization available.</div>
+                            <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
+                                <div className="bg-slate-900/90 border border-slate-800 px-5 py-4 rounded-xl text-center text-slate-400 text-xs">
+                                    Click <strong className="text-slate-200">Refresh</strong> to generate the execution plan graph.
                                 </div>
                             </div>
                         )}
 
                         {/* Error Overlay */}
                         {error && (
-                            <div style={{ position: 'absolute', top: '20px', left: '50%', transform: 'translateX(-50%)', background: '#fee2e2', color: '#b91c1c', padding: '10px 20px', borderRadius: '8px', zIndex: 30 }}>
-                                Error: {error}
+                            <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-red-950/90 border border-red-500/40 text-red-200 px-4 py-2 rounded-lg text-xs z-30 shadow-lg max-w-[90%]">
+                                {error}
                             </div>
                         )}
                     </>
                 ) : (
-                    <div style={{ flex: 1, overflow: 'auto', background: '#1e293b', padding: '20px', color: '#e2e8f0', height: '100%' }}>
+                    <div className="flex-1 overflow-auto bg-slate-950 p-4 text-slate-200 h-full select-text">
                         {explainText ? (
-                            <pre style={{ fontFamily: 'monospace', fontSize: '12px' }}>{explainText}</pre>
+                            <pre className="font-mono text-xs leading-relaxed text-slate-300">{explainText}</pre>
                         ) : (
-                            <div style={{ color: '#94a3b8', fontStyle: 'italic' }}>No text plan available.</div>
+                            <div className="text-slate-500 text-xs italic">No text plan available.</div>
                         )}
                     </div>
                 )}
@@ -465,3 +362,4 @@ const QueryTuneTab: React.FC<QueryTuneTabProps> = ({
 };
 
 export default QueryTuneTab;
+

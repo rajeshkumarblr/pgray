@@ -1,15 +1,16 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { warmupModel, autocomplete } from '../api';
+import { Sparkles, Trash2, Database, Send, X, FlaskConical, Check, CornerDownLeft, Copy } from 'lucide-react';
 
 interface Message {
     role: 'user' | 'assistant';
     content: string;
     status?: 'success' | 'error' | 'pending';
     hidden?: boolean;
-    respTime?: string; // AI Generation Time
-    ttft?: string; // Time to First Token
-    planTime?: string; // DB Plan Time
-    execTime?: string; // DB Exec Time
+    respTime?: string;
+    ttft?: string;
+    planTime?: string;
+    execTime?: string;
 }
 
 interface AIChatSidebarProps {
@@ -33,10 +34,29 @@ interface AIChatSidebarProps {
     onApplyIndex?: (indexSql: string) => void;
 }
 
+const STARTER_PROMPTS = [
+    {
+        label: 'Analyze query & suggest indexes',
+        prompt: 'Analyze the current SQL query and its execution plan. Suggest any indexes or rewrites to improve performance.'
+    },
+    {
+        label: 'Explain execution plan step-by-step',
+        prompt: 'Walk me through the execution plan of this query step-by-step and explain what each node is doing.'
+    },
+    {
+        label: 'Rewrite query for performance',
+        prompt: 'Can this SQL query be rewritten (e.g. better join order, CTEs, or predicates) to execute faster in PostgreSQL?'
+    },
+    {
+        label: 'Find complex analytical insights',
+        prompt: 'Write an advanced analytical PostgreSQL query using CTEs and window functions for this schema.'
+    }
+];
+
 const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
-    messages, onClose, onSend, loading, aiState = 'idle', title = "Query Discussion", onRunSql,
-    selectedModel = "qwen2.5-coder:latest", onModelChange,
-    googleApiKey = '', onSetGoogleApiKey, onOpenSettings, onClearHistory, onIndexDatabase,
+    messages, onClose, onSend, loading, aiState = 'idle', onRunSql,
+    selectedModel = "local", onModelChange,
+    onClearHistory, onIndexDatabase,
     connectionInfo, onSimulateIndex, onApplyIndex
 }) => {
     const endRef = useRef<HTMLDivElement>(null);
@@ -51,20 +71,18 @@ const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
     const [suggestionIndex, setSuggestionIndex] = useState(0);
     const inputRef = useRef<HTMLTextAreaElement>(null);
 
-    // Check for autocomplete trigger
     useEffect(() => {
         if (!input || !connectionInfo) {
             setShowSuggestions(false);
             return;
         }
 
-        // Find cursor position
         const cursor = inputRef.current?.selectionStart || 0;
         const textBeforeRequest = input.slice(0, cursor);
         const lastWord = textBeforeRequest.split(/\s/).pop() || '';
 
         if (lastWord.startsWith('@') && lastWord.length >= 3) {
-            const term = lastWord.substring(1); // Remove @
+            const term = lastWord.substring(1);
             const timer = setTimeout(() => {
                 autocomplete(connectionInfo, term).then(res => {
                     if (res && res.length > 0) {
@@ -179,15 +197,10 @@ const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
                             onRunSql(associatedSql);
                         }
                     }}
-                    style={{
-                        whiteSpace: 'pre-wrap',
-                        cursor: associatedSql ? 'pointer' : 'default',
-                        opacity: associatedSql ? 1 : 0.9
-                    }}
+                    className={`whitespace-pre-wrap ${associatedSql ? 'cursor-pointer' : ''}`}
                     title={associatedSql ? "Click to load this query" : undefined}
                 >
                     {content}
-                    {associatedSql && <span style={{ fontSize: '10px', marginLeft: '6px', color: '#68d391' }}>↺</span>}
                 </div>
             );
         }
@@ -195,7 +208,7 @@ const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
         const parts = content.split(/(```[\w]*[\s\S]*?```)/g);
 
         return (
-            <div style={{ whiteSpace: 'pre-wrap' }}>
+            <div className="whitespace-pre-wrap text-xs leading-relaxed">
                 {parts.map((part, i) => {
                     const isCodeBlock = part.startsWith('```');
 
@@ -208,72 +221,35 @@ const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
                         return (
                             <div
                                 key={i}
-                                style={{
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    gap: '4px',
-                                    margin: '6px 0',
-                                    background: '#090f1d',
-                                    border: '1px solid #1e293b',
-                                    borderRadius: '6px',
-                                    padding: '8px',
-                                }}
+                                className="flex flex-col gap-1.5 my-2 bg-slate-950 border border-slate-800 rounded-lg p-2.5"
                             >
-                                <pre
-                                    style={{
-                                        margin: 0,
-                                        fontSize: '11px',
-                                        lineHeight: '1.45',
-                                        color: '#93c5fd',
-                                        fontFamily: 'Menlo, Monaco, Consolas, monospace',
-                                        overflowX: 'auto',
-                                        maxHeight: '120px',
-                                        whiteSpace: 'pre-wrap',
-                                        wordBreak: 'break-word'
-                                    }}
-                                >
+                                <pre className="m-0 text-[11px] leading-relaxed text-sky-300 font-mono overflow-x-auto max-h-[140px] whitespace-pre-wrap break-words">
                                     {sql}
                                 </pre>
 
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginTop: '4px', paddingTop: '6px', borderTop: '1px solid #1e293b' }}>
+                                <div className="flex items-center gap-1.5 flex-wrap pt-1.5 border-t border-slate-800/80">
                                     {isCreateIndex ? (
                                         <>
                                             {onSimulateIndex && (
                                                 <button
                                                     type="button"
                                                     onClick={() => onSimulateIndex(sql)}
-                                                    style={{
-                                                        background: 'rgba(139, 92, 246, 0.2)',
-                                                        border: '1px solid rgba(139, 92, 246, 0.45)',
-                                                        color: '#c4b5fd',
-                                                        fontSize: '10px',
-                                                        fontWeight: 600,
-                                                        padding: '3px 8px',
-                                                        borderRadius: '4px',
-                                                        cursor: 'pointer'
-                                                    }}
+                                                    className="flex items-center gap-1 bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/40 text-purple-300 text-[10px] font-semibold px-2 py-1 rounded transition-colors"
                                                     title="Test this index inside a rollback transaction and compare EXPLAIN ANALYZE before & after"
                                                 >
-                                                    🧪 Simulate Index
+                                                    <FlaskConical size={11} />
+                                                    <span>Simulate Index</span>
                                                 </button>
                                             )}
                                             {onApplyIndex && (
                                                 <button
                                                     type="button"
                                                     onClick={() => onApplyIndex(sql)}
-                                                    style={{
-                                                        background: 'rgba(16, 185, 129, 0.2)',
-                                                        border: '1px solid rgba(16, 185, 129, 0.45)',
-                                                        color: '#6ee7b7',
-                                                        fontSize: '10px',
-                                                        fontWeight: 600,
-                                                        padding: '3px 8px',
-                                                        borderRadius: '4px',
-                                                        cursor: 'pointer'
-                                                    }}
+                                                    className="flex items-center gap-1 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-300 text-[10px] font-semibold px-2 py-1 rounded transition-colors"
                                                     title="Create this index in the database and refresh the execution plan"
                                                 >
-                                                    ✅ Create Index
+                                                    <Check size={11} />
+                                                    <span>Create Index</span>
                                                 </button>
                                             )}
                                         </>
@@ -282,19 +258,11 @@ const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
                                             <button
                                                 type="button"
                                                 onClick={() => onRunSql(sql)}
-                                                style={{
-                                                    background: 'rgba(59, 130, 246, 0.2)',
-                                                    border: '1px solid rgba(59, 130, 246, 0.4)',
-                                                    color: '#93c5fd',
-                                                    fontSize: '10px',
-                                                    fontWeight: 600,
-                                                    padding: '3px 8px',
-                                                    borderRadius: '4px',
-                                                    cursor: 'pointer'
-                                                }}
+                                                className="flex items-center gap-1 bg-blue-500/15 hover:bg-blue-500/25 border border-blue-500/40 text-blue-300 text-[10px] font-semibold px-2 py-1 rounded transition-colors"
                                                 title="Load this SQL query into the workbench editor"
                                             >
-                                                ↱ Load in Editor
+                                                <CornerDownLeft size={11} />
+                                                <span>Load in Editor</span>
                                             </button>
                                         )
                                     )}
@@ -302,24 +270,16 @@ const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
                                     <button
                                         type="button"
                                         onClick={() => navigator.clipboard.writeText(sql)}
-                                        style={{
-                                            background: 'transparent',
-                                            border: '1px solid #334155',
-                                            color: '#94a3b8',
-                                            fontSize: '10px',
-                                            padding: '3px 7px',
-                                            borderRadius: '4px',
-                                            cursor: 'pointer',
-                                            marginLeft: 'auto'
-                                        }}
+                                        className="ml-auto flex items-center gap-1 border border-slate-800 hover:bg-slate-800 text-slate-400 hover:text-slate-200 text-[10px] px-2 py-1 rounded transition-colors"
                                         title="Copy SQL to clipboard"
                                     >
-                                        Copy
+                                        <Copy size={10} />
+                                        <span>Copy</span>
                                     </button>
                                 </div>
 
                                 {(respTime || planTime || execTime || msg.ttft) && (
-                                    <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>
+                                    <div className="text-[10px] text-slate-500 font-mono">
                                         {(msg as any).totalTime ? `T: ${(msg as any).totalTime}ms ` : ''}
                                         ({planTime ? `P: ${planTime}ms` : ''}{planTime && execTime ? ', ' : ''}{execTime ? `E: ${execTime}ms` : ''})
                                     </div>
@@ -333,193 +293,166 @@ const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
         );
     };
 
+    const visibleMessages = messages.filter(m => !m.hidden);
+
     return (
-        <div style={{
-            width: '100%',
-            // borderLeft: '1px solid #334155', // Handled by parent
-            background: '#0f172a',
-            display: 'flex',
-            flexDirection: 'column',
-            height: '100%'
-        }}>
-            <div style={{
-                padding: '10px',
-                borderBottom: '1px solid #1e293b',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center'
-            }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <h3 style={{ margin: 0, fontSize: '13px', color: '#cbd5e1' }}>{title}</h3>
+        <div className="w-full bg-slate-950 flex flex-col h-full select-none">
+            {/* Compact Utility Sub-bar */}
+            <div className="px-3 py-1.5 border-b border-slate-800/80 flex justify-between items-center bg-slate-900/50">
+                <div className="flex items-center gap-1.5">
                     {onModelChange && (
-                        <select
-                            value={selectedModel}
-                            onChange={(e) => onModelChange(e.target.value)}
-                            style={{
-                                background: '#1e293b',
-                                color: '#94a3b8',
-                                border: '1px solid #334155',
-                                borderRadius: '4px',
-                                fontSize: '10px',
-                                padding: '2px 4px',
-                                outline: 'none',
-                                cursor: 'pointer'
-                            }}
-                        >
-                            <option value="local">Local AI (LiteRT / Ollama)</option>
-                            <option value="gemini">Google Gemini</option>
-                        </select>
+                        <div className="inline-flex rounded-md bg-slate-950 p-0.5 border border-slate-800">
+                            <button
+                                type="button"
+                                onClick={() => onModelChange('local')}
+                                className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                                    selectedModel === 'local'
+                                        ? 'bg-slate-800 text-slate-100'
+                                        : 'text-slate-500 hover:text-slate-300'
+                                }`}
+                            >
+                                Local AI
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => onModelChange('gemini')}
+                                className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                                    selectedModel === 'gemini'
+                                        ? 'bg-purple-500/20 text-purple-300'
+                                        : 'text-slate-500 hover:text-slate-300'
+                                }`}
+                            >
+                                Gemini
+                            </button>
+                        </div>
                     )}
-                    {/* Key Input Removed - Managed in Settings */}
                 </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
+
+                <div className="flex items-center gap-1">
                     {onIndexDatabase && (
                         <button
                             onClick={onIndexDatabase}
-                            style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '14px' }}
-                            title="Index Database for Search"
+                            className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition-colors"
+                            title="Index Database Values for @ Mentions"
                         >
-                            🔍
+                            <Database size={13} />
                         </button>
                     )}
-                    {onOpenSettings && (
-                        <button
-                            onClick={onOpenSettings}
-                            style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '14px' }}
-                            title="Global Settings (DB & AI)"
-                        >
-                            ⚙️
-                        </button>
-                    )}
-                    {onClearHistory && (
+                    {onClearHistory && visibleMessages.length > 0 && (
                         <button
                             onClick={onClearHistory}
-                            style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '14px' }}
-                            title="Clear History"
+                            className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-red-400 transition-colors"
+                            title="Clear Conversation"
                         >
-                            🗑️
+                            <Trash2 size={13} />
                         </button>
                     )}
-                    <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer' }}>✕</button>
+                    {onClose && (
+                        <button
+                            onClick={onClose}
+                            className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition-colors"
+                            title="Hide Assistant Panel"
+                        >
+                            <X size={13} />
+                        </button>
+                    )}
                 </div>
             </div>
 
-            <div style={{ flex: 1, overflowY: 'auto', padding: '10px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {messages.length === 0 && (
-                    <div style={{ fontSize: '12px', color: '#64748b', textAlign: 'center', marginTop: '20px' }}>
-                        No history yet. Ask a question!
+            {/* Messages / Empty State */}
+            <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-3 select-text">
+                {visibleMessages.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center my-auto px-2 py-6 text-center select-none">
+                        <div className="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/25 flex items-center justify-center mb-3">
+                            <Sparkles size={17} className="text-purple-400" />
+                        </div>
+                        <div className="text-xs font-semibold text-slate-200 mb-1">
+                            PostgreSQL Tuning Copilot
+                        </div>
+                        <div className="text-[11px] text-slate-500 mb-4 max-w-[240px] leading-relaxed">
+                            Ask about your execution plan, test hypothetical indexes, or generate complex SQL.
+                        </div>
+                        <div className="w-full flex flex-col gap-1.5">
+                            {STARTER_PROMPTS.map((item, idx) => (
+                                <button
+                                    key={idx}
+                                    type="button"
+                                    disabled={loading || aiState !== 'idle'}
+                                    onClick={() => onSend(item.prompt)}
+                                    className="w-full text-left px-3 py-2 rounded-lg bg-slate-900/90 hover:bg-slate-800/90 border border-slate-800 hover:border-slate-700 text-[11px] text-slate-300 hover:text-white transition-all flex items-center justify-between group"
+                                >
+                                    <span className="truncate">{item.label}</span>
+                                    <span className="text-slate-600 group-hover:text-blue-400 transition-colors ml-2">→</span>
+                                </button>
+                            ))}
+                        </div>
                     </div>
-                )}
-                {messages.filter(m => !m.hidden).map((msg, i) => (
-                    <div key={i} style={{
-                        alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
-                        maxWidth: '90%',
-                        width: msg.role === 'assistant' ? '100%' : 'auto' // Allow assistant messages to expand for code blocks
-                    }}>
-                        <div style={{
-                            background: msg.role === 'user' ? '#1d4ed8' : '#1e293b',
-                            color: msg.role === 'user' ? 'white' : '#cbd5e1',
-                            padding: '8px 12px',
-                            borderRadius: '8px',
-                            fontSize: '13px',
-                            lineHeight: '1.4',
-                            borderTopRightRadius: msg.role === 'user' ? 0 : 8,
-                            borderTopLeftRadius: msg.role === 'assistant' ? 0 : 8,
-                            border: msg.role === 'assistant' ? '1px solid #334155' : 'none',
-                            position: 'relative'
-                        }}>
-                            {renderMessageContent(msg, i)}
-                            {/* Success Tick for User Messages that triggered an update */}
-                            {msg.role === 'user' && (msg as any).status === 'success' && (
-                                <div style={{
-                                    position: 'absolute',
-                                    left: '-20px',
-                                    top: '50%',
-                                    transform: 'translateY(-50%)',
-                                    color: '#4ade80',
-                                    fontSize: '14px',
-                                    fontWeight: 'bold'
-                                }} title="Completed">
-                                    ✓
-                                </div>
-                            )}
+                ) : (
+                    visibleMessages.map((msg, i) => (
+                        <div
+                            key={i}
+                            className={`flex flex-col ${
+                                msg.role === 'user' ? 'self-end max-w-[88%]' : 'self-start w-full'
+                            }`}
+                        >
+                            <div
+                                className={`relative px-3 py-2 rounded-xl text-xs leading-relaxed ${
+                                    msg.role === 'user'
+                                        ? 'bg-blue-600 text-white rounded-br-sm'
+                                        : 'bg-slate-900 text-slate-200 border border-slate-800 rounded-bl-sm'
+                                }`}
+                            >
+                                {renderMessageContent(msg, i)}
 
-                            {/* Progress Bar for Pending User Message */}
-                            {msg.role === 'user' && (loading || aiState !== 'idle') && i === messages.filter(m => !m.hidden).length - 1 && (
-                                <div style={{
-                                    position: 'absolute',
-                                    bottom: 0,
-                                    left: 0,
-                                    width: '100%',
-                                    height: '3px',
-                                    background: 'rgba(255, 255, 255, 0.1)',
-                                    overflow: 'hidden',
-                                    borderBottomRightRadius: '8px', // Matched with container
-                                    borderBottomLeftRadius: '8px',
-                                }}>
-                                    <div style={{
-                                        width: '40%',
-                                        height: '100%',
-                                        background: '#60a5fa', // Blue-400
-                                        position: 'absolute',
-                                        left: '-40%',
-                                        animation: 'indeterminate 1.5s infinite linear'
-                                    }} />
-                                    <style>{`
-                                        @keyframes indeterminate {
-                                            0% { left: -40%; width: 40%; }
-                                            50% { left: 100%; width: 40%; }
-                                            100% { left: 100%; width: 40%; }
-                                        }
-                                    `}</style>
-                                </div>
-                            )}
+                                {/* Progress Bar for Pending User Message */}
+                                {msg.role === 'user' && (loading || aiState !== 'idle') && i === visibleMessages.length - 1 && (
+                                    <div className="absolute bottom-0 left-0 w-full h-0.5 bg-white/15 overflow-hidden rounded-b-xl">
+                                        <div
+                                            style={{
+                                                width: '40%',
+                                                height: '100%',
+                                                background: '#93c5fd',
+                                                position: 'absolute',
+                                                left: '-40%',
+                                                animation: 'indeterminate 1.5s infinite linear'
+                                            }}
+                                        />
+                                        <style>{`
+                                            @keyframes indeterminate {
+                                                0% { left: -40%; width: 40%; }
+                                                50% { left: 100%; width: 40%; }
+                                                100% { left: 100%; width: 40%; }
+                                            }
+                                        `}</style>
+                                    </div>
+                                )}
+                            </div>
                         </div>
-                        <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px', textAlign: msg.role === 'user' ? 'right' : 'left' }}>
-                            {msg.role === 'user' ? 'You' : 'AI'}
-                        </div>
-                    </div>
-                ))}
+                    ))
+                )}
                 <div ref={endRef} />
             </div>
 
             {/* Input Area */}
-            <div style={{ padding: '10px', borderTop: '1px solid #1e293b', background: '#0f172a', position: 'relative' }}>
+            <div className="p-2.5 border-t border-slate-800/80 bg-slate-950 relative">
                 {showSuggestions && (
-                    <div style={{
-                        position: 'absolute',
-                        bottom: '100%',
-                        left: '10px',
-                        background: '#1e293b',
-                        border: '1px solid #334155',
-                        borderRadius: '6px',
-                        boxShadow: '0 -4px 6px -1px rgba(0, 0, 0, 0.1)',
-                        width: '300px',
-                        maxHeight: '200px',
-                        overflowY: 'auto',
-                        zIndex: 10
-                    }}>
+                    <div className="absolute bottom-full left-2.5 right-2.5 mb-1 bg-slate-900 border border-slate-700 rounded-lg shadow-xl max-h-[180px] overflow-y-auto z-20">
                         {suggestions.map((s, idx) => (
                             <div
                                 key={idx}
                                 onClick={() => insertSuggestion(s)}
-                                style={{
-                                    padding: '8px 12px',
-                                    borderBottom: '1px solid #334155',
-                                    cursor: 'pointer',
-                                    background: idx === suggestionIndex ? '#334155' : 'transparent',
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    alignItems: 'center'
-                                }}
+                                className={`px-3 py-1.5 border-b border-slate-800 cursor-pointer flex justify-between items-center text-xs ${
+                                    idx === suggestionIndex ? 'bg-slate-800' : 'hover:bg-slate-800/50'
+                                }`}
                             >
-                                <div style={{ color: '#e2e8f0', fontWeight: 'bold' }}>{s.value}</div>
-                                <div style={{ fontSize: '10px', color: '#94a3b8' }}>{s.meta}</div>
+                                <span className="text-slate-200 font-semibold font-mono">{s.value}</span>
+                                <span className="text-[10px] text-slate-400">{s.meta}</span>
                             </div>
                         ))}
                     </div>
                 )}
-                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+
+                <div className="relative flex items-end bg-slate-900 border border-slate-800 focus-within:border-blue-500/60 rounded-lg transition-colors">
                     <textarea
                         ref={inputRef}
                         value={input}
@@ -533,68 +466,32 @@ const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
                         }}
                         onKeyDown={handleKeyDown}
                         disabled={loading || aiState !== 'idle'}
-                        placeholder={(loading || aiState !== 'idle') ? (aiState === 'generating' ? "Generating..." : "Thinking...") : "Ask AI..."}
+                        placeholder={
+                            (loading || aiState !== 'idle')
+                                ? (aiState === 'generating' ? "Generating response..." : "Analyzing...")
+                                : "Ask about SQL, indexes, or @table..."
+                        }
                         rows={2}
-                        style={{
-                            flex: 1,
-                            background: '#1e293b',
-                            border: '1px solid #334155',
-                            color: '#e2e8f0',
-                            padding: '8px 10px',
-                            paddingRight: '64px',
-                            borderRadius: '4px',
-                            fontSize: '13px',
-                            outline: 'none',
-                            boxSizing: 'border-box',
-                            resize: 'none',
-                            fontFamily: 'inherit'
-                        }}
+                        className="flex-1 bg-transparent text-slate-200 placeholder-slate-500 px-3 py-2 pr-9 text-xs outline-none resize-none font-sans leading-relaxed"
                     />
 
                     <button
                         onClick={handleSend}
                         disabled={loading || aiState !== 'idle' || !input.trim()}
-                        style={{
-                            position: 'absolute',
-                            right: '5px',
-                            top: '50%',
-                            transform: 'translateY(-50%)',
-                            background: input.trim() && !loading && aiState === 'idle' ? '#3b82f6' : '#334155',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '4px',
-                            width: '24px',
-                            height: '24px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: input.trim() && !loading && aiState === 'idle' ? 'pointer' : 'default',
-                            transition: 'background 0.2s'
-                        }}
-                        title="Send"
+                        className={`m-1.5 p-1.5 rounded-md transition-colors flex items-center justify-center ${
+                            input.trim() && !loading && aiState === 'idle'
+                                ? 'bg-blue-600 hover:bg-blue-500 text-white cursor-pointer'
+                                : 'bg-slate-800 text-slate-600 cursor-default'
+                        }`}
+                        title="Send (Enter)"
                     >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <line x1="22" y1="2" x2="11" y2="13"></line>
-                            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                        </svg>
+                        <Send size={12} />
                     </button>
-
-                    <div style={{
-                        position: 'absolute',
-                        right: '35px',
-                        bottom: '50%',
-                        transform: 'translateY(50%)',
-                        fontSize: '10px',
-                        color: '#64748b',
-                        pointerEvents: 'none',
-                        opacity: 0.5
-                    }}>
-                        ↵
-                    </div>
                 </div>
             </div>
-        </div >
+        </div>
     );
 };
 
 export default AIChatSidebar;
+

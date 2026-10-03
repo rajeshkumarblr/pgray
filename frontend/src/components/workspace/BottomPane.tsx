@@ -3,7 +3,7 @@ import InsightsTab from './InsightsTab';
 import ResultsTable from '../ResultsTable';
 import QueryParametersPanel from './QueryParametersPanel';
 import PerformanceBadge from '../PerformanceBadge';
-import { Maximize2, Minimize2 } from 'lucide-react';
+import { Maximize2, Minimize2, Download, ChevronDown, ChevronUp, Table2, Lightbulb } from 'lucide-react';
 
 interface BottomPaneProps {
     activeTab: 'results' | 'insights';
@@ -43,50 +43,56 @@ const BottomPane: React.FC<BottomPaneProps> = ({
     isMaximized, onToggleMaximize,
     sqlQuery, paramValues, onParamChange, connectionInfo, metaParams, onExecuteQuery
 }) => {
-    // Compute actual height based on maximize state
-    const computedHeight = isMaximized ? '100%' : (isExpanded ? `${height}px` : '35px');
-
-    const tabStyle = (tab: string) => ({
-        padding: '0 12px', height: '34px',
-        background: activeTab === tab ? '#0f172a' : 'transparent',
-        color: activeTab === tab ? '#f1f5f9' : '#94a3b8',
-        border: 'none', borderTop: activeTab === tab ? '2px solid #3b82f6' : '2px solid transparent',
-        cursor: 'pointer', fontSize: '12px', fontWeight: 600
-    });
+    const computedHeight = isMaximized ? '100%' : (isExpanded ? `${height}px` : '34px');
 
     return (
-        <div style={{
-            height: computedHeight,
-            backgroundColor: '#0f172a',
-            borderTop: '1px solid #334155',
-            display: 'flex',
-            flexDirection: 'column',
-            transition: isMaximized ? 'none' : 'height 0.2s',
-            flexShrink: isMaximized ? 0 : 0,
-            flex: isMaximized ? 1 : 'none'
-        }}>
+        <div
+            style={{
+                height: computedHeight,
+                transition: isMaximized ? 'none' : 'height 0.18s ease',
+                flexShrink: 0,
+                flex: isMaximized ? 1 : 'none'
+            }}
+            className="bg-slate-950 border-t border-slate-800 flex flex-col select-none"
+        >
             {/* Header / Tabs */}
-            <div style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '0 10px', background: '#1e293b', height: '35px', borderBottom: '1px solid #334155',
-                flexShrink: 0
-            }}>
-                <div style={{ display: 'flex', gap: '1px' }}>
+            <div className="flex items-center justify-between px-2.5 bg-slate-900/90 h-[34px] border-b border-slate-800 flex-shrink-0">
+                <div className="flex items-center gap-1">
                     <button
                         onClick={() => { setActiveTab('results'); if (!isExpanded) onToggleExpand(); }}
-                        style={tabStyle('results') as React.CSSProperties}
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                            activeTab === 'results'
+                                ? 'bg-slate-800 text-slate-100 font-semibold'
+                                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                        }`}
                     >
-                        Results {executionResult ? `(${executionResult.rowCount})` : ''}
+                        <Table2 size={13} className={activeTab === 'results' ? 'text-blue-400' : 'text-slate-500'} />
+                        <span>Results</span>
+                        {executionResult && (
+                            <span className="font-mono text-[10px] px-1.5 py-0 rounded bg-slate-950/70 text-slate-400">
+                                {executionResult.rowCount}
+                            </span>
+                        )}
                     </button>
                     <button
                         onClick={() => { setActiveTab('insights'); if (!isExpanded) onToggleExpand(); }}
-                        style={tabStyle('insights') as React.CSSProperties}
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                            activeTab === 'insights'
+                                ? 'bg-slate-800 text-slate-100 font-semibold'
+                                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                        }`}
                     >
-                        Insights {insights && insights.length > 0 ? `(${insights.length})` : ''}
+                        <Lightbulb size={13} className={activeTab === 'insights' ? 'text-amber-400' : 'text-slate-500'} />
+                        <span>Insights</span>
+                        {insights && insights.length > 0 && (
+                            <span className="font-mono text-[10px] px-1.5 py-0 rounded bg-slate-950/70 text-slate-400">
+                                {insights.length}
+                            </span>
+                        )}
                     </button>
                 </div>
 
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <div className="flex items-center gap-2">
                     {executionResult && executionResult.executionTime !== undefined && (
                         <PerformanceBadge durationMs={executionResult.executionTime} rowCount={executionResult.rowCount || 0} />
                     )}
@@ -116,43 +122,39 @@ const BottomPane: React.FC<BottomPaneProps> = ({
                                 link.click();
                                 document.body.removeChild(link);
                             }}
-                            style={{
-                                background: '#334155', color: '#e2e8f0', border: '1px solid #475569',
-                                borderRadius: '4px', padding: '2px 8px', fontSize: '11px', cursor: 'pointer',
-                                display: 'flex', alignItems: 'center', gap: '4px'
-                            }}
+                            className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-[11px] font-medium transition-colors"
+                            title="Export results as CSV"
                         >
-                            <span>⬇</span> CSV
+                            <Download size={11} />
+                            <span>CSV</span>
                         </button>
                     )}
 
                     {/* Maximize/Minimize Toggle */}
                     <button
                         onClick={onToggleMaximize}
-                        style={{
-                            background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer',
-                            display: 'flex', alignItems: 'center', padding: '4px'
-                        }}
-                        title={isMaximized ? 'Restore' : 'Maximize'}
+                        className="p-1 rounded-md text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors"
+                        title={isMaximized ? 'Restore Pane Size' : 'Maximize Results Pane'}
                     >
-                        {isMaximized ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                        {isMaximized ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
                     </button>
 
                     {/* Expand/Collapse Toggle */}
                     <button
                         onClick={onToggleExpand}
-                        style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer' }}
+                        className="p-1 rounded-md text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors"
+                        title={isExpanded ? 'Collapse Results Pane' : 'Expand Results Pane'}
                     >
-                        {isExpanded ? '▼' : '▲'}
+                        {isExpanded ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
                     </button>
                 </div>
             </div>
 
             {/* Content */}
             {(isExpanded || isMaximized) && (
-                <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+                <div className="flex-1 overflow-hidden relative">
                     {activeTab === 'results' && (
-                        <div style={{ height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                        <div className="h-full overflow-hidden flex flex-col">
                             <QueryParametersPanel
                                 sql={sqlQuery}
                                 paramValues={paramValues}
@@ -161,16 +163,16 @@ const BottomPane: React.FC<BottomPaneProps> = ({
                                 metaParams={metaParams}
                                 onExecute={onExecuteQuery}
                             />
-                            <div style={{ flex: 1, overflow: 'auto' }}>
+                            <div className="flex-1 overflow-auto">
                                 {execError ? (
-                                    <div style={{ padding: '20px', color: '#ef4444', fontFamily: 'monospace' }}>
-                                        ❌ Error: {execError}
+                                    <div className="p-4 text-red-300 font-mono text-xs bg-red-950/20 border-b border-red-900/40">
+                                        Error: {execError}
                                     </div>
                                 ) : executionResult ? (
                                     <ResultsTable data={executionResult} />
                                 ) : (
-                                    <div style={{ padding: '20px', color: '#64748b', fontSize: '12px', fontStyle: 'italic' }}>
-                                        Execute a query to see results.
+                                    <div className="p-6 text-slate-500 text-xs text-center">
+                                        Press <span className="font-mono text-slate-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">⌘↵</span> or click <strong className="text-slate-300">Run</strong> to execute the query.
                                     </div>
                                 )}
                             </div>
@@ -191,3 +193,4 @@ const BottomPane: React.FC<BottomPaneProps> = ({
 };
 
 export default BottomPane;
+

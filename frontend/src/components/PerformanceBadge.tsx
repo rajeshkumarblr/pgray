@@ -1,4 +1,5 @@
 import React from 'react';
+import { Zap, AlertTriangle, Clock } from 'lucide-react';
 
 interface PerformanceBadgeProps {
     durationMs: number;
@@ -7,35 +8,34 @@ interface PerformanceBadgeProps {
 }
 
 const PerformanceBadge: React.FC<PerformanceBadgeProps> = ({ durationMs, rowCount, onClick }) => {
-    let color = 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30';
-    let icon = '⚡';
-    let label = 'Fast';
+    let color = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25';
+    let Icon = Zap;
 
-    // Threshold Logic
     if (durationMs > 1000) {
-        color = 'bg-red-500/20 text-red-400 border-red-500/30';
-        icon = '🐢';
-        label = 'Slow';
+        color = 'bg-red-500/10 text-red-400 border-red-500/25';
+        Icon = Clock;
     } else if (durationMs > 200) {
-        color = 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
-        icon = '⚠️';
-        label = 'Moderate';
+        color = 'bg-amber-500/10 text-amber-400 border-amber-500/25';
+        Icon = AlertTriangle;
     }
 
-    const clickableStyles = onClick ? 'cursor-pointer hover:opacity-80 hover:scale-105' : 'cursor-help';
+    const formattedMs = durationMs < 10 && durationMs > 0
+        ? `${durationMs.toFixed(1)}ms`
+        : `${durationMs.toFixed(0)}ms`;
 
     return (
         <div
-            className={`flex items-center gap-2 px-3 py-1 rounded-full border ${color} text-xs font-medium transition-all ${clickableStyles}`}
-            title={onClick ? "Click for details" : "Query Execution Time"}
+            className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md border ${color} text-[11px] font-mono transition-colors ${onClick ? 'cursor-pointer hover:opacity-85' : ''}`}
+            title={onClick ? "Click for execution details" : "Query Execution Time"}
             onClick={onClick}
         >
-            <span className="text-sm">{icon}</span>
-            <span className="font-bold">{durationMs.toFixed(0)}ms</span>
-            <span className="opacity-70 hidden sm:inline">| {label}</span>
-            <span className="opacity-50 ml-1">({rowCount} rows)</span>
+            <Icon size={11} />
+            <span className="font-semibold">{formattedMs}</span>
+            <span className="text-slate-500">•</span>
+            <span className="text-slate-400">{rowCount} {rowCount === 1 ? 'row' : 'rows'}</span>
         </div>
     );
 };
 
 export default PerformanceBadge;
+

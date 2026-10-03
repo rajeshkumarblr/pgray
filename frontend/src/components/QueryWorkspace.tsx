@@ -107,23 +107,24 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
     localModel, geminiModel, setLocalModel, setGeminiModel
 }) => {
 
-    // --- AI Sidebar State ---
-    const [aiSidebarWidth, setAiSidebarWidth] = useState(380);
+    // --- Sidebar & Layout State ---
+    const [showLeftSidebar, setShowLeftSidebar] = useState(true);
+    const [showRightSidebar, setShowRightSidebar] = useState(true);
+    const [aiSidebarWidth, setAiSidebarWidth] = useState(320);
     const [activeRightTab, setActiveRightTab] = useState<'chat' | 'details'>('chat');
-
 
     // --- Local State ---
     const [savedQueries, setSavedQueries] = useState<ParameterizedQuery[]>([]);
     const [activeBottomTab, setActiveBottomTab] = useState<'results' | 'insights'>('results');
     const [bottomExpanded, setBottomExpanded] = useState(false);
-    const [bottomHeight, setBottomHeight] = useState(280);
+    const [bottomHeight, setBottomHeight] = useState(260);
     const [isBottomMaximized, setIsBottomMaximized] = useState(false);
     const [tuneTabMode, setTuneTabMode] = useState<'visual' | 'text' | 'compare'>('visual');
     const [paramValues, setParamValues] = useState<Record<string, string>>({});
 
     // Split View State
     const [showPlan, setShowPlan] = useState(false);
-    const [planWidth, setPlanWidth] = useState(560); // Default width for Plan pane
+    const [planWidth, setPlanWidth] = useState(460); // Balanced default width for Plan pane
 
     // What-If Index Simulation State
     const [simulationResult, setSimulationResult] = useState<any | null>(null);
@@ -319,6 +320,9 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
         setTuneTabMode('visual');
         setActiveTab('query');
         setShowPlan(true); // Open Plan Pane
+        if (typeof window !== 'undefined' && window.innerWidth < 1440) {
+            setShowLeftSidebar(false);
+        }
         if (targetSql) {
             onTune(null, targetSql); // Trigger Plan with targetSql immediately
         }
@@ -328,8 +332,13 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
     const handleTogglePlan = () => {
         const nextShow = !showPlan;
         setShowPlan(nextShow);
-        if (nextShow && sqlQuery) {
-            onTune(null, sqlQuery);
+        if (nextShow) {
+            if (typeof window !== 'undefined' && window.innerWidth < 1440) {
+                setShowLeftSidebar(false);
+            }
+            if (sqlQuery) {
+                onTune(null, sqlQuery);
+            }
         }
     };
 
@@ -423,6 +432,7 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
     // Node Click Handler Wrapper
     const handleNodeClickWrapper = (e: React.MouseEvent, node: Node) => {
         if (onNodeClick) onNodeClick(e, node);
+        setShowRightSidebar(true);
         setActiveRightTab('details'); // Switch right tab to details
     };
 
@@ -601,24 +611,26 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                         <div style={{ display: 'flex', flexDirection: 'row', height: '100%', overflow: 'hidden' }}>
 
                             {/* Left Sidebar (Schema Explorer & Saved Queries) */}
-                            <SavedQueriesSidebar
-                                connectionInfo={connectionInfo}
-                                onSelectQuery={handleSelectSavedQuery}
-                                queries={savedQueries}
-                                loading={loadingSavedQueries}
-                                onReload={loadSavedQueries}
-                                activeQueryName={sessionTitle}
-                                schema={schema}
-                                onPreviewTable={(tableName) => {
-                                    const previewSql = `SELECT *\nFROM ${tableName}\nLIMIT 50;`;
-                                    setSqlQuery(previewSql);
-                                    setSessionTitle(`Preview: ${tableName}`);
-                                    handleExecuteWrapper(previewSql);
-                                }}
-                                onInsertSnippet={(snippet) => {
-                                    setSqlQuery(sqlQuery ? `${sqlQuery} ${snippet}` : snippet);
-                                }}
-                            />
+                            {showLeftSidebar && (
+                                <SavedQueriesSidebar
+                                    connectionInfo={connectionInfo}
+                                    onSelectQuery={handleSelectSavedQuery}
+                                    queries={savedQueries}
+                                    loading={loadingSavedQueries}
+                                    onReload={loadSavedQueries}
+                                    activeQueryName={sessionTitle}
+                                    schema={schema}
+                                    onPreviewTable={(tableName) => {
+                                        const previewSql = `SELECT *\nFROM ${tableName}\nLIMIT 50;`;
+                                        setSqlQuery(previewSql);
+                                        setSessionTitle(`Preview: ${tableName}`);
+                                        handleExecuteWrapper(previewSql);
+                                    }}
+                                    onInsertSnippet={(snippet) => {
+                                        setSqlQuery(sqlQuery ? `${sqlQuery} ${snippet}` : snippet);
+                                    }}
+                                />
+                            )}
 
                             {/* Center Area (Code/Plan + BottomPane) */}
                             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
@@ -626,7 +638,7 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                                 {/* Top Content: Split View (Code | Plan) */}
                                 <div style={{ flex: 1, display: 'flex', flexDirection: 'row', minHeight: 0, overflow: 'hidden' }}>
                                     {/* Left Split: Code Editor */}
-                                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
+                                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: '280px', overflow: 'hidden' }}>
                                         <EditorToolbar
                                             sessionTitle={sessionTitle}
                                             connectionInfo={connectionInfo}
@@ -642,6 +654,7 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                                                 onTune(null, sqlQuery);
                                             }}
                                             onAskAI={() => {
+                                                setShowRightSidebar(true);
                                                 setActiveRightTab('chat');
                                                 if (sqlQuery.trim()) {
                                                     onAIStream(
@@ -654,6 +667,10 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                                             onOpenSettings={onOpenSettings}
                                             showPlan={showPlan}
                                             onTogglePlan={handleTogglePlan}
+                                            showLeftSidebar={showLeftSidebar}
+                                            onToggleLeftSidebar={() => setShowLeftSidebar(prev => !prev)}
+                                            showRightSidebar={showRightSidebar}
+                                            onToggleRightSidebar={() => setShowRightSidebar(prev => !prev)}
                                         />
 
                                         <div style={{ flex: 1, position: 'relative', display: 'flex' }}>
@@ -685,20 +702,20 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                                             <div
                                                 onMouseDown={startPlanResize}
                                                 style={{
-                                                    width: '5px',
+                                                    width: '4px',
                                                     cursor: 'col-resize',
-                                                    background: '#1e293b',
-                                                    borderLeft: '1px solid #334155',
+                                                    background: '#090d16',
+                                                    borderLeft: '1px solid #1e293b',
                                                     display: 'flex',
                                                     justifyContent: 'center',
                                                     alignItems: 'center',
                                                     zIndex: 20
                                                 }}
                                             >
-                                                <div style={{ width: '2px', height: '30px', background: '#475569', borderRadius: '2px' }} />
+                                                <div style={{ width: '2px', height: '28px', background: '#334155', borderRadius: '2px' }} />
                                             </div>
 
-                                            <div style={{ width: `${planWidth}px`, flexShrink: 0, display: 'flex', flexDirection: 'column', background: '#0f172a' }}>
+                                            <div style={{ width: `${planWidth}px`, flexShrink: 0, display: 'flex', flexDirection: 'column', background: '#090d16' }}>
                                                 <QueryTuneTab
                                                     activeTab={tuneTabMode}
                                                     setActiveTab={setTuneTabMode}
@@ -715,6 +732,7 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                                                     setReactFlowInstance={() => { }}
                                                     nodeTypes={nodeTypes}
                                                     onAnalyzeNode={(node) => {
+                                                        setShowRightSidebar(true);
                                                         setActiveRightTab('chat');
                                                         onAnalyzeNode(node);
                                                     }}
@@ -733,21 +751,21 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                                     )}
                                 </div>
 
-                                {/* Bottom Pane (Results) - Now Full Width within Center Area */}
+                                {/* Bottom Pane (Results) - Full Width within Center Area */}
                                 {!isBottomMaximized && (
                                     <div
                                         onMouseDown={startBottomResize}
                                         style={{
-                                            height: '5px',
+                                            height: '4px',
                                             cursor: 'row-resize',
-                                            background: '#1e293b',
-                                            borderTop: '1px solid #334155',
+                                            background: '#090d16',
+                                            borderTop: '1px solid #1e293b',
                                             display: 'flex',
                                             justifyContent: 'center',
                                             alignItems: 'center'
                                         }}
                                     >
-                                        <div style={{ width: '30px', height: '2px', background: '#475569', borderRadius: '2px' }} />
+                                        <div style={{ width: '28px', height: '2px', background: '#334155', borderRadius: '2px' }} />
                                     </div>
                                 )}
 
@@ -775,68 +793,89 @@ const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({
                             </div>
 
                             {/* Right Sidebar: AI Assistant / Node Details */}
-                            <div
-                                onMouseDown={startAISidebarResize}
-                                style={{
-                                    width: '5px',
-                                    cursor: 'col-resize',
-                                    background: '#1e293b',
-                                    borderLeft: '1px solid #334155',
-                                    display: 'flex',
-                                    justifyContent: 'center',
-                                    alignItems: 'center'
-                                }}
-                            >
-                                <div style={{ width: '2px', height: '30px', background: '#475569', borderRadius: '2px' }} />
-                            </div>
-
-                            <div style={{ width: `${aiSidebarWidth}px`, height: '100%', flexShrink: 0, display: 'flex', flexDirection: 'column', background: '#0f172a', borderLeft: '1px solid #334155' }}>
-                                {/* Right Tabs */}
-                                <div style={{ display: 'flex', borderBottom: '1px solid #334155' }}>
-                                    <div onClick={() => setActiveRightTab('chat')} style={rightTabStyle('chat')}>
-                                        <MessageSquare size={14} /> AI Chat
+                            {showRightSidebar && (
+                                <>
+                                    <div
+                                        onMouseDown={startAISidebarResize}
+                                        style={{
+                                            width: '4px',
+                                            cursor: 'col-resize',
+                                            background: '#090d16',
+                                            borderLeft: '1px solid #1e293b',
+                                            display: 'flex',
+                                            justifyContent: 'center',
+                                            alignItems: 'center'
+                                        }}
+                                    >
+                                        <div style={{ width: '2px', height: '28px', background: '#334155', borderRadius: '2px' }} />
                                     </div>
-                                    <div onClick={() => setActiveRightTab('details')} style={rightTabStyle('details')}>
-                                        <Info size={14} /> Details
-                                    </div>
-                                </div>
 
-                                <div style={{ flex: 1, overflow: 'hidden' }}>
-                                    {activeRightTab === 'chat' && (
-                                        <AIChatSidebar
-                                            messages={chatHistory}
-                                            onSend={onAIStream}
-                                            loading={aiLoading}
-                                            aiState={aiStatus}
-                                            title={showPlan ? "Plan Assistant" : "Query Assistant"}
-                                            onRunSql={(sql) => { setSqlQuery(sql); }}
-                                            onSimulateIndex={handleSimulateIndex}
-                                            onApplyIndex={handleApplyIndex}
-                                            onClose={() => { }}
-                                            selectedModel={activeProvider}
-                                            onModelChange={setActiveProvider}
-                                            googleApiKey={googleApiKey}
-                                            onSetGoogleApiKey={setGoogleApiKey}
-                                            onOpenSettings={onOpenSettings}
-                                            onClearHistory={onClearHistory}
-                                            onIndexDatabase={onIndexDatabase}
-                                            connectionInfo={connectionInfo}
-                                        />
-                                    )}
-                                    {activeRightTab === 'details' && (
-                                        <NodeDetailsPanel
-                                            selectedNode={selectedNode}
-                                            onClose={() => setSelectedNode(null)}
-                                            fullPlan={explainResult}
-                                            onAnalyzeNode={(node) => {
-                                                setActiveRightTab('chat');
-                                                onAnalyzeNode(node);
-                                            }}
-                                            onRunMaintenance={handleRunMaintenance}
-                                        />
-                                    )}
-                                </div>
-                            </div>
+                                    <div style={{ width: `${aiSidebarWidth}px`, height: '100%', flexShrink: 0, display: 'flex', flexDirection: 'column', background: '#090d16', borderLeft: '1px solid #1e293b' }}>
+                                        {/* Right Tabs (matching 40px height of EditorToolbar & QueryTuneTab) */}
+                                        <div className="flex h-10 bg-slate-950/90 border-b border-slate-800 items-center px-2 gap-1 select-none">
+                                            <button
+                                                onClick={() => setActiveRightTab('chat')}
+                                                className={`flex-1 py-1 px-2 rounded-md text-xs font-medium flex items-center justify-center gap-1.5 transition-colors ${
+                                                    activeRightTab === 'chat'
+                                                        ? 'bg-slate-800 text-slate-100 font-semibold'
+                                                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                                                }`}
+                                            >
+                                                <MessageSquare size={13} className={activeRightTab === 'chat' ? 'text-purple-400' : ''} />
+                                                <span>AI Copilot</span>
+                                            </button>
+                                            <button
+                                                onClick={() => setActiveRightTab('details')}
+                                                className={`flex-1 py-1 px-2 rounded-md text-xs font-medium flex items-center justify-center gap-1.5 transition-colors ${
+                                                    activeRightTab === 'details'
+                                                        ? 'bg-slate-800 text-slate-100 font-semibold'
+                                                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                                                }`}
+                                            >
+                                                <Info size={13} className={activeRightTab === 'details' ? 'text-blue-400' : ''} />
+                                                <span>Node Inspector</span>
+                                            </button>
+                                        </div>
+
+                                        <div style={{ flex: 1, overflow: 'hidden' }}>
+                                            {activeRightTab === 'chat' && (
+                                                <AIChatSidebar
+                                                    messages={chatHistory}
+                                                    onSend={onAIStream}
+                                                    loading={aiLoading}
+                                                    aiState={aiStatus}
+                                                    title={showPlan ? "Plan Assistant" : "Query Assistant"}
+                                                    onRunSql={(sql) => { setSqlQuery(sql); }}
+                                                    onSimulateIndex={handleSimulateIndex}
+                                                    onApplyIndex={handleApplyIndex}
+                                                    onClose={() => setShowRightSidebar(false)}
+                                                    selectedModel={activeProvider}
+                                                    onModelChange={setActiveProvider}
+                                                    googleApiKey={googleApiKey}
+                                                    onSetGoogleApiKey={setGoogleApiKey}
+                                                    onOpenSettings={onOpenSettings}
+                                                    onClearHistory={onClearHistory}
+                                                    onIndexDatabase={onIndexDatabase}
+                                                    connectionInfo={connectionInfo}
+                                                />
+                                            )}
+                                            {activeRightTab === 'details' && (
+                                                <NodeDetailsPanel
+                                                    selectedNode={selectedNode}
+                                                    onClose={() => setSelectedNode(null)}
+                                                    fullPlan={explainResult}
+                                                    onAnalyzeNode={(node) => {
+                                                        setShowRightSidebar(true);
+                                                        setActiveRightTab('chat');
+                                                        onAnalyzeNode(node);
+                                                    }}
+                                                    onRunMaintenance={handleRunMaintenance}
+                                                />
+                                            )}
+                                        </div>
+                                    </div>
+                                </>
+                            )}
 
                         </div>
                     )}

@@ -164,9 +164,10 @@ const SavedQueriesSidebar: React.FC<SavedQueriesSidebarProps> = ({
 
     return (
         <div style={{
-            width: '250px',
-            borderRight: '1px solid #334155',
-            background: '#0f172a',
+            width: '220px',
+            flexShrink: 0,
+            borderRight: '1px solid #1e293b',
+            background: '#090d16',
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden'

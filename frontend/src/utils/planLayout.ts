@@ -69,6 +69,7 @@ export const parsePlanToFlow = (explainJson: any): { nodes: Node[]; edges: Edge[
 
     // 1) Analysis pass
     const { metricsByPlan, maxExclusiveTime } = analyzePlanTree(rootPlan);
+    const rootBaseTime = Math.max(getPlanBaseTime(rootPlan), maxExclusiveTime, 0.001);
 
     const nodes: Node[] = [];
     const edges: Edge[] = [];
@@ -76,9 +77,9 @@ export const parsePlanToFlow = (explainJson: any): { nodes: Node[]; edges: Edge[
 
     // --- GRID LAYOUT CONSTANTS ---
     // INDENT_X: Horizontal indentation per depth level
-    const INDENT_X = 40;
-    // ROW_Y: Vertical space per node row (52px node + 18px gap = 70px)
-    const ROW_Y = 70;
+    const INDENT_X = 56;
+    // ROW_Y: Vertical space per node row (structured telemetry cards + clean vertical gap)
+    const ROW_Y = 104;
     let rowIndex = 0;
 
     const traverse = (plan: PostgresPlan, parentId: string | null, depth = 0) => {
@@ -91,6 +92,9 @@ export const parsePlanToFlow = (explainJson: any): { nodes: Node[]; edges: Edge[
         const severity_score = maxExclusiveTime > 0
             ? Math.min(1, Math.max(0, exclusive_time / maxExclusiveTime))
             : 0;
+        const time_pct = rootBaseTime > 0
+            ? Math.min(100, Math.max(0, Math.round((exclusive_time / rootBaseTime) * 100)))
+            : 0;
 
         // Calculate Position on Grid
         const x = depth * INDENT_X;
@@ -101,7 +105,6 @@ export const parsePlanToFlow = (explainJson: any): { nodes: Node[]; edges: Edge[
             id,
             type: 'planNode',
             position: { x, y },
-            // CRITICAL: Tells React Flow where to anchor edges for this specific node
             sourcePosition: Position.Bottom,
             targetPosition: Position.Left,
             data: {
@@ -115,6 +118,7 @@ export const parsePlanToFlow = (explainJson: any): { nodes: Node[]; edges: Edge[
                 exclusive_time,
                 max_time: maxExclusiveTime,
                 severity_score,
+                time_pct,
             },
         });
 
@@ -123,11 +127,10 @@ export const parsePlanToFlow = (explainJson: any): { nodes: Node[]; edges: Edge[
                 id: `e_${parentId}_${id}`,
                 source: parentId,
                 target: id,
-                // 'smoothstep' creates nice rounded orthogonal lines
                 type: 'smoothstep',
                 style: {
-                    stroke: '#64748b', // Slate-500
-                    strokeWidth: 2
+                    stroke: severity_score > 0.6 && exclusive_time >= 0.5 ? '#60a5fa' : '#475569',
+                    strokeWidth: 1.75
                 },
             });
         }
